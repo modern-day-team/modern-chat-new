@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import UiButton from '@/components/ui/UiButton.vue'
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch } from 'vue'
 import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next'
 import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
@@ -8,9 +8,7 @@ import { ArrowLeftIcon, ChatIcon } from 'tdesign-icons-vue-next'
 
 import AvatarBadge from './AvatarBadge.vue'
 import MessageComposer from './MessageComposer.vue'
-import VoiceMessage from './VoiceMessage.vue'
 import ContextMenu, { type ContextMenuItem } from '@/components/common/ContextMenu.vue'
-import DeclarativeNodes from '@/components/declarative'
 import { usePluginHost } from '@/composables/usePluginHost'
 import { useAppI18n } from '@/composables/useAppI18n'
 import { convApi, moderationApi } from '@/core/network/endpoints'
@@ -18,10 +16,12 @@ import { useAuthStore } from '@/stores/auth'
 import { useSiteStore } from '@/stores/site'
 import { useConversationsStore } from '@/stores/conversations'
 import { useFavoritesStore } from '@/stores/favorites'
+import MessageRow from './MessageRow.vue'
+import { messageRowKey, type MessageRowCtx } from './messageRowContext'
+import { ensureRendered } from './pluginRenders'
 import { useLayoutStore } from '@/stores/layout'
 import { useWsStore } from '@/stores/ws'
-import { FEATURES } from '@/config/features'
-import type { Conversation, Message, ReplyBrief, UIDescNode } from '@/types/proto'
+import type { Conversation, Message } from '@/types/proto'
 
 const auth = useAuthStore()
 const convStore = useConversationsStore()
@@ -61,13 +61,6 @@ function recallVisible(m: Message): boolean {
   if (!m.recalledAt) return false
   const at = new Date(m.recalledAt).getTime()
   return Number.isFinite(at) && nowTick.value < at + RECALL_TTL
-}
-
-/** 撤回提示文案：自己显示「你」，别人显示其昵称 */
-function recallLabel(m: Message): string {
-  return senderOf(m)
-    ? t('message.recalledByYou')
-    : t('message.recalledBy', { name: senderName(m) })
 }
 
 // 精确调度到最近的到期时刻，不做每秒轮询（有 2000 条历史的会话也不该空转）。
@@ -358,16 +351,6 @@ function recall(m: Message) {
   void MessagePlugin.success(t('message.recallOk'))
 }
 
-// ===== 图片 =====
-
-// 每张图只存一份：上传前已在客户端压过（最大边 1600 / webp q0.82），
-// 服务端不再派生 _t.jpg 缩略图，气泡、灯箱、保存与下载全部直接用 content。
-// 早期版本按约定把扩展名换成 _t.jpg 取缩略图，现在那条路径已不存在——
-// 继续派生只会拿到 404 再回退原图，白搭一次失败请求。
-function imageSrc(m: Message): string {
-  return m.content
-}
-
 // ===== 编辑 =====
 
 const EDIT_WINDOW = 5 * 60 * 1000
@@ -385,7 +368,6 @@ function startEdit(m: Message) {
 
 // ===== 表情回应 =====
 
-const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉']
 const reactionPicker = ref(0)
 
 function toggleReactionPicker(messageId: number) {
@@ -573,37 +555,6 @@ function doForward(convId: number) {
 }
 
 // ===== @ 高亮 =====
-
-function escapeRe(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-/**
- * 把正文按「@昵称」切段，高亮其中的 @ 部分。
- * 只在消息确实带 mentions 时才做，普通文本走原样渲染，不额外开销。
- */
-function textParts(m: Message): { t: string; at: boolean }[] {
-  if (m.msgType !== 'text' || !m.mentions?.length) return [{ t: m.content, at: false }]
-  const names = m.mentions.map((id) => memberName(id)).filter(Boolean)
-  if (!names.length) return [{ t: m.content, at: false }]
-  const re = new RegExp(`(@(?:${names.map(escapeRe).join('|')}))`, 'g')
-  return m.content
-    .split(re)
-    .filter((s) => s !== '')
-    .map((s) => ({ t: s, at: names.some((n) => s === `@${n}`) }))
-}
-
-// ===== 引用 =====
-
-/** 引用块里显示的文本：媒体与已撤回要给占位，不能直接甩 URL */
-function quoteText(r: ReplyBrief): string {
-  if (r.isRecalled) return t('message.quoteRecalled')
-  if (r.msgType === 'image') return t('message.quoteImage')
-  if (r.msgType === 'audio') return t('message.quoteAudio')
-  if (r.msgType === 'sticker') return t('message.quoteSticker')
-  if (r.msgType === 'video') return t('message.quoteVideo')
-  return r.content
-}
 
 /** 被点中的引用目标，短暂高亮一下，否则跳过去也找不到是哪条 */
 const flashId = ref(0)
@@ -971,11 +922,6 @@ function messageStatus(m: Message): string {
   return t('message.sent')
 }
 
-/** 失败消息重发：复用 store 的 resend（重置 pending 并重新发帧） */
-function retrySend(m: Message) {
-  if (!m.failed) return
-  convStore.resend(m)
-}
 
 // ===== 正在输入 =====
 
@@ -1016,35 +962,8 @@ watch(
 )
 
 // ===== 自定义消息类型：插件渲染（§8.2） =====
-
-interface RenderedDesc {
-  nodes: UIDescNode[]
-}
-
-const renderedMap = reactive<Record<number, RenderedDesc | 'failed' | undefined>>({})
-
-function ensureRendered(m: Message) {
-  if (m.msgType === 'text' || m.isRecalled) return
-  if (renderedMap[m.id] !== undefined) return
-  if (!host.hasRenderer(m.msgType)) {
-    renderedMap[m.id] = 'failed'
-    return
-  }
-  let payload: unknown = m.content
-  try {
-    payload = JSON.parse(m.content)
-  } catch {
-    /* 非 JSON 原样传给插件 */
-  }
-  host
-    .requestRender(m.msgType, payload)
-    .then((panel) => {
-      renderedMap[m.id] = panel ? { nodes: panel.body } : 'failed'
-    })
-    .catch(() => {
-      renderedMap[m.id] = 'failed'
-    })
-}
+// renderedMap / ensureRendered / isRenderedOk / renderedNodes 已抽到 ./pluginRenders
+// （MessageRow 与本组件共用；消息 id 全局唯一，模块级单例与原每面板 Map 等价）
 
 // 新消息只会追加在尾部：append-only 时只扫新增段，避免每条消息 O(n) 全量重扫；
 // 其他变化（撤回移除/切会话重建）退回全量扫——ensureRendered 内部有
@@ -1062,16 +981,6 @@ watch(
   },
   { immediate: true },
 )
-
-function isRenderedOk(m: Message): boolean {
-  const r = renderedMap[m.id]
-  return !!r && r !== 'failed'
-}
-
-function renderedNodes(m: Message): RenderedDesc['nodes'] {
-  const r = renderedMap[m.id]
-  return r && r !== 'failed' ? r.nodes : []
-}
 
 const senderOf = (m: Message) => m.senderId === auth.user?.id
 const senderAvatarColor = (m: Message) => {
@@ -1095,6 +1004,24 @@ const senderName = (m: Message) => {
   if (conv.value?.type === 1) return conv.value.peer?.nickname ?? '?'
   return memberName(m.senderId)
 }
+
+// 行组件宿主上下文：函数引用稳定，内部读到的响应式状态（成员昵称缓存、
+// 已读游标、conv.peer）在行组件自己的渲染作用域里跟踪
+provide(messageRowKey, {
+  senderName,
+  senderAvatar,
+  senderAvatarColor,
+  memberName,
+  messageStatus,
+  recall,
+  react,
+  toggleReactionPicker,
+  jumpToMessage,
+  onMediaClick,
+  openMenu,
+  openImageMenu,
+  toggleSelect,
+} satisfies MessageRowCtx)
 </script>
 
 <template>
@@ -1206,206 +1133,17 @@ const senderName = (m: Message) => {
             <div class="mc-msgpane__date text-placeholder">{{ item.label }}</div>
           </template>
           <template v-else-if="item.msg">
-            <div
-              class="mc-msg"
-              :class="{
-                mine: senderOf(item.msg),
-                'is-recalled': item.msg.isRecalled,
-                'is-flash': flashId === item.msg.id,
-                'is-selected': selectMode && isSelected(item.msg),
-                'is-selecting': selectMode,
-              }"
-              @click="selectMode && toggleSelect(item.msg)"
-              @contextmenu.prevent="openMenu($event, item.msg)"
-            >
-              <!-- 多选标记 -->
-              <span
-                v-if="selectMode && !item.msg.isRecalled"
-                class="mc-msg__check"
-                :class="{ 'is-on': isSelected(item.msg) }"
-                aria-hidden="true"
-              >✓</span>
-              <!-- 头像：自己的消息也显示（.mine 的 row-reverse 会把它排到最右）。
-                   撤回提示是系统文案，居中显示，不带头像。 -->
-              <AvatarBadge
-                v-if="!item.msg.isRecalled"
-                :name="senderName(item.msg)"
-                :src="senderAvatar(item.msg)"
-                :color="senderAvatarColor(item.msg)"
-                :size="32"
-              />
-              <div class="mc-msg__body">
-                <div
-                  v-if="conv?.type === 2 && !senderOf(item.msg) && !item.msg.isRecalled"
-                  class="mc-msg__sender text-placeholder"
-                >
-                  {{ memberName(item.msg.senderId) }}
-                </div>
-
-                <!-- 转发标注：转发不保留原作者，只标来源性质 -->
-                <div v-if="item.msg.forwarded && !item.msg.isRecalled" class="mc-msg__forward">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path
-                      d="M4 8h11a5 5 0 0 1 0 10H8M4 8l4-4M4 8l4 4"
-                      stroke="currentColor"
-                      stroke-width="1.6"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    />
-                  </svg>
-                  {{ t('message.forwarded') }}
-                </div>
-
-                <!-- 引用：点一下跳到原消息 -->
-                <div
-                  v-if="item.msg.replyTo && !item.msg.isRecalled"
-                  class="mc-msg__quote"
-                  role="button"
-                  tabindex="0"
-                  @click="jumpToMessage(item.msg.replyTo.id)"
-                  @keydown.enter="jumpToMessage(item.msg.replyTo.id)"
-                >
-                  <span class="mc-msg__quote-name">{{ item.msg.replyTo.senderNickname || '…' }}</span>
-                  <span class="mc-msg__quote-text">{{ quoteText(item.msg.replyTo) }}</span>
-                </div>
-
-                <!-- 撤回：满 3 分钟后整条从列表中过滤掉 -->
-                <div v-if="item.msg.isRecalled" class="mc-msg__bubble recalled">
-                  {{ recallLabel(item.msg) }}
-                </div>
-
-                <!-- 图片：点击放大 -->
-                <div v-else-if="item.msg.msgType === 'image'" class="mc-msg__media">
-                  <!-- 不能用 loading="lazy"：DynamicScroller 依赖测量 item 高度，
-                       图片未加载时高度为 0 → 永远进不了视口 → 永远不会加载（死循环）。
-                       虚拟滚动本身已经保证只渲染视口附近的消息，无需再 lazy。 -->
-                  <img
-                    :src="imageSrc(item.msg)"
-                    alt=""
-                    decoding="async"
-                    @click="onMediaClick(item.msg, $event)"
-                    @contextmenu.prevent.stop="openImageMenu($event, item.msg)"
-                  />
-                </div>
-
-                <!-- 语音：自定义气泡（宽度随时长、进度条、同时只播一条） -->
-                <VoiceMessage
-                  v-else-if="item.msg.msgType === 'audio'"
-                  :src="item.msg.content"
-                  :mine="senderOf(item.msg)"
-                />
-
-                <!-- 视频：原生控件（播放/进度/全屏交给浏览器）。
-                     固定 16:9 占位：DynamicScroller 依赖测量高度，
-                     元数据到达前高度为 0 会让列表跳动。 -->
-                <div v-else-if="item.msg.msgType === 'video'" class="mc-msg__video">
-                  <video
-                    :src="item.msg.content"
-                    controls
-                    playsinline
-                    preload="metadata"
-                    @contextmenu.prevent.stop="openMenu($event, item.msg)"
-                  />
-                </div>
-
-                <!-- 表情：透明底、无气泡（和图片区分：表情是"贴"在对话里的） -->
-                <div v-else-if="item.msg.msgType === 'sticker'" class="mc-msg__sticker">
-                  <img
-                    :src="item.msg.content"
-                    alt=""
-                    decoding="async"
-                    @click="onMediaClick(item.msg, $event)"
-                    @contextmenu.prevent.stop="openImageMenu($event, item.msg)"
-                  />
-                </div>
-
-                <!-- 自定义类型：插件白名单渲染 -->
-                <div v-else-if="item.msg.msgType !== 'text'" class="mc-msg__bubble custom">
-                  <DeclarativeNodes v-if="isRenderedOk(item.msg)" :nodes="renderedNodes(item.msg)" />
-                  <span v-else class="text-placeholder">
-                    {{ t('message.unknownType', { type: item.msg.msgType }) }}
-                  </span>
-                </div>
-
-                <!-- 普通文本 -->
-                <div v-else class="mc-msg__bubble" :class="{ pending: item.msg.pending, failed: item.msg.failed }">
-                  <span class="mc-msg__text">
-                    <template v-for="(p, pi) in textParts(item.msg)" :key="pi">
-                      <span v-if="p.at" class="mc-msg__at">{{ p.t }}</span>
-                      <template v-else>{{ p.t }}</template>
-                    </template>
-                  </span>
-                  <span
-                    v-if="canRecall(item.msg)"
-                    class="mc-msg__recall"
-                    role="button"
-                    tabindex="0"
-                    :aria-label="t('message.recallAria')"
-                    @click.stop="recall(item.msg)"
-                    @keydown.enter="recall(item.msg)"
-                  >{{ t('message.recall') }}</span>
-                  <span v-if="item.msg.failed" class="mc-msg__resend" @click.stop="convStore.resend(item.msg)">
-                    {{ t('message.resend') }}
-                  </span>
-                </div>
-
-                <!-- 表情回应：已有点击切换，+ 展开预设表情。
-                     暂未开放（FEATURES.reactions=false 隐藏，逻辑保留），开关在 src/config/features.ts -->
-                <div
-                  v-if="FEATURES.reactions && !item.msg.isRecalled && item.msg.id > 0"
-                  class="mc-msg__reactions"
-                >
-                  <button
-                    v-for="r in item.msg.reactions ?? []"
-                    :key="r.emoji"
-                    type="button"
-                    class="mc-msg__reaction"
-                    :class="{ 'is-mine': r.mine }"
-                    @click="react(item.msg, r.emoji)"
-                  >
-                    {{ r.emoji }}<span class="num">{{ r.count }}</span>
-                  </button>
-                  <button
-                    type="button"
-                    class="mc-msg__reaction-add"
-                    :aria-label="t('message.addReaction')"
-                    :title="t('message.addReaction')"
-                    @click="toggleReactionPicker(item.msg.id)"
-                  >
-                    +
-                  </button>
-                  <div v-if="reactionPicker === item.msg.id" class="mc-msg__reaction-picker">
-                    <button
-                      v-for="e in REACTION_EMOJIS"
-                      :key="e"
-                      type="button"
-                      @click="react(item.msg, e)"
-                    >
-                      {{ e }}
-                    </button>
-                  </div>
-                </div>
-
-                <div class="mc-msg__meta text-placeholder num">
-                  <!-- 发送失败：所有会话类型都给重试入口（原来只有单聊显示了文字，群里连提示都没有） -->
-                  <button
-                    v-if="item.msg.failed"
-                    type="button"
-                    class="mc-msg__retry"
-                    :aria-label="t('message.resend')"
-                    @click.stop="retrySend(item.msg)"
-                  >
-                    {{ t('message.sendFailed') }} · {{ t('message.resend') }}
-                  </button>
-                  <template v-else-if="senderOf(item.msg) && conv?.type === 1">
-                    {{ messageStatus(item.msg) }} ·
-                  </template>
-                  {{ fmtTime(item.msg.createdAt) }}
-                  <span v-if="item.msg.editedAt"> · {{ t('message.edited') }}</span>
-                </div>
-              </div>
-            </div>
+            <MessageRow
+              :msg="item.msg"
+              :flash="flashId === item.msg.id"
+              :selected="isSelected(item.msg)"
+              :select-mode="selectMode"
+              :picker-open="reactionPicker === item.msg.id"
+              :conv-type="conv?.type ?? 0"
+              :peer-read-up-to="peerReadUpTo"
+            />
           </template>
+
         </DynamicScrollerItem>
 
         </template>
@@ -1705,80 +1443,9 @@ const senderName = (m: Message) => {
   background: var(--mc-hairline);
 }
 
-.mc-msg {
-  display: flex;
-  gap: 10px;
-  /* 气泡之间的呼吸感：上下各 11px。
-     用 padding 而非 margin：DynamicScroller 按 wrapper 高度测量 item，
-     margin 不计入会导致相邻消息的 meta 行互相贴边、视觉上被裁。 */
-  padding: 11px 0;
-}
-
-.mc-msg.mine {
-  flex-direction: row-reverse;
-}
-
-.mc-msg__body {
-  max-width: 64%;
-  display: flex;
-  flex-direction: column;
-}
-
-.mc-msg.mine .mc-msg__body {
-  align-items: flex-end;
-}
-
-.mc-msg__sender {
-  font-size: 12px;
-  margin-bottom: 2px;
-}
-
-/* ===== 引用块 ===== */
-.mc-msg__quote {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  max-width: 100%;
-  margin-bottom: 4px;
-  padding: 5px 9px;
-  border-left: 2px solid var(--td-brand-color);
-  border-radius: 4px;
-  background: var(--td-bg-color-secondarycontainer);
-  cursor: pointer;
-  transition: background-color var(--mc-dur-instant) var(--mc-ease-out);
-}
-
-.mc-msg__quote:hover {
-  background: var(--td-bg-color-container-hover);
-}
-
-.mc-msg__quote-name {
-  font-size: var(--mc-fs-caption);
-  color: var(--td-brand-color);
-}
-
-.mc-msg__quote-text {
-  font-size: var(--mc-fs-sm);
-  color: var(--td-text-color-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 /* 跳转后的短暂高亮 */
 .mc-msg.is-flash {
   animation: mc-msg-flash 1.2s var(--mc-ease-out);
-}
-
-@keyframes mc-msg-flash {
-  0%,
-  40% {
-    background: color-mix(in srgb, var(--td-brand-color) 14%, transparent);
-    border-radius: var(--mc-radius-md);
-  }
-  100% {
-    background: transparent;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1787,79 +1454,11 @@ const senderName = (m: Message) => {
   }
 }
 
-/* ===== 图片 / 语音消息 ===== */
-.mc-msg__media {
-  max-width: 240px;
-  /* 加载完成前先占一块高度，避免图片到达时消息列表整体跳动 */
-  min-height: 80px;
-  border-radius: var(--mc-radius-lg);
-  overflow: hidden;
-  background: var(--td-bg-color-container);
-  line-height: 0;
-}
-
-.mc-msg__media img {
-  display: block;
-  width: 100%;
-  max-height: 280px;
-  object-fit: cover;
-  cursor: zoom-in;
-}
-
-/* 视频：固定 16:9 占位，竖屏视频以黑边居中（object-fit: contain） */
-.mc-msg__video {
-  width: min(260px, 62vw);
-  aspect-ratio: 16 / 9;
-  border-radius: var(--mc-radius-lg);
-  overflow: hidden;
-  background: #000;
-  line-height: 0;
-}
-
-.mc-msg__video video {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
 /* 手机：竖屏视频按视口宽度走，别在窄屏里只占 62% */
 @media (max-width: 768px) {
   .mc-msg__video {
     width: min(70vw, 260px);
   }
-}
-
-/* 发送失败的重发入口：低调但可点，不用另起一行 */
-.mc-msg__retry {
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--td-error-color);
-  font: inherit;
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.mc-msg__retry:hover {
-  color: var(--td-error-color);
-  text-decoration-thickness: 2px;
-}
-
-/* 表情：不套气泡背景，透明贴图 */
-.mc-msg__sticker img {
-  display: block;
-  width: 120px;
-  height: 120px;
-  object-fit: contain;
-  cursor: zoom-in;
-}
-
-.mc-msg__voice audio {
-  height: 34px;
-  max-width: 240px;
-  border-radius: var(--mc-radius-md);
 }
 
 .mc-lightbox {
@@ -1891,45 +1490,6 @@ const senderName = (m: Message) => {
   opacity: 0;
 }
 
-.mc-msg__bubble {
-  position: relative;
-  background: var(--td-bg-color-container);
-  border: 1px solid var(--mc-hairline);
-  border-radius: var(--mc-radius-md);
-  padding: 8px 12px;
-  word-break: break-word;
-  white-space: pre-wrap;
-}
-
-/* 气泡朝头像方向收一个角，弱化方向感，不额外画尾巴 */
-.mc-msg:not(.mine) .mc-msg__bubble {
-  border-top-left-radius: 4px;
-}
-
-.mc-msg.mine .mc-msg__bubble {
-  background: var(--td-brand-color);
-  border-color: transparent;
-  border-top-right-radius: 4px;
-  color: #fff;
-}
-
-.mc-msg__bubble.pending {
-  opacity: 0.55;
-}
-
-.mc-msg__bubble.failed {
-  outline: 1px solid var(--td-error-color);
-}
-
-.mc-msg__bubble.recalled {
-  font-size: 12px;
-  color: var(--td-text-color-placeholder);
-  background: transparent;
-  border-color: transparent;
-  box-shadow: none;
-  padding: 2px 0;
-}
-
 /* ===== 多选 / 合并转发 ===== */
 .mc-selectbar {
   display: flex;
@@ -1944,39 +1504,6 @@ const senderName = (m: Message) => {
   flex: 1;
   font-size: 13px;
   color: var(--td-text-color-secondary);
-}
-
-.mc-msg.is-selecting {
-  padding-left: 6px;
-  padding-right: 6px;
-  border-radius: var(--mc-radius-sm);
-  cursor: pointer;
-}
-
-.mc-msg.is-selected {
-  background: color-mix(in srgb, var(--td-brand-color) 10%, transparent);
-}
-
-.mc-msg__check {
-  flex-shrink: 0;
-  align-self: center;
-  width: 18px;
-  height: 18px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--td-component-border);
-  border-radius: 50%;
-  background: var(--td-bg-color-container);
-  color: transparent;
-  font-size: 12px;
-  line-height: 1;
-}
-
-.mc-msg__check.is-on {
-  border-color: var(--td-brand-color);
-  background: var(--td-brand-color);
-  color: #fff;
 }
 
 /* ===== 群公告 ===== */
@@ -2049,16 +1576,6 @@ const senderName = (m: Message) => {
 .mc-announce__meta {
   margin: 6px 0 0;
   font-size: var(--mc-fs-caption);
-}
-
-/* ===== 转发：气泡上的来源标注 ===== */
-.mc-msg__forward {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  margin-bottom: 2px;
-  font-size: var(--mc-fs-caption);
-  color: var(--td-text-color-placeholder);
 }
 
 /* ===== 转发：选择目标会话 ===== */
@@ -2192,15 +1709,6 @@ const senderName = (m: Message) => {
   gap: 8px;
 }
 
-/* 必须盖过 .mc-msg.mine .mc-msg__bubble（3 类选择器）：
-   否则自己撤回的提示会被染成品牌蓝底白字，看起来像一条真消息。 */
-.mc-msg.is-recalled .mc-msg__bubble.recalled {
-  background: transparent;
-  color: var(--td-text-color-placeholder);
-  border-color: transparent;
-  box-shadow: none;
-}
-
 /* 撤回提示是一行系统文案：居中、不带头像、不带已读/时间戳。
    padding 而不是 margin：虚拟列表里相邻两条的 margin 会折叠，
    实测会变成 0 间隙、两行提示看起来像重影。 */
@@ -2209,187 +1717,10 @@ const senderName = (m: Message) => {
   padding: 5px 0;
 }
 
-.mc-msg.is-recalled .mc-msg__body {
-  max-width: 100%;
-  align-items: center;
-}
-
-.mc-msg.is-recalled .mc-msg__meta {
-  display: none;
-}
-
-.mc-msg__bubble.custom {
-  white-space: normal;
-}
-
-.mc-msg__text {
-  user-select: text;
-}
-
-/* 被 @ 的昵称：微信里是蓝色，这里跟随气泡前景色加粗，亮暗都可读 */
-.mc-msg__at {
-  font-weight: 600;
-  color: var(--td-brand-color);
-}
-
-.mc-msg.mine .mc-msg__at {
-  color: #fff;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.mc-msg__recall,
-.mc-msg__resend {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 12px;
-  color: var(--td-text-color-placeholder);
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.15s;
-  user-select: none;
-  white-space: nowrap;
-}
-
-.mc-msg__recall {
-  right: -46px;
-}
-
-.mc-msg.mine .mc-msg__recall {
-  left: -46px;
-  right: auto;
-}
-
-.mc-msg:hover .mc-msg__recall,
-.mc-msg:focus-within .mc-msg__recall {
-  opacity: 1;
-}
-
-.mc-msg__recall:focus-visible {
-  opacity: 1;
-  outline: 1px solid var(--td-brand-color);
-  border-radius: 2px;
-}
-
-.mc-msg__resend {
-  right: -52px;
-  color: var(--td-error-color);
-  opacity: 1;
-}
-
-/* ===== 表情回应 ===== */
-.mc-msg__reactions {
-  position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  margin-top: 4px;
-}
-
-.mc-msg__reaction,
-.mc-msg__reaction-add {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 1px 7px;
-  border: 1px solid var(--mc-hairline);
-  border-radius: 999px;
-  background: var(--td-bg-color-secondarycontainer);
-  color: var(--td-text-color-primary);
-  font: inherit;
-  font-size: 12px;
-  line-height: 18px;
-  cursor: pointer;
-  transition:
-    border-color var(--mc-dur-fast) var(--mc-ease-out),
-    background-color var(--mc-dur-fast) var(--mc-ease-out);
-}
-
-.mc-msg__reaction:hover,
-.mc-msg__reaction.is-mine {
-  border-color: var(--td-brand-color);
-}
-
-.mc-msg__reaction.is-mine {
-  background: var(--td-brand-color-1, rgba(0, 82, 217, 0.08));
-  color: var(--td-brand-color);
-}
-
-.mc-msg__reaction .num {
-  font-size: 11px;
-  color: var(--td-text-color-secondary);
-}
-
-.mc-msg__reaction.is-mine .num {
-  color: var(--td-brand-color);
-}
-
-.mc-msg__reaction-add {
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  justify-content: center;
-  border-style: dashed;
-  color: var(--td-text-color-placeholder);
-  opacity: 0;
-}
-
-.mc-msg:hover .mc-msg__reaction-add,
-.mc-msg:focus-within .mc-msg__reaction-add,
-.mc-msg__reaction-add:focus-visible {
-  opacity: 1;
-}
-
 @media (hover: none) {
   .mc-msg__reaction-add {
     opacity: 1;
   }
-}
-
-.mc-msg__reaction-picker {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 0;
-  z-index: 20;
-  display: flex;
-  gap: 2px;
-  padding: 4px;
-  border: 1px solid var(--mc-hairline);
-  border-radius: var(--mc-radius-md);
-  background: var(--td-bg-color-container);
-  box-shadow: var(--mc-shadow-2);
-}
-
-.mc-msg.mine .mc-msg__reaction-picker {
-  left: auto;
-  right: 0;
-}
-
-.mc-msg__reaction-picker button {
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border: none;
-  border-radius: var(--mc-radius-sm);
-  background: transparent;
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.mc-msg__reaction-picker button:hover {
-  background: var(--td-bg-color-container-hover);
-}
-
-.mc-msg__meta {
-  font-size: var(--mc-fs-sm);
-  /* 明确行高：12px 字体在默认行高下中文字形下缘容易被裁 */
-  line-height: 18px;
-  margin-top: 4px;
-  user-select: none;
-  letter-spacing: 0.01em;
 }
 
 /* 新会话空态：图标 + 一句话，不铺满整块背景 */
