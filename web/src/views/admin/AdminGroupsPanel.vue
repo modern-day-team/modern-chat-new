@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { MessagePlugin, Table as TTable } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/components/ui/feedback'
+import { Table as TTable } from 'tdesign-vue-next'
 
 import UiButton from '@/components/ui/UiButton.vue'
 import UiDrawer from '@/components/ui/UiDrawer.vue'

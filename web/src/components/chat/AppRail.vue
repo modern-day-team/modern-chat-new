@@ -2,7 +2,7 @@
 import UiPopup from '@/components/ui/UiPopup.vue'
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { DialogPlugin } from 'tdesign-vue-next'
+import { DialogPlugin } from '@/components/ui/feedback'
 import { ChatIcon, NotificationIcon, SettingIcon, StarIcon, UserCircleIcon } from 'tdesign-icons-vue-next'
 
 import AvatarBadge from './AvatarBadge.vue'

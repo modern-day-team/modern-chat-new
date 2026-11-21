@@ -7,6 +7,8 @@ import zhConfig from 'tdesign-vue-next/es/locale/zh_CN'
 import { useRoute } from 'vue-router'
 
 import MaintenanceView from '@/views/MaintenanceView.vue'
+import UiDialogHost from '@/components/ui/UiDialogHost.vue'
+import UiMessageHost from '@/components/ui/UiMessageHost.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useConversationsStore } from '@/stores/conversations'
 import { usePrefsStore } from '@/stores/prefs'
@@ -82,5 +84,7 @@ const globalConfig = computed(
         <component :is="Component" />
       </Transition>
     </RouterView>
+    <UiMessageHost />
+    <UiDialogHost />
   </TConfigProvider>
 </template>

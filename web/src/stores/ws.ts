@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/components/ui/feedback'
 
 import { authApi } from '@/core/network/endpoints'
 import { ApiError } from '@/core/network/http'

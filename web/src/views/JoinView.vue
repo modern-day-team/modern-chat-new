@@ -3,7 +3,7 @@ import UiButton from '@/components/ui/UiButton.vue'
 import AvatarBadge from '@/components/chat/AvatarBadge.vue'
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/components/ui/feedback'
 
 import { inviteApi, type InviteInfo } from '@/core/network/endpoints'
 import { useAppI18n } from '@/composables/useAppI18n'

@@ -5,7 +5,7 @@ import UiButton from '@/components/ui/UiButton.vue'
 import UiInput from '@/components/ui/UiInput.vue'
 import UiTag from '@/components/ui/UiTag.vue'
 import { ref, watch } from 'vue'
-import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next'
+import { DialogPlugin, MessagePlugin } from '@/components/ui/feedback'
 
 import { useAppI18n } from '@/composables/useAppI18n'
 import { pluginApi } from '@/core/network/endpoints'

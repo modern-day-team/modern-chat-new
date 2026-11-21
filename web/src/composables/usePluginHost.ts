@@ -12,7 +12,7 @@
  */
 import { reactive, readonly } from 'vue'
 
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/components/ui/feedback'
 
 import type { Plugin, PanelDesc, ServerFrame } from '@/types/proto'
 import { convApi, pluginApi, userApi } from '@/core/network/endpoints'

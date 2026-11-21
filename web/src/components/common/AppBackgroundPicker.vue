@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import UiPopup from '@/components/ui/UiPopup.vue'
 import { computed, ref } from 'vue'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/components/ui/feedback'
 import { PaletteIcon } from 'tdesign-icons-vue-next'
 
 import { useAppI18n } from '@/composables/useAppI18n'

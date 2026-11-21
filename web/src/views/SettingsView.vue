@@ -5,7 +5,7 @@ import UiInput from '@/components/ui/UiInput.vue'
 import UiSwitch from '@/components/ui/UiSwitch.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next'
+import { DialogPlugin, MessagePlugin } from '@/components/ui/feedback'
 import { ArrowLeftIcon } from 'tdesign-icons-vue-next'
 
 import AppBackgroundPicker from '@/components/common/AppBackgroundPicker.vue'

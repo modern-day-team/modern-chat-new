@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/components/ui/feedback'
 import UiButton from '@/components/ui/UiButton.vue'
 
 import AvatarBadge from './AvatarBadge.vue'

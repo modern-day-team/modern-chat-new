@@ -2,7 +2,7 @@
 import UiButton from '@/components/ui/UiButton.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/components/ui/feedback'
 import { UsergroupIcon } from 'tdesign-icons-vue-next'
 
 import AddFriendDialog from '@/components/chat/AddFriendDialog.vue'

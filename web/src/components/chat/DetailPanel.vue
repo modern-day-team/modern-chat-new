@@ -5,7 +5,7 @@ import UiButton from '@/components/ui/UiButton.vue'
 import UiCheckbox from '@/components/ui/UiCheckbox.vue'
 import UiInput from '@/components/ui/UiInput.vue'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next'
+import { DialogPlugin, MessagePlugin } from '@/components/ui/feedback'
 import { SearchIcon } from 'tdesign-icons-vue-next'
 
 import AvatarBadge from './AvatarBadge.vue'

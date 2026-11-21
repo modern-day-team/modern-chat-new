@@ -3,7 +3,7 @@ import UiDialog from '@/components/ui/UiDialog.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiInput from '@/components/ui/UiInput.vue'
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/components/ui/feedback'
 
 import AvatarBadge from './AvatarBadge.vue'
 import { useAppI18n } from '@/composables/useAppI18n'

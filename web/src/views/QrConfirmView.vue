@@ -9,7 +9,7 @@
 import UiButton from '@/components/ui/UiButton.vue'
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/components/ui/feedback'
 
 import { authApi } from '@/core/network/endpoints'
 import { useAppI18n } from '@/composables/useAppI18n'

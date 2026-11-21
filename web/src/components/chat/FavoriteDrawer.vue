@@ -3,7 +3,7 @@ import UiButton from '@/components/ui/UiButton.vue'
 import UiDrawer from '@/components/ui/UiDrawer.vue'
 import AvatarBadge from './AvatarBadge.vue'
 import { computed, ref, watch } from 'vue'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { MessagePlugin } from '@/components/ui/feedback'
 
 import { useAppI18n } from '@/composables/useAppI18n'
 import { useConversationsStore } from '@/stores/conversations'
