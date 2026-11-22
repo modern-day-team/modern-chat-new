@@ -652,6 +652,7 @@ type ServerFrame =
 - 生产必须设置 `JWT_SECRET`（release 模式缺省拒绝启动）与 `FRONTEND_URL`（WS Origin 白名单 + 找回密码链接）。
 - **安装（发行版模式，推荐）**：`scripts/package-release.sh` 在构建机打 tag 后产出预编译包（ldflags 注入版本号，含后端二进制 + 前端 dist + 迁移 SQL），上传为 GitHub Release 附件；服务器上 `scripts/install.sh` 一键下载部署（架构/发行版自动识别，sha256 校验），**无需 Go / Node / git，服务器不编译任何东西**（细节见运维手册 §3.1）。
 - **升级**：三种等价途径——① `scripts/update.sh`（源码部署，蓝绿双实例热更新）；② 发行包内 `scripts/update.sh`（发行版部署，下载新 Release 替换后优雅重启）；③ 站长后台「在线更新」页签（`server/internal/service/updater.go`：发行版模式查 Release 最新 tag 与 `/api/version` 比对 → 下载校验 → 原子替换 → systemd 重启；源码模式 git pull 后本地编译）。安全边界：仅站长可触发（Admin 中间件 + 审计）、URL 与命令全部固定（版本号来自 Release 服务端 / `origin/main`，不接收用户输入）、`WEB_UPDATE=false` 可整体关闭。此接口本质是"管理员账号可触发代码更新"，账号泄露等同服务器可控——早期设计为避免此风险不提供应用内升级，后按用户要求提供，风险面以上述边界收敛。
+- **自动更新**（`server/internal/service/autoupdate.go`）：发行版 + systemd 部署默认开启（`AUTO_UPDATE=true`），每 `AUTO_UPDATE_INTERVAL`（默认 30 分钟）查一次 GitHub Release，发现新 tag 复用 `Updater.Start()` 的同一条链路（下载 → 校验 → 替换 → 重启），每次触发写 `auto_update` 审计。源码 / Docker / 裸机不自动更新（tag 在源码模式无语义、自动编译风险高、无 systemd 无法自重启）；`WEB_UPDATE=false` 一并关闭。只能在服务器 `.env` 配置、不能在界面开关——避免管理员账号泄露后连自动更新开关一起被改。状态随 `/api/admin/update/status` 的 `auto` 字段返回。
 - 配置（DB DSN、JWT_SECRET、SMTP）走环境变量，不进仓库。
 
 ## 11. 本地运行

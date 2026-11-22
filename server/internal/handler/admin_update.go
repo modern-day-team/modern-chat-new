@@ -16,10 +16,11 @@ import (
 type AdminUpdateHandler struct {
 	updater *service.Updater
 	audits  *store.AuditStore
+	auto    *service.AutoScheduler
 }
 
-func NewAdminUpdateHandler(updater *service.Updater, audits *store.AuditStore) *AdminUpdateHandler {
-	return &AdminUpdateHandler{updater: updater, audits: audits}
+func NewAdminUpdateHandler(updater *service.Updater, audits *store.AuditStore, auto *service.AutoScheduler) *AdminUpdateHandler {
+	return &AdminUpdateHandler{updater: updater, audits: audits, auto: auto}
 }
 
 // audit 记录更新操作（写失败不影响主流程）。
@@ -49,13 +50,22 @@ func (h *AdminUpdateHandler) ensureAvailable(c *gin.Context) bool {
 	return true
 }
 
+// updateStatusView 更新状态 + 自动更新运行态（合并成单个响应，前端一次拿到）。
+type updateStatusView struct {
+	service.StatusView
+	Auto service.AutoUpdateState `json:"auto"`
+}
+
 // Status 更新状态与最近日志（前端 2s 轮询）。
 func (h *AdminUpdateHandler) Status(c *gin.Context) {
-	if h.updater == nil {
-		c.JSON(http.StatusOK, service.StatusView{Available: false})
-		return
+	view := updateStatusView{Auto: service.AutoUpdateState{Result: "idle"}}
+	if h.updater != nil {
+		view.StatusView = h.updater.Status()
 	}
-	c.JSON(http.StatusOK, h.updater.Status())
+	if h.auto != nil {
+		view.Auto = h.auto.State()
+	}
+	c.JSON(http.StatusOK, view)
 }
 
 // Check 检查远端是否有新版本。

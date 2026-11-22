@@ -40,6 +40,13 @@ type Config struct {
 	MysqldumpPath string
 	// WebUpdate 站长后台图形化更新开关（WEB_UPDATE，默认开）
 	WebUpdate bool
+	// AutoUpdate 自动更新开关（AUTO_UPDATE，默认开）：定时查询 GitHub Release，
+	// 发现新 tag 自动触发升级。仅发行版 + systemd 部署生效；源码模式不自动
+	// git pull（本地构建风险更高，且 tag 在源码模式没有语义）。
+	AutoUpdate bool
+	// AutoUpdateIntervalMin 自动更新检查间隔分钟（AUTO_UPDATE_INTERVAL，默认 30，
+	// 下限 5 分钟防止打爆 GitHub 匿名 60 次/小时的 API 限额）。
+	AutoUpdateIntervalMin int
 	// ReleaseAPIURL / ReleaseDLURL 发行版模式：releases/latest API 与下载前缀
 	// （RELEASE_API_URL / RELEASE_DL_URL，install.sh 写入 .env）。都为空时按
 	// ReleaseRepoGithub 派生（未配置则用官方仓库），仅 git clone 部署仍走源码模式。
@@ -132,6 +139,9 @@ func Load() (Config, error) {
 		// WebUpdate 站长后台图形化更新开关（默认开）。关闭后 /api/admin/update/*
 		// 一律不可用；仅支持 install.sh 的 systemd 部署，Docker / 裸机自动不可用。
 		WebUpdate: getBool("WEB_UPDATE", true),
+		// 自动更新默认开启；间隔下限 5 分钟，非法值回退 30 分钟
+		AutoUpdate:            getBool("AUTO_UPDATE", true),
+		AutoUpdateIntervalMin: autoUpdateInterval(),
 		// 发行版模式（install.sh 写入 .env）：非空即从 Release 下载预编译包更新
 		ReleaseAPIURL:     os.Getenv("RELEASE_API_URL"),
 		ReleaseDLURL:      os.Getenv("RELEASE_DL_URL"),
@@ -219,6 +229,17 @@ func geti(key string, def int64) int64 {
 		}
 	}
 	return def
+}
+
+// autoUpdateInterval 自动更新检查间隔：下限 5 分钟（GitHub 匿名 API 60 次/小时，
+// 低于 5 分钟容易在多个实例上叠加触发限流）；非法值回退 30 分钟。
+func autoUpdateInterval() int {
+	const def = 30
+	n := geti("AUTO_UPDATE_INTERVAL", def)
+	if n < 5 || n > 1440 {
+		return def
+	}
+	return int(n)
 }
 
 // getBool 解析布尔环境变量；空值或无法识别时回退 def。

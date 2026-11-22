@@ -47,6 +47,8 @@ RELEASE_REPO_GITHUB="${RELEASE_REPO_GITHUB:-modern-day-team/modern-chat-new}"
 RELEASE_TAG="${RELEASE_TAG:-latest}"         # latest | 指定 tag（v0.10.3）
 GITHUB_TOKEN="${GITHUB_TOKEN:-}"             # GitHub API 令牌（可选）：匿名 api.github.com
                                              # 限流 60 次/小时/IP，配置后提升到 5000 次/小时
+AUTO_UPDATE="${AUTO_UPDATE:-true}"           # true=发现新 Release tag 自动升级；false=关闭
+AUTO_UPDATE_INTERVAL="${AUTO_UPDATE_INTERVAL:-30}" # 检查间隔分钟（最小 5）
 INSTALL_DIR="${INSTALL_DIR:-}"
 DOMAIN="${DOMAIN:-}"
 SITE_PORT="${SITE_PORT:-}"
@@ -469,6 +471,9 @@ RELEASE_API_URL=$RELEASE_API_URL
 RELEASE_DL_URL=$RELEASE_DL_URL
 # GitHub API 令牌（可选）：在线更新查询 Release 用；留空 = 匿名（60 次/小时/IP）
 GITHUB_TOKEN=$GITHUB_TOKEN
+# 自动更新（默认开）：发现新 Release tag 自动升级；设为 false 关闭
+AUTO_UPDATE=${AUTO_UPDATE:-true}
+AUTO_UPDATE_INTERVAL=${AUTO_UPDATE_INTERVAL:-30}
 ENV
   chmod 600 server/.env
   info "已写入 server/.env（MIGRATE=true，首次启动自动建表）"

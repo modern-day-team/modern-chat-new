@@ -245,7 +245,7 @@ curl https://站点/api/conversations -H 'Authorization: Bearer <token>'
 | POST `/api/admin/storage/gc` | `{dryRun?}` | `{ok:true, dryRun, deleted, freedBytes}`；清理孤儿附件 |
 | GET `/api/admin/backups` | — | `{backups: BackupFile[], dir}` |
 | POST `/api/admin/backups` | — | `{ok:true, file}`；依赖 mysqldump |
-| GET `/api/admin/update/status` | — | `{available, busy, phase, lines, error?, version, commit, mode?, repo?}` |
+| GET `/api/admin/update/status` | — | `{available, busy, phase, lines, error?, version, commit, mode?, repo?, auto}`；`auto` = 自动更新运行态 `{enabled, available, intervalMin, lastCheck?, lastTag?, upToDate, result?, lastError?, nextCheck?, triggeredTag?, skipReason?}` |
 | GET `/api/admin/update/check` | — | `{upToDate, local, remote, remoteTag, remoteMsg, remoteNotes?}`（说明截断 8KB） |
 | POST `/api/admin/update/start` | — | `{started:true}`；仅 systemd 部署；写审计 `web_update` |
 | GET `/api/admin/plugins` | `?page=&pageSize=` | 按 name 聚合 `{name, version, installCount, enabledCount, globalDisabled, createdAt}` |

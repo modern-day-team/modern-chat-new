@@ -36,6 +36,8 @@ type Deps struct {
 	Backup *service.BackupService
 	// Updater 站长后台图形化更新（可为 nil：测试环境；Docker / 裸机自动不可用）
 	Updater *service.Updater
+	// AutoUpdater 自动更新调度器（可为 nil：未启用；状态并入 /update/status）
+	AutoUpdater *service.AutoScheduler
 	// Push Web Push 服务（可为 nil 或未配置，此时前端显示「未启用」）
 	Push *service.PushService
 }
@@ -355,7 +357,7 @@ func New(d Deps) *gin.Engine {
 		admin.POST("/backups", opsH.RunBackup)
 
 		// 在线更新（图形化；Docker / 裸机部署自动不可用，WEB_UPDATE=false 可整体关闭）
-		updateH := handler.NewAdminUpdateHandler(d.Updater, audits)
+		updateH := handler.NewAdminUpdateHandler(d.Updater, audits, d.AutoUpdater)
 		admin.GET("/update/status", updateH.Status)
 		admin.GET("/update/check", updateH.Check)
 		admin.POST("/update/start", updateH.Start)

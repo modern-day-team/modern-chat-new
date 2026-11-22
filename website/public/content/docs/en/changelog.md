@@ -6,6 +6,14 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **Automatic updates (upgrade when a new Release tag appears)**: enabled by default on release + systemd deployments (`AUTO_UPDATE=true`). After startup the server checks GitHub Release every `AUTO_UPDATE_INTERVAL` minutes (default 30, minimum 5); when a new tag appears it triggers the upgrade through the **same** path as the admin console's one-click update (download → sha256 verification → extraction path checks → atomic swap → graceful restart) — no separate update path. Each automatic trigger writes an `auto_update` audit entry (`admin_id=0`, `ip=system`), and the admin console's Online Update tab shows the enabled state, last / next check times, remote version and latest result. **Boundaries**: source / Docker / bare-metal deployments do not auto-update (tags carry no meaning in source mode, auto-compiling is riskier, and no systemd means no self-restart); `WEB_UPDATE=false` disables it too; the switch is configurable only via the server's `.env` (deliberately not exposed in the UI, so a compromised admin account cannot toggle it). The first check waits a full interval after startup (leaves room for health checks); a failed check does not block the next round, and a manual update in progress (`busy`) is skipped rather than queued. `/api/admin/update/status` gains an `auto` object carrying the runtime state. **Impact**: existing deployments start auto-updating after upgrading; instances that must not auto-update need `AUTO_UPDATE=false` in `.env` plus a restart. GitHub's anonymous API limit is 60 requests/hour/IP — for multiple instances behind one IP, configure `GITHUB_TOKEN` or raise the interval to ≥30 minutes.
+
+---
+
 ## [0.11.0] — 2026-11-23
 
 > **Upgrade notes (from 0.10.3)**

@@ -275,6 +275,15 @@ const updateVersionText = computed(() => {
   return buildInfo.value ? `${buildInfo.value.version} · ${buildInfo.value.commit}` : '—'
 })
 
+/** 自动更新的 RFC3339 时间转本地可读串；空值给占位符 */
+function formatAutoTime(iso?: string): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 function stopUpdatePolling() {
   if (updateTimer) {
     clearTimeout(updateTimer)
@@ -771,6 +780,8 @@ function actionLabel(action: string): string {
     disable_plugin: t('admin.actDisablePlugin'),
     restore_plugin: t('admin.actRestorePlugin'),
     announce: t('admin.actAnnounce'),
+    web_update: t('admin.actWebUpdate'),
+    auto_update: t('admin.actAutoUpdate'),
   }
   return map[action] ?? action
 }
@@ -1654,6 +1665,53 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
               <span>{{ t('admin.updateError') }}</span>
               <span class="mc-admin__audit-detail">{{ updateStatus.error }}</span>
             </div>
+          </div>
+
+          <!-- 自动更新运行态 -->
+          <div class="mc-admin__update-block">
+            <div class="mc-admin__update-row">
+              <span>{{ t('admin.autoUpdateTitle') }}</span>
+              <span class="num">
+                <UiTag
+                  :theme="updateStatus.auto?.enabled ? 'success' : 'default'"
+                  variant="light"
+                  size="small"
+                >
+                  {{ updateStatus.auto?.enabled ? t('admin.autoUpdateOn') : t('admin.autoUpdateOff') }}
+                </UiTag>
+              </span>
+            </div>
+            <template v-if="updateStatus.auto?.enabled">
+              <div class="mc-admin__update-row">
+                <span>{{ t('admin.autoUpdateInterval') }}</span>
+                <span class="num">{{ updateStatus.auto.intervalMin }} {{ t('admin.autoUpdateMinutes') }}</span>
+              </div>
+              <div class="mc-admin__update-row">
+                <span>{{ t('admin.autoUpdateLastCheck') }}</span>
+                <span class="num">{{ formatAutoTime(updateStatus.auto.lastCheck) }}</span>
+              </div>
+              <div class="mc-admin__update-row">
+                <span>{{ t('admin.autoUpdateNextCheck') }}</span>
+                <span class="num">{{ formatAutoTime(updateStatus.auto.nextCheck) }}</span>
+              </div>
+              <div v-if="updateStatus.auto.lastTag" class="mc-admin__update-row">
+                <span>{{ t('admin.autoUpdateRemoteTag') }}</span>
+                <span class="num">{{ updateStatus.auto.lastTag }}</span>
+              </div>
+              <div class="mc-admin__update-row">
+                <span>{{ t('admin.autoUpdateResult') }}</span>
+                <span class="num">
+                  {{ t(`admin.autoResult_${updateStatus.auto.result}`, { defaultValue: updateStatus.auto.result }) }}
+                </span>
+              </div>
+              <div v-if="updateStatus.auto.lastError" class="mc-admin__update-row">
+                <span>{{ t('admin.autoUpdateError') }}</span>
+                <span class="mc-admin__audit-detail">{{ updateStatus.auto.lastError }}</span>
+              </div>
+            </template>
+            <p v-else-if="updateStatus.auto?.skipReason" class="mc-admin__hint text-placeholder">
+              {{ updateStatus.auto.skipReason }}
+            </p>
           </div>
 
           <!-- 检查结果 -->

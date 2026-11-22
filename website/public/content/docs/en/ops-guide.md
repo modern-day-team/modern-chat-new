@@ -51,7 +51,9 @@ The backend reads all config from environment variables (`server/internal/config
 | `SMTP_PASS` | empty | no | auth code / password. **Editable in the admin console** (stored encrypted) |
 | `SMTP_FROM` | `modernchat@localhost` | no | sender, **QQ / 163 require it to equal `SMTP_USER`**, otherwise mail is rejected. **Editable in the admin console** |
 | `LOG_RESET_LINK` | `false` under release, `true` otherwise | no | whether to write the **full reset link** into the log when SMTP is unset. Off by default in production: a usable token in the log is an account-takeover entry point (log platforms and backups can see it). Turn it on explicitly only when you really need to fetch the link from the log |
-| `WEB_UPDATE` | `true` | no | site admin console "online update" switch. When `false`, all `/api/admin/update/*` endpoints are unavailable; Docker / bare metal deployments are unavailable automatically (see §4.2) |
+| `WEB_UPDATE` | `true` | no | site admin console "online update" switch. When `false`, all `/api/admin/update/*` endpoints are unavailable and automatic updates are disabled too; Docker / bare metal deployments are unavailable automatically (see §4.2) |
+| `AUTO_UPDATE` | `true` | no | automatic update switch: on release + systemd deployments, periodically check GitHub Releases and upgrade automatically on a new tag (same path as the admin console update). Only active for release deployments; source / Docker / bare metal skip it. Every trigger writes an `auto_update` audit. Set to `false` to disable |
+| `AUTO_UPDATE_INTERVAL` | `30` | no | automatic-update check interval in minutes (min 5, max 1440; values below 5 or invalid fall back to 30). GitHub's anonymous API limit is 60/hour/IP — for multiple instances behind one IP configure `GITHUB_TOKEN` or increase the interval |
 | `RELEASE_API_URL` / `RELEASE_DL_URL` | empty | no | release mode: GitHub latest-release API and download prefix, written into `.env` by `install.sh`; when both are empty, a `.git` install directory uses source mode, otherwise the addresses are derived from `RELEASE_REPO_GITHUB` (or the default official repo) as a fallback |
 | `RELEASE_REPO_GITHUB` | `modern-day-team/modern-chat-new` | no | repo hosting the releases (`owner/repo`): derives the update source when the explicit URLs are unset; point it at a fork / mirror repo if needed |
 | `GITHUB_TOKEN` | empty | no | optional GitHub API token: anonymous `api.github.com` calls are limited to 60/hour/IP, a token raises it to 5000/hour and enables private-repo checks. Sent only with GitHub-host update requests, never logged |
@@ -320,6 +322,17 @@ Equivalent to `scripts/update.sh` (release mode shares the same path as the grap
 | Bare metal nohup | no (restart depends on systemd) |
 
 Security boundaries: only the site admin (`middleware.Admin`) can trigger it; commands and URLs are all fixed — the version comes from the Release server / `origin/main` and never accepts user input; every trigger is written to the operation audit (`admin_audits`, action=`web_update`); the `WEB_UPDATE=false` environment variable disables the endpoints entirely. The endpoints are still essentially "the site admin account can trigger code updates" — a leaked account equals a controllable server: protect admin credentials, or set `WEB_UPDATE=false` when you do not trust multiple admins.
+
+**Automatic updates**: enabled by default on release + systemd deployments (`AUTO_UPDATE=true`). After startup the server checks GitHub Releases every `AUTO_UPDATE_INTERVAL` minutes (default 30, minimum 5), and on a new tag runs the same path as the admin console update (download → sha256 verification → extraction path checks → atomic swap → graceful restart). Each automatic trigger writes an `auto_update` audit (`admin_id=0`, `ip=system`). The admin console's Online Update tab shows the enabled state, last / next check times and most recent result; there is deliberately no UI toggle — the switch lives in `server/.env` and needs a restart:
+
+| Scenario | Behavior |
+|---|---|
+| Release + systemd | automatic updates active; set `AUTO_UPDATE=false` to disable |
+| Source deploy (has `.git`) | no automatic updates (tags carry no meaning in source mode; auto git pull + local build is riskier); run `scripts/update.sh` manually |
+| Docker / bare metal | unavailable (restart depends on systemd); the console shows skipReason |
+| `WEB_UPDATE=false` | both graphical and automatic updates off (updater is not initialized), even if `AUTO_UPDATE=true` |
+
+Keeping the switch out of the UI is deliberate: automatic updates mean external code reaches production on its own, so enabling/disabling must go through a server-side config change (`.env`) rather than an admin account that could be compromised. The first check waits a full interval after startup so health checks can settle; a failed check does not block the next round, and a manual update in progress (`busy`) is skipped without queueing. GitHub's anonymous API limit is 60/hour/IP — for multiple instances behind one IP configure `GITHUB_TOKEN` or set the interval to ≥30 minutes.
 
 - **Legacy single-port deployments migrate automatically**: when an old `modernchat.service` (install.sh v1) is detected it is rewritten to the template unit and `.hotupdate` is written, so this upgrade goes through hot update.
 - `--cold` forces the legacy `systemctl restart` (a few seconds of downtime; all WS connections reconnect).

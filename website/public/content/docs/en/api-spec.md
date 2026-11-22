@@ -187,7 +187,7 @@ AdminPluginRow  { name, version, installCount, enabledCount, globalDisabled, cre
 | POST `/api/admin/storage/gc` | `{dryRun?:boolean}` | `{ok:true,dryRun,deleted,freedBytes}`; deletes files not referenced by messages / stickers / group files / avatars |
 | GET `/api/admin/backups` | — | `{backups: BackupFile[], dir}`; `BackupFile = {name,size,createdAt}` |
 | POST `/api/admin/backups` | — | `{ok:true,file}`; requires `mysqldump` (`MYSQLDUMP_PATH`) |
-| GET `/api/admin/update/status` | — | `{available,busy,phase,lines,error?,version,commit,mode?,repo?}`; polled by the frontend; `repo` = repo hosting the releases (shown in release mode) |
+| GET `/api/admin/update/status` | — | `{available,busy,phase,lines,error?,version,commit,mode?,repo?,auto}`; polled by the frontend; `repo` = repo hosting the releases (shown in release mode); `auto` = automatic-update runtime state (see entity shapes below) |
 | GET `/api/admin/update/check` | — | `{upToDate,local,remote,remoteTag,remoteMsg,remoteNotes?}`; `remoteNotes` = plain-text release notes (truncated to 8 KB server-side) |
 | POST `/api/admin/update/start` | — | `{started:true}`; systemd deployments only; unavailable when `WEB_UPDATE=false`; writes the audit `web_update` |
 | GET `/api/health` | no auth | `{"status":"ok"}` (Nginx/container probes) |
@@ -248,6 +248,7 @@ All tables (users / conversations / conversation_members / messages / user_conve
 | group invite link | token = crypto/rand 16-byte hex (32 chars); validity 0–30 days (0=permanent); expired / revoked means 404 |
 | Web Push | when VAPID is unconfigured `enabled=false` and all pushes are silently skipped; endpoints returning 410/404 have their subscription deleted |
 | online update | `role=admin` only; `WEB_UPDATE=false` disables it entirely; the commands and URLs are fixed, no user input accepted; every trigger writes the audit `web_update` |
+| automatic update | active only when `AUTO_UPDATE=true` (default) + release mode + systemd; checks Release every `AUTO_UPDATE_INTERVAL` minutes (default 30, minimum 5) and reuses `Updater.Start()`; first check waits one full interval after startup, `busy` skips the round; switch is `.env`-only (no UI toggle); every trigger writes the `auto_update` audit (`admin_id=0`, `ip=system`). State is returned in `update/status.auto`: `{enabled,available,intervalMin,lastCheck?,lastTag?,upToDate,result?,lastError?,nextCheck?,triggeredTag?,skipReason?}` |
 | client_msg_id | UUID (≤36), unique index `(conversation_id, client_msg_id)` |
 | messages indexes | `conversation_id` (cursor pagination), `(conversation_id, client_msg_id)` unique, `sender_id` (admin stats by sender, migration `0021`); `content` is widened to `TEXT` in migration `0023`, supporting up to 5000 chars in the admin console |
 | friends | unique index `uk_friends_pair (user_id, friend_id)` (migration 0025); the same pair may hold two opposite-direction rows, but the same direction can't repeat. On accepting a friend the reverse row uses an upsert, so mutual applications don't collide on the index |
@@ -339,6 +340,8 @@ BACKUP_INTERVAL_HOURS=0     # 0 = scheduled backups off
 BACKUP_RETAIN=7
 MYSQLDUMP_PATH=mysqldump
 WEB_UPDATE=true             # site-admin online update switch
+AUTO_UPDATE=true            # automatic update switch (default on; release + systemd only)
+AUTO_UPDATE_INTERVAL=30     # check interval in minutes (minimum 5)
 RELEASE_API_URL=            # release mode: GitHub Release update source (written by install.sh);
 RELEASE_DL_URL=             # when both are empty, derived from RELEASE_REPO_GITHUB (or the
                             # default official repo); a .git install directory still uses source mode

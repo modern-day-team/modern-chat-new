@@ -187,7 +187,7 @@ AdminPluginRow  { name, version, installCount, enabledCount, globalDisabled, cre
 | POST `/api/admin/storage/gc` | `{dryRun?:boolean}` | `{ok:true,dryRun,deleted,freedBytes}`；删除未被消息 / 表情 / 群文件 / 头像引用的文件 |
 | GET `/api/admin/backups` | — | `{backups: BackupFile[], dir}`；`BackupFile = {name,size,createdAt}` |
 | POST `/api/admin/backups` | — | `{ok:true,file}`；依赖 `mysqldump`（`MYSQLDUMP_PATH`） |
-| GET `/api/admin/update/status` | — | `{available,busy,phase,lines,error?,version,commit,mode?,repo?}`；前端轮询；`repo` = Release 托管仓库（发行版模式展示用） |
+| GET `/api/admin/update/status` | — | `{available,busy,phase,lines,error?,version,commit,mode?,repo?,auto}`；前端轮询；`repo` = Release 托管仓库（发行版模式展示用）；`auto` = 自动更新运行态（见下方实体形状） |
 | GET `/api/admin/update/check` | — | `{upToDate,local,remote,remoteTag,remoteMsg,remoteNotes?}`；`remoteNotes` = Release 说明纯文本（服务端截断 8 KB） |
 | POST `/api/admin/update/start` | — | `{started:true}`；仅 systemd 部署；`WEB_UPDATE=false` 时不可用；写审计 `web_update` |
 | GET `/api/health` | 免鉴权 | `{"status":"ok"}`（Nginx/容器探活） |
@@ -248,6 +248,7 @@ AdminPluginRow  { name, version, installCount, enabledCount, globalDisabled, cre
 | 群邀请链接 | token = crypto/rand 16 字节 hex（32 位）；有效期 0–30 天（0=永久）；过期 / 撤销即 404 |
 | Web Push | 未配置 VAPID 时 `enabled=false`、所有推送静默跳过；端点 410/404 时删除订阅 |
 | 在线更新 | 仅 `role=admin`；`WEB_UPDATE=false` 整体关闭；命令与 URL 固定，不接受用户输入；每次触发写审计 `web_update` |
+| 自动更新 | `AUTO_UPDATE=true`（默认）+ 发行版 + systemd 才生效；每 `AUTO_UPDATE_INTERVAL` 分钟（默认 30、下限 5）查 Release，发现新 tag 复用 `Updater.Start()`；启动后等一个间隔才首查，`busy` 时跳过本轮；仅 `.env` 可关（界面不提供开关）；每次触发写审计 `auto_update`（`admin_id=0`，`ip=system`）。状态随 `update/status.auto` 返回：`{enabled,available,intervalMin,lastCheck?,lastTag?,upToDate,result?,lastError?,nextCheck?,triggeredTag?,skipReason?}` |
 | client_msg_id | UUID（≤36），索引 `(conversation_id, client_msg_id)` 唯一 |
 | messages 索引 | `conversation_id`（游标分页）、`(conversation_id, client_msg_id)` 唯一、`sender_id`（后台按发送者统计，迁移 `0021`）；`content` 在迁移 `0023` 扩为 `TEXT`，支持后台最高 5000 字符 |
 | friends | 唯一索引 `uk_friends_pair (user_id, friend_id)`（迁移 0025）；同对可存在两条方向相反记录，但同一方向不能重复。同意好友时反向记录使用 upsert，避免互发申请撞索引 |
@@ -335,6 +336,8 @@ BACKUP_INTERVAL_HOURS=0     # 0=关闭定时备份
 BACKUP_RETAIN=7
 MYSQLDUMP_PATH=mysqldump
 WEB_UPDATE=true             # 站长后台在线更新开关
+AUTO_UPDATE=true            # 自动更新开关（默认开；仅发行版+systemd 生效）
+AUTO_UPDATE_INTERVAL=30     # 检查间隔分钟（下限 5）
 RELEASE_API_URL=            # 发行版模式：GitHub Release 更新源（install.sh 写入）；
 RELEASE_DL_URL=             # 都为空时按 RELEASE_REPO_GITHUB（或默认官方仓库）派生，
                             # 安装目录有 .git 仍走源码模式

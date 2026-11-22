@@ -245,7 +245,7 @@ The sandbox model and SDK are described in the plugin dev guide; below is the RE
 | POST `/api/admin/storage/gc` | `{dryRun?}` | `{ok:true, dryRun, deleted, freedBytes}`; cleans orphan attachments |
 | GET `/api/admin/backups` | — | `{backups: BackupFile[], dir}` |
 | POST `/api/admin/backups` | — | `{ok:true, file}`; requires mysqldump |
-| GET `/api/admin/update/status` | — | `{available, busy, phase, lines, error?, version, commit, mode?, repo?}` |
+| GET `/api/admin/update/status` | — | `{available, busy, phase, lines, error?, version, commit, mode?, repo?, auto}`; `auto` = automatic-update state `{enabled, available, intervalMin, lastCheck?, lastTag?, upToDate, result?, lastError?, nextCheck?, triggeredTag?, skipReason?}` |
 | GET `/api/admin/update/check` | — | `{upToDate, local, remote, remoteTag, remoteMsg, remoteNotes?}` (notes truncated to 8KB) |
 | POST `/api/admin/update/start` | — | `{started:true}`; systemd deployments only; writes the `web_update` audit |
 | GET `/api/admin/plugins` | `?page=&pageSize=` | aggregated by name: `{name, version, installCount, enabledCount, globalDisabled, createdAt}` |

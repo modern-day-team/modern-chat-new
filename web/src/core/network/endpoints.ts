@@ -451,6 +451,21 @@ export const adminApi = {
   updateStart: () => http.post<{ started: true }>('/admin/update/start'),
 }
 
+/** 在线更新：自动更新运行态（并入状态接口） */
+export interface AdminAutoUpdateState {
+  enabled: boolean
+  available: boolean
+  intervalMin: number
+  lastCheck?: string
+  lastTag?: string
+  upToDate: boolean
+  result?: string // idle / up_to_date / triggered / trigger_failed / check_failed / skipped
+  lastError?: string
+  nextCheck?: string
+  triggeredTag?: string
+  skipReason?: string
+}
+
 /** 在线更新：状态快照（前端轮询） */
 export interface AdminUpdateStatus {
   available: boolean
@@ -462,6 +477,7 @@ export interface AdminUpdateStatus {
   commit: string
   mode?: string // release = 发行版下载 | source = 源码本地编译
   repo?: string // Release 托管仓库（发行版模式展示用）
+  auto: AdminAutoUpdateState
 }
 
 /** 在线更新：检查结果 */

@@ -168,6 +168,34 @@ func main() {
 		slog.Info("web update disabled (WEB_UPDATE=false)")
 	}
 
+	// 自动更新：定时检查 GitHub Release 的新 tag，命中则复用图形化更新的 Start()
+	// 链路（下载 / sha256 / 原子替换 / 重启）。仅发行版 + systemd 部署生效，
+	// 源码模式与 Docker / 裸机在 Start() 里自行跳过并写入 skipReason。
+	auditStore := store.NewAuditStore(db)
+	var autoScheduler *service.AutoScheduler
+	if cfg.AutoUpdate && cfg.WebUpdate {
+		autoScheduler = service.NewAutoScheduler(updater,
+			time.Duration(cfg.AutoUpdateIntervalMin)*time.Minute,
+			func(tag, local, remote string) {
+				detail := "检测到新版本 " + tag + "（本地 " + local + "），自动触发升级"
+				if err := auditStore.Record(store.AuditEntry{
+					AdminID:    0, // 系统触发，非某位站长手动操作
+					Action:     "auto_update",
+					TargetType: "system",
+					TargetName: "web_update",
+					Detail:     detail,
+					IP:         "system",
+				}); err != nil {
+					slog.Warn("auto update audit write failed", "err", err.Error())
+				}
+			})
+		autoScheduler.Start()
+	} else {
+		slog.Info("auto update disabled", "autoUpdate", cfg.AutoUpdate, "webUpdate", cfg.WebUpdate)
+		// 即使关闭也构造一个未启动的调度器，让后台能显示「已关闭」状态
+		autoScheduler = service.NewAutoScheduler(updater, time.Duration(cfg.AutoUpdateIntervalMin)*time.Minute, nil)
+	}
+
 	// WebSocket Hub
 	hub := ws.NewHub(&ws.Deps{
 		Convs:      store.NewConversationStore(db),
@@ -196,6 +224,7 @@ func main() {
 		AuthLimiter:   authLimiter,
 		PluginLimiter: pluginLimiter,
 		Updater:       updater,
+		AutoUpdater:   autoScheduler,
 	})
 
 	// 只设读头/空闲超时，不设 ReadTimeout / WriteTimeout：
@@ -221,6 +250,7 @@ func main() {
 	<-quit
 
 	slog.Info("shutting down")
+	autoScheduler.Stop()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {

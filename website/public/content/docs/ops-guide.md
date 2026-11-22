@@ -70,7 +70,9 @@ https://chat.example.com/qiniu/<key> → 对象存储 CDN（私有空间，需�
 | `SMTP_PASS` | 空 | 否 | 授权码 / 密码。**可在后台改**（加密存储） |
 | `SMTP_FROM` | `modernchat@localhost` | 否 | 发件人，**QQ / 163 必须与 `SMTP_USER` 一致**，否则被拒信。**可在后台改** |
 | `LOG_RESET_LINK` | release 下 `false`，其他模式 `true` | 否 | 未配置 SMTP 时是否把**完整重置链接**写进日志。生产默认关闭：日志里的可用令牌等于账户接管入口（日志平台/备份都能看到）。确实要靠日志取链接时再显式开 |
-| `WEB_UPDATE` | `true` | 否 | 站长后台「在线更新」开关。`false` 时 `/api/admin/update/*` 全部不可用；Docker / 裸机部署自动不可用（见 §4.2） |
+| `WEB_UPDATE` | `true` | 否 | 站长后台「在线更新」开关。`false` 时 `/api/admin/update/*` 全部不可用，自动更新也一并关闭；Docker / 裸机部署自动不可用（见 §4.2） |
+| `AUTO_UPDATE` | `true` | 否 | 自动更新开关：发行版 + systemd 部署定时查 GitHub Release，发现新 tag 自动升级（与后台一键更新同一条链路）。仅发行版部署生效，源码 / Docker / 裸机自动跳过；每次触发写 `auto_update` 审计。设 `false` 关闭 |
+| `AUTO_UPDATE_INTERVAL` | `30` | 否 | 自动更新检查间隔（分钟），下限 5、上限 1440；低于 5 或非法值回退 30。GitHub 匿名 API 限流 60 次/小时/IP，多实例同 IP 建议配 `GITHUB_TOKEN` 或调大间隔 |
 | `RELEASE_API_URL` / `RELEASE_DL_URL` | 空 | 否 | 发行版模式：GitHub Release 最新版本 API 与下载前缀，由 `install.sh` 写入 `.env`；两值为空时安装目录有 `.git` 走源码模式，否则按 `RELEASE_REPO_GITHUB`（或默认官方仓库）派生 GitHub 地址兜底 |
 | `RELEASE_REPO_GITHUB` | `modern-day-team/modern-chat-new` | 否 | Release 托管仓库（`owner/repo`）：显式 URL 未配置时用它派生更新源，Release 放在 fork / 镜像仓库时配置 |
 | `GITHUB_TOKEN` | 空 | 否 | GitHub API 令牌（可选）：匿名 `api.github.com` 限流 60 次/小时/IP，配置后提升到 5000 次/小时，并支持私有仓库检查。仅随 GitHub 域更新请求发送，不落日志 |
@@ -341,6 +343,17 @@ gzip on;          # 没有预压缩文件时实时压缩兜底
 | 裸机 nohup | 不可用（重启依赖 systemd） |
 
 安全边界：仅站长（`middleware.Admin`）可触发；命令与 URL 全部固定——版本号来自 Release 服务端 / `origin/main`，不接收用户输入；每次触发写操作审计（`admin_audits`，action=`web_update`）；`WEB_UPDATE=false` 环境变量可整体关闭接口。接口本质仍是"站长账号可触发代码更新"，账号泄露等同服务器可控——保管好管理员凭据，或在不信任多管理员时用 `WEB_UPDATE=false` 关闭。
+
+**自动更新**：发行版 + systemd 部署下默认开启（`AUTO_UPDATE=true`），服务启动后每隔 `AUTO_UPDATE_INTERVAL`（默认 30 分钟，下限 5）查一次 GitHub Release，发现新 tag 自动走与后台一键更新**同一条**链路（下载 → sha256 校验 → 解压路径校验 → 原子替换 → 优雅重启），每次自动触发写一条 `auto_update` 审计（`admin_id=0`，`ip=system`）。后台「在线更新」页签可查看开启状态、上次/下次检查时间与最近结果，但不能在界面上开关——需改 `server/.env` 后重启：
+
+| 场景 | 行为 |
+|---|---|
+| 发行版 + systemd | 自动更新生效；想关闭设 `AUTO_UPDATE=false` |
+| 源码部署（有 `.git`） | 不自动更新（tag 在源码模式无语义，自动 `git pull` + 本地编译风险更高）；维护者自行跑 `scripts/update.sh` |
+| Docker / 裸机 | 自动更新不可用（依赖 systemd 重启），后台显示 skipReason |
+| `WEB_UPDATE=false` | 图形化与自动更新一起关闭（`updater` 不装配），即使 `AUTO_UPDATE=true` 也不生效 |
+
+自动更新不可在界面开关是刻意取舍：它是"外部代码自动进生产"的能力，必须经由服务器侧配置变更（`.env`）才能启用/关闭，避免站长账号泄露后连开关一起被改。启动后先等一个完整间隔才首次检查，给健康检查留启动时间；检查失败不阻塞下一轮，手动更新进行中（`busy`）则跳过本轮不排队。GitHub 匿名 API 限额 60 次/小时/IP，多实例同 IP 部署建议配 `GITHUB_TOKEN` 或把间隔调到 ≥30 分钟。
 
 - **旧式单端口部署自动迁移**：检测到旧的 `modernchat.service`（install.sh v1）会自动改写为模板单元并写入 `.hotupdate`，本次升级即走热更新。
 - `--cold` 强制走旧式 `systemctl restart`（有数秒中断，WS 全部重连）。
