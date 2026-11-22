@@ -658,6 +658,17 @@ export const useConversationsStore = defineStore('conversations', () => {
     pushAndSend(convId, msgType, url, extra)
   }
 
+  /**
+   * 发送合并转发卡片。content 是精简快照 JSON（见 chat/mergeCard.ts），
+   * 走与文本/媒体相同的乐观插入 + WS 帧链路，不新增接口或后端字段。
+   * payload 的条数与长度上限已在构造时收敛，这里只兜底非空。
+   */
+  function sendCard(convId: number, payload: unknown) {
+    const content = JSON.stringify(payload)
+    if (!content) return
+    pushAndSend(convId, 'chatcard', content, { forwarded: true })
+  }
+
   function resend(msg: Message) {
     msg.pending = true
     msg.failed = false
@@ -1240,6 +1251,7 @@ export const useConversationsStore = defineStore('conversations', () => {
     setAutoReadPaused,
     sendText,
     sendMedia,
+    sendCard,
     forwardMessage,
     resend,
     markSendFailed,

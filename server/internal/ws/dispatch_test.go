@@ -1,11 +1,54 @@
 package ws
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 )
 
+func TestValidChatCard(t *testing.T) {
+	owns := func(s string) bool { return strings.HasPrefix(s, "/uploads/") }
+	good := `{"v":1,"title":"群聊","items":[{"n":"张三","t":"2026-11-23T10:00:00Z","m":"text","c":"你好"},{"n":"李四","t":"2026-11-23T10:01:00Z","m":"image","c":"/uploads/a.webp"}]}`
+	if !validChatCard(good, []string{"敏感词"}, owns) {
+		t.Fatal("valid card should pass")
+	}
+	// 敏感词藏在 nickname、正文、标题里都要拦住
+	for _, raw := range []string{
+		strings.Replace(good, "张三", "敏感词", 1),
+		strings.Replace(good, "你好", "敏感词", 1),
+		strings.Replace(good, "群聊", "敏感词", 1),
+	} {
+		if validChatCard(raw, []string{"敏感词"}, owns) {
+			t.Fatalf("blocked word should be rejected in %s", raw)
+		}
+	}
+	// 快照里的媒体外链：与媒体消息一样必须拦
+	badURL := strings.Replace(good, "/uploads/a.webp", "https://evil.example/x.png", 1)
+	if validChatCard(badURL, nil, owns) {
+		t.Fatal("external media should be rejected")
+	}
+	if validChatCard("{broken", nil, owns) {
+		t.Fatal("malformed JSON should be rejected")
+	}
+	if validChatCard(`{"v":2,"items":[]}`, nil, owns) {
+		t.Fatal("wrong version should be rejected")
+	}
+	var many strings.Builder
+	many.WriteString(`{"v":1,"title":"x","items":[`)
+	for i := 0; i <= maxCardItems; i++ {
+		if i > 0 {
+			many.WriteByte(',')
+		}
+		fmt.Fprintf(&many, `{"n":"n","t":"t","m":"text","c":"c"}`)
+	}
+	many.WriteString("]}")
+	if validChatCard(many.String(), nil, owns) {
+		t.Fatalf("more than %d items should be rejected", maxCardItems)
+	}
+}
+
 func TestIsSafeMsgType(t *testing.T) {
-	good := []string{"text", "weather", "image-v2", "a_b"}
+	good := []string{"text", "weather", "image-v2", "a_b", "chatcard"}
 	for _, s := range good {
 		if !isSafeMsgType(s) {
 			t.Errorf("%q should be safe", s)

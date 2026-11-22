@@ -16,7 +16,8 @@ export interface RenderedDesc {
 export const renderedMap = reactive<Record<number, RenderedDesc | 'failed' | undefined>>({})
 
 export function ensureRendered(m: Message) {
-  if (m.msgType === 'text' || m.isRecalled) return
+  // chatcard 是内核类型，不走插件渲染管线
+  if (m.msgType === 'text' || m.msgType === 'chatcard' || m.isRecalled) return
   if (renderedMap[m.id] !== undefined) return
   const host = usePluginHost()
   if (!host.hasRenderer(m.msgType)) {

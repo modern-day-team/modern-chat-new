@@ -256,9 +256,9 @@ UiCheckbox  UiInputNumber  UiTooltip  UiPopup  UiDialog  UiDrawer
 - **图片**：选图后先 canvas 压缩（最大边 1600、webp q0.82），小于 300 KB 不压、压完更大则用原图、失败回退原图。点击弹出灯箱，`Esc` 关闭。
 - **语音**：`MediaRecorder` 录制，**点击开始 / 再点结束**（按住模式在移动端与滚动冲突），60 秒上限、<1 秒丢弃。气泡宽度随时长变化、进度条用 `scaleX`（不触发布局）、同一时刻只播一条；webm 的 `duration=Infinity` 用 seek 逼出真实值。
 - **视频**：输入区「视频」按钮选本地文件（`accept="video/mp4,video/webm,video/quicktime,video/x-m4v"`），前端按 `site.maxVideoMB` 先拦体积，再 `upload(kind=video)`；**不做前端转码**（浏览器转码要 WASM + 长时间占主线程，收益远低于图片压缩）。气泡用原生 `<video controls playsinline preload="metadata">`，容器固定 `16:9`（`object-fit: contain`，竖屏留黑边）——`DynamicScroller` 依赖测量高度，等元数据到达再撑开会让列表跳动。
-- **渲染**：`MessagePane` 按 `msgType` 分支（`image` → 图片 + 灯箱；`audio` → `VoiceMessage`；`video` → 原生播放器；`sticker` → 贴纸）。视频右键走通用消息菜单（无「查看大图 / 保存图片」专属项）。
+- **渲染**：`MessageRow` 按 `msgType` 分支（`image` → 图片 + 灯箱；`audio` → `VoiceMessage`；`video` → 原生播放器；`sticker` → 贴纸；`chatcard` → 摘要卡片 + 详情抽屉）。视频右键走通用消息菜单（无「查看大图 / 保存图片」专属项）。
 - **图片**：气泡直接使用 `content`（即主图）。前端上传前已压到最大边 1600 / webp q0.82，服务端不再派生 `_t.jpg` 缩略图，因此气泡、灯箱、保存、下载全部同源，无需 404 回退逻辑。表情贴图同样不走缩略图。
-- **占位文案**：引用块、合并转发、会话列表预览、通知、收藏、搜索结果统一按类型给 `[图片]/[语音]/[表情]/[视频]`，不能把 `/uploads/...` 地址直接显示出来。
+- **占位文案**：引用块、会话列表预览、通知、收藏、搜索结果统一按类型给 `[图片]/[语音]/[表情]/[视频]/[聊天记录]`，不能把 `/uploads/...` 地址直接显示出来。合并转发卡片的摘要行按条目类型显示同样占位；卡片快照的正文/URL 只在详情抽屉里展示。
 - **坑**：图片**不能加 `loading="lazy"`**——`DynamicScroller` 依赖测量 item 高度，图片未加载时高度为 0 → 永远进不了视口 → 永远不加载（死循环）。虚拟滚动本身已保证只渲染视口附近。
 - **`min-item-size` 取接近真实行高的值（当前 88）**：估值偏小会让滚动位置在实测后不断向上漂移（`scrollToBottom` 才需要连补三帧校正）。改动行高（padding/meta/气泡）时要同步调整它。
 
@@ -268,12 +268,13 @@ UiCheckbox  UiInputNumber  UiTooltip  UiPopup  UiDialog  UiDrawer
 |---|---|
 | **表情包** | 表情是「收藏关系 + URL」，文件走 `upload(kind=sticker)`（≤2 MB）。面板在输入框上方，点一下直接发送（`sendMedia(convId,'sticker',url)`），右键删除。消息渲染不套气泡背景，120×120 透明贴图 |
 | **消息编辑** | 右键「编辑」只对自己 **5 分钟内、未撤回的文本消息**可见；提交走 WS `edit`，收到 `message_update` 帧后更新本地正文并显示「已编辑」。输入区进入编辑模式时禁用发送附件；`recall` 帧命中正在编辑的消息时直接退出编辑态 |
-| **转发** | 右键「转发」→ 弹会话选择框（当前会话禁用）→ `forwardMessage()` 照搬 `content + msgType` 发新消息并打 `forwarded` 标记。**不引用原消息**：原消息撤回/删除不影响转发出去的那条。**已撤回的消息不可转发**（选择框停留期间被撤回也要在发送时再判一次，否则撤回内容会被发出去）；合并转发最多 20 条（超出当场拒绝），已撤回的会被跳过并提示条数 |
+| **转发** | 右键「转发」→ 弹会话选择框（当前会话禁用）→ `forwardMessage()` 照搬 `content + msgType` 发新消息并打 `forwarded` 标记。**不引用原消息**：原消息撤回/删除不影响转发出去的那条。**已撤回的消息不可转发**（选择框停留期间被撤回也要在发送时再判一次，否则撤回内容会被发出去） |
+| **合并转发** | 多选（右键「多选」）→ 选 20 条以内 → `buildMergeCard()` 生成精简快照 → `convStore.sendCard()` 以 `msgType='chatcard'` 发出。`MessageRow` 渲染固定高度摘要卡（`MergeForwardCard.vue`），点击在 Teleport 抽屉里看完整快照（不在虚拟列表内撑高行）。快照条目只存昵称/时间/类型/正文（文本截断、媒体 URL 保留），总预算 11000 字符/48KB，超限逐档收紧到 40 字仍不行则提示减少选中；已撤回消息跳过并提示条数。卡片不走插件渲染管线（`pluginRenders` 跳过），引用/预览统一显示 `[聊天记录]` |
 | **群公告** | 存 `conversations.announcement*`（全员共享）。聊天区顶部折叠条，点开看全文与发布者；群主在详情面板编辑/撤销 |
 | **群文件** | 详情面板「群文件」：上传（`upload(kind=file)` ≤20 MB）→ 记账 → 列表（名称 / 大小 / 上传者），上传者或群主可删 |
 | **会话内搜索** | 详情面板顶部「搜索聊天记录」分区（L2：针对当前会话）：`UiInput` 输入 → 250ms 防抖调 `searchApi.messages(kw, convId)` → 结果列表（发送者/时间/关键词 `<mark>` 高亮）。点击结果走 `convStore.openConversationAtMessage()` → 写 `pendingJumpId` → `MessagePane` 滚动定位并高亮（历史太旧最多向前翻 10 页，找不到则提示）。**Ctrl/Cmd+F** 保留：经 `layout.requestDetailSearch()` 展开详情抽屉（仅抽屉形态且收起时）并聚焦输入框；切换会话自动清空搜索状态。列表栏全局搜索（人/群/消息混合）仍是 L1 |
 
-> **转发 vs 合并转发**：单条转发照搬 `content + msgType`；合并转发是把选中的多条消息拼成**一条文本**（带「【合并转发】」头，最多 20 条），不是微信的「聊天记录卡片」。后者需要存多条消息快照，而 `messages.content` 上限默认 1000、最高 5000 字符（迁移 0023 已扩为 `TEXT`），20 条消息拼进去很容易超限，得单开表或加 `msg_meta` JSON 字段——留到有明确需求时再做。
+> **转发 vs 合并转发**：单条转发照搬 `content + msgType`；合并转发是独立的 `chatcard` 消息——把多条消息的**精简快照**以 JSON 放进 `content`（不加数据库列/帧字段），点开卡片看完整快照。快照正文逐条截断并逐档收紧总预算，规避普通文本 1000 字符上限与 WS 64KB 帧限制；后端对快照内的敏感词与媒体 URL 同样校验，搜索排除该类型。原消息后续撤回/删除不影响卡片（与单条转发一致）。
 
 **发送失败与断线**：失败消息的元信息里有「发送失败 · 重发」（所有会话类型都有，点击走 `convStore.resend`，保留引用与 @）；`ws.connected` 与 `ws.hasConnected` 一起决定是否显示顶部「正在重连」提示条——只在连过一次之后才显示，避免首屏连接中闪一条黄条。
 

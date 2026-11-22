@@ -278,7 +278,7 @@ curl https://站点/api/conversations -H 'Authorization: Bearer <token>'
 
 | type | 载荷 | 说明 |
 |---|---|---|
-| `chat` | `{convId, clientMsgId, content, msgType?, replyToId?, mentions?, forwarded?}` | 发消息；每用户 20 条/分；`client_msg_id` 唯一索引幂等（重复回放原帧）；成员/封禁/敏感词/长度校验；媒体类 content 须为本站存储地址 |
+| `chat` | `{convId, clientMsgId, content, msgType?, replyToId?, mentions?, forwarded?}` | 发消息；每用户 20 条/分；`client_msg_id` 唯一索引幂等（重复回放原帧）；成员/封禁/敏感词/长度校验；媒体类 content 须为本站存储地址；`chatcard` 的 content 是快照 JSON（≤12000 字符），快照内敏感词与媒体 URL 同样校验 |
 | `typing` | `{convId}` | 正在输入（转发给在线成员） |
 | `read` | `{convId, upToId}` | 已读回执（清未读，游标只前进） |
 | `recall` | `{messageId}` | 撤回；仅本人、`recallMinutes` 内（后台可配 0=关闭）；unread 回退、广播 `recall` |
@@ -345,4 +345,4 @@ SearchHit           { messageId, conversationId, convType, convName, senderId, s
 ```
 
 > `Conversation.type`：1=单聊、2=群聊、3=系统公告会话（不入会话列表展示）。
-> `Message.msgType`：内置 `text` / `image` / `audio` / `sticker` / `video`，其余为插件自定义类型（≤32 字符，`^[a-z0-9_-]+$`）。
+> `Message.msgType`：内置 `text` / `image` / `audio` / `sticker` / `video` / `chatcard`（合并转发卡片快照），其余为插件自定义类型（≤32 字符，`^[a-z0-9_-]+$`）。

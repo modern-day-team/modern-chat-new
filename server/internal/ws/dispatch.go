@@ -19,6 +19,15 @@ import (
 // EditWindow 消息编辑时限（与前端 canEdit 的判断保持一致）。
 const EditWindow = 5 * time.Minute
 
+// 合并转发卡片是结构化快照（content 存 JSON），20 条摘要远超普通文本上限，
+// 用独立上限；字节数仍受 serve.go 的 64KB 帧限制兜底。数值与前端
+// web/src/components/chat/mergeCard.ts 的预算对齐（前端留了余量）。
+const (
+	maxCardContentChars = 12000
+	maxCardContentBytes = 60000
+	maxCardItems        = 20
+)
+
 // 非聊天上行帧限流阈值（F2）：前端 typing 每 2 秒至多一帧（MessageComposer
 // 节流）、read 带已上报水位去重、recall/edit/reaction/delivered 均为人类操作
 // 或被动回执频率，20 帧/秒 + 突发 40 只会命中脚本刷帧，不会误伤正常使用。
@@ -181,9 +190,16 @@ func (h *Hub) handleChat(c *Client, f *clientFrame) {
 		ops = h.deps.Settings.Ops()
 	}
 	maxLen := ops.MaxMessageLength
+	if f.MsgType == "chatcard" {
+		maxLen = maxCardContentChars
+	}
 	content := []rune(f.Content)
 	if len(content) < 1 || len(content) > maxLen {
 		h.sendError(c, fmt.Sprintf("消息需为 1-%d 个字符", maxLen), f.ClientMsgID)
+		return
+	}
+	if f.MsgType == "chatcard" && len(f.Content) > maxCardContentBytes {
+		h.sendError(c, "聊天记录内容过大，请减少选中消息", f.ClientMsgID)
 		return
 	}
 	if f.ClientMsgID == "" || len(f.ClientMsgID) > 36 {
@@ -202,19 +218,25 @@ func (h *Hub) handleChat(c *Client, f *clientFrame) {
 		h.sendError(c, "消息包含敏感词，请修改后重发", f.ClientMsgID)
 		return
 	}
+	// 由存储实现自己判断 URL 归属（本地是 /uploads/，S3 是配置的对外域名），
+	// 这样换存储不用改校验逻辑。测试里未注入 Storage 时退回本地前缀判断。
+	ownsMedia := func(s string) bool {
+		if h.deps.Storage != nil {
+			return h.deps.Storage.Owns(s)
+		}
+		return strings.HasPrefix(s, "/uploads/") && !strings.Contains(s, "..")
+	}
+	// 卡片的 content 是 JSON 快照：敏感词藏在 JSON 字段里，普通文本分支拦不到；
+	// 快照里的媒体 URL 也必须校验归属，否则可借卡片加载外部资源。
+	if msgType == "chatcard" && !validChatCard(string(content), ops.BlockedWords, ownsMedia) {
+		h.sendError(c, "聊天记录内容不合法，请减少选中消息后重试", f.ClientMsgID)
+		return
+	}
 	// 媒体消息（图片/语音/表情/视频）的 content 必须是本站上传目录下的地址。
 	// 不校验的话用户可以塞 https://evil.com/x.mp4，接收方客户端会去加载外部资源
 	// （泄露 IP、可被打点统计），而消息看起来完全正常。
 	if msgType == "image" || msgType == "audio" || msgType == "sticker" || msgType == "video" {
-		// 由存储实现自己判断 URL 归属（本地是 /uploads/，S3 是配置的对外域名），
-		// 这样换存储不用改校验逻辑。测试里未注入 Storage 时退回本地前缀判断。
-		var ok bool
-		if h.deps.Storage != nil {
-			ok = h.deps.Storage.Owns(string(content))
-		} else {
-			ok = strings.HasPrefix(string(content), "/uploads/") && !strings.Contains(string(content), "..")
-		}
-		if !ok {
+		if !ownsMedia(string(content)) {
 			h.sendError(c, "媒体消息的内容必须是本站上传地址", f.ClientMsgID)
 			return
 		}
@@ -354,6 +376,8 @@ func pushPreview(m *model.Message) string {
 		return "[表情]"
 	case "video":
 		return "[视频]"
+	case "chatcard":
+		return "[聊天记录]"
 	}
 	s := m.Content
 	if r := []rune(s); len(r) > 60 {
@@ -777,6 +801,49 @@ func hitBlockedWord(words []string, content string) bool {
 		}
 	}
 	return false
+}
+
+// 合并转发卡片的落库快照（字段与前端 chat/mergeCard.ts 一一对应）。
+// 用短键名是为了在 64KB 帧预算里塞下更多条目。
+type chatCardPayload struct {
+	V     int    `json:"v"`
+	Title string `json:"title"`
+	Items []struct {
+		N string `json:"n"`
+		T string `json:"t"`
+		M string `json:"m"`
+		C string `json:"c"`
+	} `json:"items"`
+}
+
+// validChatCard 校验卡片快照：结构合法、条数不超上限、敏感词与媒体归属都过一遍。
+// 解析失败一律拒绝——畸形 JSON 会让接收端渲染出空白卡片，不如当场报错。
+func validChatCard(raw string, words []string, ownsMedia func(string) bool) bool {
+	var p chatCardPayload
+	if err := json.Unmarshal([]byte(raw), &p); err != nil {
+		return false
+	}
+	if p.V != 1 || len(p.Items) == 0 || len(p.Items) > maxCardItems {
+		return false
+	}
+	if hitBlockedWord(words, p.Title) {
+		return false
+	}
+	for _, it := range p.Items {
+		if hitBlockedWord(words, it.N) || hitBlockedWord(words, it.C) {
+			return false
+		}
+		if utf8.RuneCountInString(it.C) > 1000 {
+			return false
+		}
+		// 快照里的媒体若是外链，接收端会去加载——与媒体消息同样的 SSRF/打点面
+		if it.M == "image" || it.M == "audio" || it.M == "sticker" || it.M == "video" {
+			if !ownsMedia(it.C) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func isSafeMsgType(s string) bool {

@@ -49,6 +49,8 @@ function previewText(item: FavoriteItem): string {
   // 新增 sticker 类型后这里漏了一档，收藏的表情会显示成 /uploads/xxx.png
   if (item.msgType === 'sticker') return t('chat.previewSticker')
   if (item.msgType === 'video') return t('chat.previewVideo')
+  // 卡片的 content 是快照 JSON，直接显示会是一坨大括号
+  if (item.msgType === 'chatcard') return t('message.quoteCard')
   return item.content
 }
 

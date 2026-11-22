@@ -44,7 +44,7 @@ A **frontend-backend separated, plugin-first** web chat platform. Usable out of 
 - Ops: maintenance mode, login lockout, registration invite codes, sensitive words, Prometheus metrics, database backup, orphan file cleanup
 
 **Out of scope (v2)**
-- Video calls, **merged forwarding (chat-record cards; this phase is "several messages joined into one text")**, image multi-select, voice waveform and seek
+- Video calls, image multi-select, voice waveform and seek
 - Advanced video capabilities: capture-and-send, frontend transcoding/compression, poster frame, playback progress memory
 - Default emoji-reaction entry (implemented, `FEATURES.reactions=false` off by default)
 - Plugin marketplace (manual install only this phase)
@@ -245,14 +245,14 @@ modernchat-new/
 | conversation_id | |
 | sender_id | |
 | client_msg_id | client-generated UUID, **server idempotency key**, unique index `(conversation_id, client_msg_id)`, guards duplicate sends on reconnect |
-| msg_type | five built-in kinds: `text` / `image` / `audio` / `sticker` / `video`; anything else is a plugin-registered custom type (character whitelist validated) |
+| msg_type | six built-in kinds: `text` / `image` / `audio` / `sticker` / `video` / `chatcard` (merged-forward card); anything else is a plugin-registered custom type (character whitelist validated) |
 | content | column is `TEXT` (migration 0023); `text`: cap controlled by admin `chat.maxMessageLength` (max 5000 chars); `image` / `audio` / `sticker` / `video`: **the URL of a file uploaded to this site** (local is `/uploads/2026/11/xxx.png`, S3 is the `publicBase` absolute URL); before WS writes to the DB it validates that the URL falls under addresses recognized by `Storage.Owns()` — external links are forbidden |
 | is_recalled | soft recall flag |
 | recalled_at | recall time (server-written); the frontend shows "XXX recalled a message" accordingly and **removes that tip from the chat history after 3 minutes**. Recalled messages with NULL are treated as already expired |
 | edited_at | edit time (server-written); NULL means never edited, the frontend shows "edited" accordingly, and offers the "Edit" entry only for the user's own **text messages within 5 minutes** |
 | reply_to_id | quoted message id (**must belong to the same conversation**, validated before writing, to prevent quoting content from another conversation); NULL means a normal message. The brief is not persisted and is assembled in batch at query time |
 | mentions | @-mentioned user ids (JSON array, groups only). Before writing it is filtered to "real members + deduplicated + excluding self + capped at 20" |
-| forwarded | whether this is a forwarded message. Forwarding "copies content + msgType and sends a new message", does not reference the original, and later recall/deletion of the original does not affect it |
+| forwarded | whether this is a forwarded message. Forwarding "copies content + msgType and sends a new message", does not reference the original, and later recall/deletion of the original does not affect it. Merged forwarding uses `msg_type=chatcard` with a compact snapshot JSON in `content` (`{v,title,items:[{n,t,m,c}]}`, max 20 items): truncated text, **media keeps its on-site URL**; tapping the card opens a detail drawer. The server checks sensitive words and media ownership inside the snapshot, search excludes cards (JSON keys would pollute the ngram index), and cards use a separate 12000-character limit |
 | admin_deleted_at / admin_deleted_by | when and by whom an admin / group owner deleted a violating message; when non-NULL it is invisible to all members (the body is kept for audit) |
 | created_at | DATETIME(3) |
 | index | `(conversation_id, id)`, `sender_id` (migration 0021), FULLTEXT ngram `content` (migration 0022); `content` widened to `TEXT` in migration 0023 |
@@ -473,7 +473,7 @@ The handshake also validates an **Origin whitelist** (`FRONTEND_URL` config, ant
 ### Uplink
 ```ts
 type ClientFrame =
-  | { type:"chat"; convId:number; clientMsgId:string; content:string; msgType?:string /* defaults to text; for image/audio/sticker/video the content must be a URL uploaded to this site */;
+  | { type:"chat"; convId:number; clientMsgId:string; content:string; msgType?:string /* defaults to text; for image/audio/sticker/video the content must be a URL uploaded to this site; chatcard content is snapshot JSON (≤12000 chars) */;
       replyToId?:number; mentions?:number[]; forwarded?:boolean }
   | { type:"typing"; convId:number }
   | { type:"read"; convId:number; upToId:number }
@@ -489,7 +489,7 @@ type ClientFrame =
 type ServerFrame =
   | { type:"message"; id:number; convId:number;
       from:{id:number;nickname:string}; content:string;
-      msgType:string; /* text | image | audio | sticker | video | plugin-defined */ clientMsgId?:string;
+      msgType:string; /* text | image | audio | sticker | video | chatcard | plugin-defined */ clientMsgId?:string;
       replyToId?:number; replyTo?:ReplyBrief; mentions?:number[]; forwarded?:boolean; createdAt:string }
   | { type:"message_update"; id:number; convId:number; content:string; editedAt:string /* RFC3339, server time */ }
   | { type:"recall"; messageId:number; convId:number; recalledAt:string /* RFC3339, server time */ }

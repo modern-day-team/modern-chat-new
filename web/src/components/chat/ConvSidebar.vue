@@ -243,6 +243,7 @@ function previewText(c: Conversation): string {
   if (c.lastMessageType === 'audio') return t('chat.previewVoice')
   if (c.lastMessageType === 'sticker') return t('chat.previewSticker')
   if (c.lastMessageType === 'video') return t('chat.previewVideo')
+  if (c.lastMessageType === 'chatcard') return t('message.quoteCard')
   return c.lastMessagePreview
 }
 

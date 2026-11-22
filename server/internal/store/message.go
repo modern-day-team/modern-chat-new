@@ -484,11 +484,13 @@ func (s *MessageStore) Search(userID, convID uint, kw string, limit int) ([]mode
 func (s *MessageStore) searchOnce(userID, convID uint, kw string, limit int, fulltext bool) ([]model.SearchHitView, error) {
 	var cond string
 	var args []any
+	// 合并转发卡片的 content 是 JSON 快照：不排除的话 key 名（v/title/items…）
+	// 会污染全文索引，搜「title」「image」能搜出一堆无关卡片。
 	if fulltext && len([]rune(kw)) >= 2 {
-		cond = "m.is_recalled = ? AND m.admin_deleted_at IS NULL AND MATCH(m.content) AGAINST(? IN BOOLEAN MODE)"
+		cond = "m.is_recalled = ? AND m.admin_deleted_at IS NULL AND m.msg_type <> 'chatcard' AND MATCH(m.content) AGAINST(? IN BOOLEAN MODE)"
 		args = []any{false, fulltextPhrase(kw)}
 	} else {
-		cond = "m.is_recalled = ? AND m.admin_deleted_at IS NULL AND m.content LIKE ?"
+		cond = "m.is_recalled = ? AND m.admin_deleted_at IS NULL AND m.msg_type <> 'chatcard' AND m.content LIKE ?"
 		args = []any{false, "%" + likeEscape(kw) + "%"}
 	}
 	q := s.db.Table("messages m").

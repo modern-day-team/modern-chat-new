@@ -43,7 +43,7 @@
 - 运维：维护模式、登录失败锁定、注册邀请码、敏感词、Prometheus 指标、数据库备份、孤儿文件清理
 
 **本期不做（二期）**
-- 视频通话、**合并转发（聊天记录卡片，本期是「多条拼成一条文本」）**、图片多选发送、语音波形与拖动进度
+- 视频通话、图片多选发送、语音波形与拖动进度
 - 视频的进阶能力：拍摄即传、前端转码/压缩、封面帧（poster）、播放进度记忆
 - 表情回应默认入口（代码已实现，`FEATURES.reactions=false` 默认关闭）
 - 插件市场（本期只做手动安装）
@@ -241,14 +241,14 @@ modernchat-new/
 | conversation_id | |
 | sender_id | |
 | client_msg_id | 客户端生成 UUID，**服务端幂等键**，唯一索引 `(conversation_id, client_msg_id)`，防重连重复发 |
-| msg_type | 内置五类：`text` / `image` / `audio` / `sticker` / `video`；其余为插件注册的自定义类型（字符白名单校验） |
+| msg_type | 内置六类：`text` / `image` / `audio` / `sticker` / `video` / `chatcard`（合并转发卡片）；其余为插件注册的自定义类型（字符白名单校验） |
 | content | 列为 `TEXT`（迁移 0023）；`text`：长度上限由后台 `chat.maxMessageLength` 控制（最高 5000 字符）；`image` / `audio` / `sticker` / `video`：**本站上传的地址**（本地为 `/uploads/2026/11/xxx.png`，S3 为 `publicBase` 绝对地址），WS 落库前会校验必须落在 `Storage.Owns()` 认得的地址下，禁止外链 |
 | is_recalled | 撤回软标记 |
 | recalled_at | 撤回时间（服务端写入）；前端据此显示「XXX 撤回了一条消息」并在 **3 分钟后把该提示从聊天记录移除**。为 NULL 的历史撤回消息按已过期处理 |
 | edited_at | 编辑时间（服务端写入）；NULL 表示从未编辑，前端据此显示「已编辑」，并只对自己 **5 分钟内**的文本消息展示「编辑」入口 |
 | reply_to_id | 引用的消息 id（**须同会话**，落库前校验，防止引用别的会话内容）；NULL 表示普通消息。摘要不落库，查询时批量装配 |
 | mentions | 被 @ 的用户 id（JSON 数组，仅群聊）。落库前过滤成「真实成员 + 去重 + 排除自己 + 上限 20」 |
-| forwarded | 是否转发消息。转发是「照搬 content + msgType 发一条新消息」，不引用原消息，原消息撤回/删除不影响它 |
+| forwarded | 是否转发消息。转发是「照搬 content + msgType 发一条新消息」，不引用原消息，原消息撤回/删除不影响它。合并转发为 `msg_type=chatcard`，content 是精简快照 JSON（`{v,title,items:[{n,t,m,c}]}`，最多 20 条）：原文截断、**媒体保留站内 URL**，点击卡片展开详情抽屉看完整快照。后端对快照做敏感词与媒体归属校验，搜索排除卡片（避免 JSON 键名污染全文索引），卡片用独立的 12000 字符上限 |
 | admin_deleted_at / admin_deleted_by | 管理员 / 群主删除违规消息的时间与执行人；非 NULL 时对所有成员不可见（本体保留供审计） |
 | created_at | DATETIME(3) |
 | 索引 | `(conversation_id, id)`、`sender_id`（迁移 0021）、FULLTEXT ngram `content`（迁移 0022）；`content` 在迁移 0023 扩为 `TEXT` |
@@ -469,7 +469,7 @@ modernchat-new/
 ### 上行
 ```ts
 type ClientFrame =
-  | { type:"chat"; convId:number; clientMsgId:string; content:string; msgType?:string /* 缺省 text；image/audio/sticker/video 的 content 必须是本站上传地址 */;
+  | { type:"chat"; convId:number; clientMsgId:string; content:string; msgType?:string /* 缺省 text；image/audio/sticker/video 的 content 必须是本站上传地址；chatcard 的 content 是快照 JSON（≤12000 字符） */;
       replyToId?:number; mentions?:number[]; forwarded?:boolean }
   | { type:"typing"; convId:number }
   | { type:"read"; convId:number; upToId:number }
@@ -485,7 +485,7 @@ type ClientFrame =
 type ServerFrame =
   | { type:"message"; id:number; convId:number;
       from:{id:number;nickname:string}; content:string;
-      msgType:string; /* text | image | audio | sticker | video | 插件自定义 */ clientMsgId?:string;
+      msgType:string; /* text | image | audio | sticker | video | chatcard | 插件自定义 */ clientMsgId?:string;
       replyToId?:number; replyTo?:ReplyBrief; mentions?:number[]; forwarded?:boolean; createdAt:string }
   | { type:"message_update"; id:number; convId:number; content:string; editedAt:string /* RFC3339，服务端时间 */ }
   | { type:"recall"; messageId:number; convId:number; recalledAt:string /* RFC3339，服务端时间 */ }

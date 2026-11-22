@@ -14,6 +14,7 @@ import { computed, inject } from 'vue'
 
 import AvatarBadge from './AvatarBadge.vue'
 import VoiceMessage from './VoiceMessage.vue'
+import MergeForwardCard from './MergeForwardCard.vue'
 import DeclarativeNodes from '@/components/declarative'
 import { FEATURES } from '@/config/features'
 import { useAppI18n } from '@/composables/useAppI18n'
@@ -64,6 +65,7 @@ function quoteText(r: ReplyBrief): string {
   if (r.msgType === 'audio') return t('message.quoteAudio')
   if (r.msgType === 'sticker') return t('message.quoteSticker')
   if (r.msgType === 'video') return t('message.quoteVideo')
+  if (r.msgType === 'chatcard') return t('message.quoteCard')
   return r.content
 }
 
@@ -220,6 +222,9 @@ const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉']
           @contextmenu.prevent.stop="ctx!.openImageMenu($event, msg)"
         />
       </div>
+
+      <!-- 合并转发卡片：固定高度摘要，详情走抽屉 -->
+      <MergeForwardCard v-else-if="msg.msgType === 'chatcard'" :msg="msg" />
 
       <!-- 自定义类型：插件白名单渲染 -->
       <div v-else-if="msg.msgType !== 'text'" class="mc-msg__bubble custom">

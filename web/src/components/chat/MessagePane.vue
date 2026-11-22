@@ -18,6 +18,7 @@ import { useConversationsStore } from '@/stores/conversations'
 import { useFavoritesStore } from '@/stores/favorites'
 import MessageRow from './MessageRow.vue'
 import { messageRowKey, type MessageRowCtx } from './messageRowContext'
+import { buildMergeCard, MERGE_MAX_ITEMS } from './mergeCard'
 import { ensureRendered } from './pluginRenders'
 import { useLayoutStore } from '@/stores/layout'
 import { useWsStore } from '@/stores/ws'
@@ -412,7 +413,7 @@ const selectedIds = ref<number[]>([])
 /** 非 null 时表示正在为「合并转发」选择目标会话 */
 const mergeSourceIds = ref<number[] | null>(null)
 
-const MAX_MERGE = 20
+const MAX_MERGE = MERGE_MAX_ITEMS
 
 function enterSelect(m: Message) {
   selectMode.value = true
@@ -455,21 +456,20 @@ function onMediaClick(m: Message, e?: MouseEvent) {
   previewSrc.value = m.content
 }
 
-/** 把选中的消息拼成一条「合并转发」文本；媒体用占位文案代替 URL */
-function mergeText(msgs: Message[]): string {
-  const lines = msgs.slice(0, MAX_MERGE).map((m) => {
-    let body = m.content
-    if (m.msgType === 'image') body = t('message.quoteImage')
-    else if (m.msgType === 'audio') body = t('message.quoteAudio')
-    else if (m.msgType === 'sticker') body = t('message.quoteSticker')
-    else if (m.msgType === 'video') body = t('message.quoteVideo')
-    else if (m.msgType !== 'text') body = t('message.unknownType', { type: m.msgType })
-    body = [...body].slice(0, 100).join('')
-    const who = senderOf(m) ? (auth.user?.nickname ?? '') : senderName(m)
-    return `${who}: ${body}`
-  })
-  return `【${t('message.mergeForward')}】\n${lines.join('\n')}`
+/** 合并转发的卡片标题：带上来源会话名，收到的人一眼知道这堆记录来自哪里 */
+function mergeCardTitle(): string {
+  return conv.value ? convLabel(conv.value) : t('message.mergeForward')
 }
+
+/** 各类型在卡片里的占位文案（媒体不塞 URL，避免把 /uploads/ 地址发出去） */
+const cardLabels = () => ({
+  image: t('message.quoteImage'),
+  audio: t('message.quoteAudio'),
+  sticker: t('message.quoteSticker'),
+  video: t('message.quoteVideo'),
+  card: t('message.quoteCard'),
+  unknown: t('message.unknownType'),
+})
 
 function startMergeForward() {
   if (!selectedIds.value.length) return
@@ -488,12 +488,17 @@ function doMergeForward(convId: number) {
     return
   }
   const skipped = picked.length - msgs.length
-  const text = mergeText(msgs)
-  if (text.length > siteStore.config.maxMessageLength) {
+  const payload = buildMergeCard(msgs, {
+    title: mergeCardTitle(),
+    senderName,
+    labels: cardLabels(),
+  })
+  if (!payload) {
+    // 没有可转发内容，或即使把每条摘要压到最短仍超过帧预算
     void MessagePlugin.warning(t('message.mergeTooLong', { max: siteStore.config.maxMessageLength }))
     return
   }
-  convStore.sendText(convId, text, { forwarded: true })
+  convStore.sendCard(convId, payload)
   mergeSourceIds.value = null
   exitSelect()
   if (skipped > 0) void MessagePlugin.info(t('message.mergeSkippedRecalled', { n: skipped }))

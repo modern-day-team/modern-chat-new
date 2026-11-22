@@ -278,7 +278,7 @@ The sandbox model and SDK are described in the plugin dev guide; below is the RE
 
 | type | payload | notes |
 |---|---|---|
-| `chat` | `{convId, clientMsgId, content, msgType?, replyToId?, mentions?, forwarded?}` | send a message; 20/min per user; `client_msg_id` has a unique index for idempotency (duplicates replay the original frame); member/ban/length checks; media content must be this site's storage address |
+| `chat` | `{convId, clientMsgId, content, msgType?, replyToId?, mentions?, forwarded?}` | send a message; 20/min per user; `client_msg_id` has a unique index for idempotency (duplicates replay the original frame); member/ban/length checks; media content must be this site's storage address; for `chatcard`, content is snapshot JSON (≤12000 chars), with sensitive words and media URLs inside the snapshot checked too |
 | `typing` | `{convId}` | typing indicator (forwarded to online members) |
 | `read` | `{convId, upToId}` | read receipt (clears unread; cursor only moves forward) |
 | `recall` | `{messageId}` | recall; sender only, within `recallMinutes` (configurable, 0 = disabled); unread rolls back, broadcasts `recall` |
@@ -345,4 +345,4 @@ SearchHit           { messageId, conversationId, convType, convName, senderId, s
 ```
 
 > `Conversation.type`: 1 = single chat, 2 = group, 3 = system announcement conversation (not shown in the list).
-> `Message.msgType`: built-in `text` / `image` / `audio` / `sticker` / `video`; anything else is a plugin-defined type (≤32 chars, `^[a-z0-9_-]+$`).
+> `Message.msgType`: built-in `text` / `image` / `audio` / `sticker` / `video` / `chatcard` (merged-forward card snapshot); anything else is a plugin-defined type (≤32 chars, `^[a-z0-9_-]+$`).

@@ -226,8 +226,8 @@ AdminPluginRow  { name, version, installCount, enabledCount, globalDisabled, cre
 | email | ≤254，可空；非空时唯一 |
 | avatar_color | 服务端从 10 色板按 id 取模生成 |
 | 群名 name | 1–30 |
-| content | `text`：1–`chat.maxMessageLength` 字符（按 rune 计，后台可配 100–5000，默认 1000）；`image`/`audio`/`sticker`/`video`：≤1000 字符的 URL，且必须落在 `Storage.Owns()` 认得的地址下（禁止外链） |
-| msg_type | ≤32，`^[a-z0-9_-]+$`；缺省 `text`；内置 `text`/`image`/`audio`/`sticker`/`video`，其余为插件自定义类型 |
+| content | `text`：1–`chat.maxMessageLength` 字符（按 rune 计，后台可配 100–5000，默认 1000）；`image`/`audio`/`sticker`/`video`：≤1000 字符的 URL，且必须落在 `Storage.Owns()` 认得的地址下（禁止外链）；`chatcard`：≤12000 字符 / ≤60000 字节的快照 JSON（`{v:1,title,items:[{n,t,m,c}]}`，1–20 条） |
+| msg_type | ≤32，`^[a-z0-9_-]+$`；缺省 `text`；内置 `text`/`image`/`audio`/`sticker`/`video`/`chatcard`，其余为插件自定义类型 |
 | 上传文件 | 图片 / 语音 / 表情 / 群文件 / 视频体积上限后台可配（默认 8 / 5 / 2 / 20 / **30** MB，视频 1–100）；**真实类型以文件头为准**（image/jpeg,png,webp,gif；audio/webm,ogg,mpeg,mp4,wav；video/mp4,webm,quicktime,x-m4v——mp4/mov 家族靠 `ftyp` brand 兜底识别，纯音频 m4a 会被拒）；文件名 128 位随机 |
 | 撤回 | 仅发送者本人、`chat.recallMinutes` 分钟内（后台可配 0–60，**0 = 关闭撤回**）；落库同时写 `recalled_at`（服务端时间），随 `recall` 帧广播 |
 | 编辑 | 仅发送者本人、消息创建后 **5 分钟内**、且未撤回的 `text` 消息；新正文长度按 `chat.maxMessageLength` 校验并检查敏感词；落库写 `edited_at`，随 `message_update` 帧广播 |
@@ -239,6 +239,7 @@ AdminPluginRow  { name, version, installCount, enabledCount, globalDisabled, cre
 | 群人数 | `chat.maxGroupMembers`（后台可配 2–2000，默认 200）；入群容量判断与插入在同一事务内 |
 | 引用 `replyToId` | 目标消息必须存在且**属于同一会话**（否则可引用别的会话内容造成越权泄露）；摘要服务端截断 60 字 |
 | 转发 `forwarded` | 仅标记位；内容与 msgType 照搬原消息，`image/audio/sticker/video` 仍需通过「本站存储」校验 |
+| 合并转发 `chatcard` | 快照 JSON 必须结构合法（v=1、items 1–20 条），标题/昵称/正文逐字段过敏感词（普通 text 分支只查整串，JSON 字段会漏），快照内的媒体 `c` 同样须通过 `Storage.Owns()`；不满足回 error 帧「聊天记录内容不合法，请减少选中消息后重试」。搜索接口排除该类型，避免 JSON 键名污染 ngram 全文索引 |
 | 上传 `kind` | `image`(≤8MB) / `audio`(≤5MB) / `sticker`(≤2MB) / `file`(≤20MB) / `video`(≤30MB)；**一律按文件头判真实类型**，MIME 先去 `; charset=` 再查白名单；视频容器嗅探不全时按 `ftyp` brand / Matroska magic 兜底 |
 | 群文件类型白名单 | pdf / zip(docx,xlsx,pptx 容器) / txt / json / jpeg / png / webp / gif。**不含 html 与 svg**——浏览器会当页面渲染，等于同源执行上传者的脚本 |
 | @ `mentions` | 只保留「真实成员 + 去重 + 排除发送者 + 最多 20 个」；被 @ 者收件箱 `mention_unread=1`，读后清零 |
