@@ -6,7 +6,14 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 
 ---
 
-## [Unreleased]
+## [0.11.0] — 2026-11-23
+
+> **Upgrade notes (from 0.10.3)**
+>
+> - Install / update sources are now **GitHub only**: instances installed from the old Gitee source whose `.env` still points `RELEASE_API_URL` / `RELEASE_DL_URL` at Gitee will fail online updates; change them to the GitHub addresses manually (see the "Changed" entry below).
+> - Two-factor authentication 2FA is off by default. Once enabled, sign-in requires a second factor — bind an authenticator / email and **download your recovery codes** first.
+> - Merged forwarding now sends a `chatcard` message (no frame-field or DB-schema change); older clients show an unknown-type placeholder, so upgrade frontend and backend together.
+> - Images no longer produce `_t.jpg` thumbnails; historical thumbnails are reclaimed by orphan cleanup (24-hour protection period). No migration script is needed.
 
 ### Changed
 
@@ -313,6 +320,7 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 
 ---
 
+[0.11.0]: https://github.com/modern-day-team/modern-chat-new/compare/v0.10.3...v0.11.0
 [0.10.3]: https://github.com/modern-day-team/modern-chat-new/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/modern-day-team/modern-chat-new/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/modern-day-team/modern-chat-new/compare/v0.10.0...v0.10.1

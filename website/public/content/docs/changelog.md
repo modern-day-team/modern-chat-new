@@ -6,7 +6,14 @@
 
 ---
 
-## [未发布]
+## [0.11.0] — 2026-11-23
+
+> **升级注意（从 0.10.3 升级）**
+>
+> - 安装 / 更新源已切为**仅 GitHub**：旧版 Gitee 安装的实例若 `.env` 里 `RELEASE_API_URL` / `RELEASE_DL_URL` 仍指向 Gitee，在线更新会失败，需手动改成 GitHub 地址（见下方「变更」条目）。
+> - 两步验证 2FA 默认关闭，开启后登录流程多一步第二因子；请先在设置页绑定验证器 / 邮箱并**下载恢复码**，再开启。
+> - 合并转发现在发出 `chatcard` 消息（帧字段与表结构不变）；老版本客户端收到会当作未知类型显示占位，建议前后端一起升级。
+> - 图片不再派生 `_t.jpg` 缩略图，历史缩略图会随孤儿清理回收（24 小时保护期）；无需单独的迁移脚本。
 
 ### 变更
 
@@ -339,6 +346,7 @@
 
 ---
 
+[0.11.0]: https://github.com/modern-day-team/modern-chat-new/compare/v0.10.3...v0.11.0
 [0.10.3]: https://github.com/modern-day-team/modern-chat-new/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/modern-day-team/modern-chat-new/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/modern-day-team/modern-chat-new/compare/v0.10.0...v0.10.1

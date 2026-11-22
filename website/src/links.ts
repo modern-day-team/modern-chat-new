@@ -3,7 +3,7 @@
  * 版本号同时被 scripts/check-version.sh 校验（以 CHANGELOG 最新正式版为基准），
  * 发版时此处与 HomeView 的 Hero 徽标、package.json 一起改。
  */
-export const VERSION = '0.10.3'
+export const VERSION = '0.11.0'
 
 export const REPO = 'https://github.com/modern-day-team/modern-chat-new'
 export const BRANCH = 'main'

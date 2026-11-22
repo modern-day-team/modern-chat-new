@@ -132,7 +132,7 @@ curl -fsSL https://github.com/modern-day-team/modern-chat-new/raw/main/scripts/i
 
 脚本自动检测服务器架构（amd64/arm64）与发行版（apt/dnf/yum），下载对应的预编译发行包——服务器**无需 Go / Node / git**，全程不编译。交互问答都有默认值，直接回车即可全自动；也可环境变量预设（`RELEASE_TAG` 指定版本、`DOMAIN`/`DB_MODE` 等）。详见 [运维手册 §3.1](docs/运维手册.md)。
 
-发版流程：更新 `CHANGELOG.md` 并同步 `web/`、`website/` 的版本号后，先运行 `sh scripts/check-version.sh` 确认一致（以 CHANGELOG 最新正式版本为基准），再打 tag 并在构建机运行 `scripts/package-release.sh`，把 `dist-release/` 下的 tar.gz 与 .sha256 上传为 GitHub Release 附件（后台图形化更新与安装脚本自动下载新版本）。
+发版流程：更新 `CHANGELOG.md` 定版并同步 `web/`、`website/` 的版本号与官网版本常量后，先运行 `sh scripts/check-version.sh` 确认一致（以 CHANGELOG 最新正式版本为基准），再打 tag 推送——GitHub Actions 会自动打包双架构发行包并发布 Release（后台图形化更新与安装脚本从 Release 下载）；只有在无 Actions 或需要手动重打时，才在构建机运行 `scripts/package-release.sh` 并把 `dist-release/` 下的 tar.gz 与 .sha256 上传为 Release 附件。
 
 ### 方式一：Docker 一键起后端（本地开发）
 
