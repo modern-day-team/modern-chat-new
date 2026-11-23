@@ -51,9 +51,10 @@ Global conventions:
 ### 3.1 Entity shapes (matching `web/src/types/proto.ts`)
 
 ```
-User            { id, username, nickname, avatarColor, avatar?, email?, role:"user"|"admin",
+User            { id, username, nickname, avatarColor, avatar?, avatarThumb?, email?, role:"user"|"admin",
                   bannedUntil?, banReason? }            // email/banned only returned to self or admin
-User summary    { id, username, nickname, avatarColor, avatar? }
+User summary    { id, username, nickname, avatarColor, avatarThumb?, avatar? }
+                  // avatarThumb = 64×64 list thumbnail; legacy empty values fall back to avatar
 Conversation    { id, type:1|2|3, name(group name, null for direct), avatar?, peer(direct peer summary, null for group),
                   ownerId, memberCount, lastMessageId, lastMessageAt, lastMessagePreview,
                   lastMessageType, lastReadMessageId, unreadCount, pinned, muted, archived?,
@@ -380,7 +381,7 @@ server/
 │   ├── service/           # mailer / storage / push / backup / updater
 │   ├── logx/ metrics/     # log rotation / Prometheus
 │   └── router/            # all routes and middleware wiring
-├── migrations/            # 0001_init … 0031_friend_friend_index (up/down SQL)
+├── migrations/            # 0001_init … 0032_user_avatar_thumb (up/down SQL)
 ├── test/                  # integration tests (//go:build integration)
 ├── Dockerfile             # multi-stage build (incl. migrations)
 ├── .env.example

@@ -85,7 +85,7 @@ async function handleRequest(id: number, accept: boolean) {
         <section v-if="requestCount" class="mc-notify__section">
           <div class="mc-notify__section-title">{{ t('notify.friendRequests') }}</div>
           <div v-for="r in friendsStore.pendingRequests" :key="r.id" class="mc-notify__item">
-            <AvatarBadge :name="r.from.nickname" :src="r.from.avatar" :color="r.from.avatarColor" :size="30" />
+            <AvatarBadge :name="r.from.nickname" :src="r.from.avatarThumb || r.from.avatar" :color="r.from.avatarColor" :size="30" />
             <div class="mc-notify__body">
               <div class="mc-notify__text">{{ t('notify.friendRequestBody', { name: r.from.nickname }) }}</div>
               <div class="text-placeholder mc-notify__sub">@{{ r.from.username }}</div>
@@ -123,7 +123,7 @@ async function handleRequest(id: number, accept: boolean) {
           >
             <AvatarBadge
               :name="convName(c) || '#'"
-              :src="c.type === 1 ? c.peer?.avatar : c.avatar"
+              :src="c.type === 1 ? (c.peer?.avatarThumb || c.peer?.avatar) : c.avatar"
               :color="c.type === 1 ? (c.peer?.avatarColor ?? '#0052d9') : '#2ba471'"
               :size="30"
             />

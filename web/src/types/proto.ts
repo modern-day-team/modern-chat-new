@@ -10,8 +10,10 @@ export interface User {
   username: string
   nickname: string
   avatarColor: string
-  /** 自定义头像 data URL；空表示用默认头像 */
+  /** 自定义头像 data URL（256×256）；空表示用默认头像。详情 / 资料卡用这张 */
   avatar?: string
+  /** 64×64 头像缩略图；列表类视图优先用它，老数据为空时回退到 avatar */
+  avatarThumb?: string
   email?: string | null
   role: 'user' | 'admin'
   bannedUntil?: string | null
@@ -54,7 +56,7 @@ export interface Conversation {
   /** 群头像地址；单聊为空（用 peer 的资料） */
   avatar?: string
   /** 单聊对方的公开信息（服务端拼装）；群聊为 null */
-  peer: Pick<User, 'id' | 'username' | 'nickname' | 'avatarColor' | 'avatar'> | null
+  peer: Pick<User, 'id' | 'username' | 'nickname' | 'avatarColor' | 'avatarThumb' | 'avatar'> | null
   ownerId: number | null
   memberCount: number
   lastMessageId: number | null
@@ -88,7 +90,7 @@ export interface ConversationMember {
   joinedAt: string
   /** 禁言截止时间；null/过期表示未禁言 */
   mutedUntil?: string | null
-  user: Pick<User, 'id' | 'username' | 'nickname' | 'avatarColor' | 'avatar'>
+  user: Pick<User, 'id' | 'username' | 'nickname' | 'avatarColor' | 'avatarThumb' | 'avatar'>
 }
 
 // ===== 消息 =====
@@ -183,14 +185,14 @@ export type FriendStatus = 0 | 1 | 2
 export interface FriendItem {
   /** 关系记录 id（user_id 维度，即 /api/friends 列表项 id） */
   id: number
-  friend: Pick<User, 'id' | 'username' | 'nickname' | 'avatarColor' | 'avatar'>
+  friend: Pick<User, 'id' | 'username' | 'nickname' | 'avatarColor' | 'avatarThumb' | 'avatar'>
   status: FriendStatus
   createdAt: string
 }
 
 export interface FriendRequestItem {
   id: number
-  from: Pick<User, 'id' | 'username' | 'nickname' | 'avatarColor' | 'avatar'>
+  from: Pick<User, 'id' | 'username' | 'nickname' | 'avatarColor' | 'avatarThumb' | 'avatar'>
   createdAt: string
 }
 

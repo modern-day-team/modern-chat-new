@@ -11,6 +11,8 @@ type UserBrief struct {
 	Username    string `json:"username"`
 	Nickname    string `json:"nickname"`
 	AvatarColor string `json:"avatarColor"`
+	// AvatarThumb 列表用 64×64 缩略图；老数据为空时前端回退到 Avatar。
+	AvatarThumb string `json:"avatarThumb,omitempty"`
 	Avatar      string `json:"avatar,omitempty"`
 }
 
@@ -18,7 +20,7 @@ type UserBrief struct {
 func (u *User) Brief() UserBrief {
 	return UserBrief{
 		ID: u.ID, Username: u.Username, Nickname: u.Nickname,
-		AvatarColor: u.AvatarColor, Avatar: u.Avatar,
+		AvatarColor: u.AvatarColor, AvatarThumb: u.AvatarThumb, Avatar: u.Avatar,
 	}
 }
 

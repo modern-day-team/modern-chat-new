@@ -148,7 +148,7 @@ modernchat-new/
 ├── docker-compose.yml      MySQL + backend one-command environment
 ├── server/
 │   ├── go.mod  .env.example  Dockerfile
-│   ├── migrations/                 versioned SQL (0001…0031, used in production)
+│   ├── migrations/                 versioned SQL (0001…0032, used in production)
 │   ├── test/                       integration tests (//go:build integration)
 │   ├── data/uploads/               uploaded images / audio / video (when using local storage; gitignored)
 │   ├── cmd/server/main.go
@@ -690,7 +690,7 @@ Group search/leave/delete-friend APIs (§6), `client_msg_id` unique-key scope (�
 
 ### 13.2 Implementation complete (2026-10-24)
 - **Frontend `web/`**: auth (login/register/recovery), four-column chat (icon rail / group filter pane / conversation & contact list / chat area + detail panel), grouped consecutive messages with read/recall folding, add-friend dialog (username/nickname search, inline accept), group admin, plugin sandbox host + declarative renderers, plugin management drawer, admin console (users + plugins), responsive (tablet folds detail / phone single panel), design polish (contrast, tabular numerals, focus reachability).
-- **Backend `server/`**: all §6 APIs, §7 WS protocol (64-shard Hub / read-write pumps / presence / kicked), plugins (manifest validation / SSRF / upgrade overwrite / global takedown), admin console, three rate-limit tiers, structured logs, graceful shutdown, `migrations/0001…0031`.
+- **Backend `server/`**: all §6 APIs, §7 WS protocol (64-shard Hub / read-write pumps / presence / kicked), plugins (manifest validation / SSRF / upgrade overwrite / global takedown), admin console, three rate-limit tiers, structured logs, graceful shutdown, `migrations/0001…0032`.
 - **Tests**: `go build` / `go vet` / `gofmt` / unit tests / integration tests (real MySQL full chain: auth→friends→direct→WS send/receive→idempotency→read→recall→unread→groups→ban kick→plugin install/upgrade/SSRF/takedown) all green; frontend `vue-tsc` / `oxlint+eslint` / `vite build` all green.
 - **Security hardening** (after code review): WS Origin whitelist, `JWT_SECRET` enforced in production, configurable recovery-link base + constant-time compare, certificate files gitignored.
 - **Delivery assets**: `docker-compose.yml`, `server/Dockerfile`, dual nginx configs, example plugins, `scripts/install.sh` / `package-release.sh` / `update.sh` / `uninstall.sh`, `/api/version` version verification.

@@ -331,8 +331,8 @@ Rate limiting always returns 429; login failures never reveal whether the accoun
 Identical to `web/src/types/proto.ts`; full definitions live there and in `docs/后端需求规格.md` §3.1:
 
 ```
-User                { id, username, nickname, avatarColor, avatar?, email?, role:"user"|"admin", bannedUntil?, banReason? }
-User brief          { id, username, nickname, avatarColor, avatar? }
+User                { id, username, nickname, avatarColor, avatar?, avatarThumb?, email?, role:"user"|"admin", bannedUntil?, banReason? }
+User brief          { id, username, nickname, avatarColor, avatarThumb?, avatar? }
 Conversation        { id, type:1|2|3, name, avatar?, peer?, ownerId, memberCount, lastMessageId, lastMessageAt,
                       lastMessagePreview, lastMessageType, lastReadMessageId, unreadCount, pinned, muted,
                       archived?, muteAll?, mentionUnread, announcement, announcementAt, announcementBy }

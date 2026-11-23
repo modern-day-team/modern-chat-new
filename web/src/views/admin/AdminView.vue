@@ -1044,7 +1044,7 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
             <div class="mc-admin__user">
               <AvatarBadge
                 :name="row.nickname"
-                :src="row.avatar"
+                :src="row.avatarThumb || row.avatar"
                 :color="row.avatarColor"
                 :size="30"
               />

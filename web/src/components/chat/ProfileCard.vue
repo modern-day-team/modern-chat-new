@@ -22,9 +22,8 @@ function pickFile() {
   fileInput.value?.click()
 }
 
-/** 居中裁切成正方形并压到 256px，输出 webp，控制传输与存储体积 */
-async function toSquareDataURL(file: File, size = 256): Promise<string> {
-  const bitmap = await createImageBitmap(file)
+/** 居中裁切成正方形并压到指定边长，输出 webp */
+async function toSquareDataURL(bitmap: ImageBitmap, size: number, quality: number): Promise<string> {
   const canvas = document.createElement('canvas')
   canvas.width = size
   canvas.height = size
@@ -42,10 +41,8 @@ async function toSquareDataURL(file: File, size = 256): Promise<string> {
     size,
     size,
   )
-  bitmap.close?.()
-  const url = canvas.toDataURL('image/webp', 0.86)
   // 浏览器不支持 webp 时会回退 png，二者服务端都接受
-  return url
+  return canvas.toDataURL('image/webp', quality)
 }
 
 async function onFileChange(ev: Event) {
@@ -59,8 +56,16 @@ async function onFileChange(ev: Event) {
   }
   uploading.value = true
   try {
-    const dataUrl = await toSquareDataURL(file)
-    await auth.updateMe({ avatar: dataUrl })
+    // 同一个 bitmap 裁两次：256px 详情图 + 64px 列表缩略图。
+    // 列表接口只读缩略图，200 人群不再传 200 份 256KB 的 base64。
+    const bitmap = await createImageBitmap(file)
+    try {
+      const avatar = await toSquareDataURL(bitmap, 256, 0.86)
+      const avatarThumb = await toSquareDataURL(bitmap, 64, 0.7)
+      await auth.updateMe({ avatar, avatarThumb })
+    } finally {
+      bitmap.close?.()
+    }
     void MessagePlugin.success(t('profile.avatarUpdated'))
   } catch (e) {
     void MessagePlugin.error(te(e) || t('profile.avatarFailed'))

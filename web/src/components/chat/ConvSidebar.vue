@@ -176,7 +176,7 @@ function convAvatar(c: Conversation): { name: string; color: string; avatar?: st
     ? {
         name: c.peer?.nickname ?? '?',
         color: c.peer?.avatarColor ?? '#0052d9',
-        avatar: c.peer?.avatar,
+        avatar: c.peer?.avatarThumb || c.peer?.avatar,
       }
     : { name: c.name ?? '#', color: '#2ba471', avatar: c.avatar }
 }
@@ -433,7 +433,7 @@ const sortedConvs = computed(() => {
           :class="{ 'is-busy': busyKey === `single-${u.id}` }"
           @click="startSingle(u)"
         >
-          <AvatarBadge :name="u.nickname" :src="u.avatar" :color="u.avatarColor" :size="32" />
+          <AvatarBadge :name="u.nickname" :src="u.avatarThumb || u.avatar" :color="u.avatarColor" :size="32" />
           <span class="mc-sidebar__result-name">{{ u.nickname }}</span>
           <span class="text-placeholder">@{{ u.username }}</span>
         </TListItem>
@@ -543,7 +543,7 @@ const sortedConvs = computed(() => {
       <template v-if="friendsStore.pendingRequests.length">
         <div class="mc-sidebar__group-label">{{ t('friends.requests') }}</div>
         <div v-for="r in friendsStore.pendingRequests" :key="r.id" class="mc-friend-item">
-          <AvatarBadge :name="r.from.nickname" :src="r.from.avatar" :color="r.from.avatarColor" :size="32" />
+          <AvatarBadge :name="r.from.nickname" :src="r.from.avatarThumb || r.from.avatar" :color="r.from.avatarColor" :size="32" />
           <span class="mc-conv-item__name">{{ r.from.nickname }}</span>
           <div class="mc-friend-item__actions">
             <UiButton
@@ -572,7 +572,7 @@ const sortedConvs = computed(() => {
       <div v-for="f in friendsStore.accepted" :key="f.id" class="mc-friend-item">
         <AvatarBadge
           :name="f.friend.nickname"
-          :src="f.friend.avatar"
+          :src="f.friend.avatarThumb || f.friend.avatar"
           :color="f.friend.avatarColor"
           :size="32"
           :online="ws.onlineUsers.has(f.friend.id)"

@@ -51,9 +51,10 @@
 ### 3.1 实体形状（与 `web/src/types/proto.ts` 一致）
 
 ```
-User            { id, username, nickname, avatarColor, avatar?, email?, role:"user"|"admin",
+User            { id, username, nickname, avatarColor, avatar?, avatarThumb?, email?, role:"user"|"admin",
                   bannedUntil?, banReason? }            // email/banned 仅返回本人或 admin
-User 摘要        { id, username, nickname, avatarColor, avatar? }
+User 摘要        { id, username, nickname, avatarColor, avatarThumb?, avatar? }
+                  // avatarThumb = 64×64 列表缩略图；老数据为空时前端回退到 avatar
 Conversation    { id, type:1|2|3, name(群名,单聊 null), avatar?, peer(单聊对方摘要,群聊 null),
                   ownerId, memberCount, lastMessageId, lastMessageAt, lastMessagePreview,
                   lastMessageType, lastReadMessageId, unreadCount, pinned, muted, archived?,
@@ -212,7 +213,7 @@ AdminPluginRow  { name, version, installCount, enabledCount, globalDisabled, cre
 - 维护模式：非管理员握手直接 503 `{"error":"站点维护中","maintenance":true}`——REST 被挡但已有连接还能收发就等于没挡，所以握手必须一起挡
 - 引用与 @：`chat` 帧可带 `replyToId`（须同会话）与 `mentions`（群成员 id 数组）；下行 `message` 帧回带 `replyTo` 摘要与 `mentions`，接收方无需回查即可渲染引用块与高亮
 - 下线：tv 变化 / 封禁 / 站长重置密码 → 向该用户全部连接推 `{"type":"kicked","reason":"..."}` 后关闭
-- 资料变更：`PATCH /api/me` 修改昵称或头像后，向好友、同会话成员及本人其他连接推 `{"type":"user_change","userId","nickname","avatar","avatarColor"}`；前端就地更新会话列表、好友/申请列表与群成员头像，无需刷新
+- 资料变更：`PATCH /api/me` 修改昵称或头像（可选 `avatarThumb` 64×64 缩略图，≤16KB）后，向好友、同会话成员及本人其他连接推 `{"type":"user_change","userId","nickname","avatar","avatarColor"}`；前端就地更新会话列表、好友/申请列表与群成员头像，无需刷新。换主图而未带缩略图时清空旧缩略图，避免新旧混显
 
 ## 4. 数据模型与校验规则
 
@@ -376,7 +377,7 @@ server/
 │   ├── service/           # mailer / storage / push / backup / updater
 │   ├── logx/ metrics/     # 日志轮转 / Prometheus
 │   └── router/            # 全部路由与中间件装配
-├── migrations/            # 0001_init … 0031_friend_friend_index（up/down SQL）
+├── migrations/            # 0001_init … 0032_user_avatar_thumb（up/down SQL）
 ├── test/                  # 集成测试（//go:build integration）
 ├── Dockerfile             # 多阶段构建（含 migrations）
 ├── .env.example

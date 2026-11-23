@@ -978,7 +978,7 @@ async function leave() {
         >
           <AvatarBadge
             :name="m.user.nickname"
-            :src="m.user.avatar"
+            :src="m.user.avatarThumb || m.user.avatar"
             :color="m.user.avatarColor"
             :size="30"
             :online="ws.onlineUsers.has(m.userId)"
@@ -1017,7 +1017,7 @@ async function leave() {
         <div class="mc-detail__member">
           <AvatarBadge
             :name="conv.peer?.nickname ?? '?'"
-            :src="conv.peer?.avatar"
+            :src="conv.peer?.avatarThumb || conv.peer?.avatar"
             :color="conv.peer?.avatarColor"
             :size="40"
             :online="conv.peer ? ws.onlineUsers.has(conv.peer.id) : false"
@@ -1105,7 +1105,7 @@ async function leave() {
         >
           <AvatarBadge
             :name="f.friend.nickname"
-            :src="f.friend.avatar"
+            :src="f.friend.avatarThumb || f.friend.avatar"
             :color="f.friend.avatarColor"
             :size="28"
           />

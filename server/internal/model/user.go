@@ -10,8 +10,13 @@ type User struct {
 	PasswordHash string `gorm:"size:60" json:"-"`
 	Nickname     string `gorm:"size:20" json:"nickname"`
 	AvatarColor  string `gorm:"size:16" json:"avatarColor"`
-	// Avatar 自定义头像：前端压缩后的 data URL（≤256KB），空表示使用默认头像
-	Avatar        string  `gorm:"type:mediumtext" json:"avatar,omitempty"`
+	// Avatar 自定义头像：前端压缩后的 data URL（≤256KB，256×256 webp），
+	// 空表示使用默认头像。详情 / 资料卡用这张。
+	Avatar string `gorm:"type:mediumtext" json:"avatar,omitempty"`
+	// AvatarThumb 同一头像的 64×64 缩略图 data URL（≤16KB）。列表类接口
+	// （会话列表 / 成员列表 / 好友列表 / 搜索）只取这一列，避免每个用户
+	// 在列表里都传一次 256KB 的 base64（200 人群 ≈ 50MB）。
+	AvatarThumb   string  `gorm:"type:text" json:"avatarThumb,omitempty"`
 	Email         *string `gorm:"size:254;uniqueIndex" json:"email,omitempty"`
 	EmailVerified bool    `json:"-"`
 	// 两步验证（默认关闭，用户在设置页自行开启）：method 为空串 = 未启用。

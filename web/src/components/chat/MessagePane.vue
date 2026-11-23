@@ -1013,9 +1013,9 @@ const senderAvatarColor = (m: Message) => {
 
 /** 对方自定义头像（单聊取 peer；群聊成员头像由详情面板展示） */
 const senderAvatar = (m: Message) => {
-  if (senderOf(m)) return auth.user?.avatar ?? ''
+  if (senderOf(m)) return auth.user?.avatarThumb || auth.user?.avatar || ''
   const c = conv.value
-  if (c?.type === 1 && c.peer?.id === m.senderId) return c.peer.avatar ?? ''
+  if (c?.type === 1 && c.peer?.id === m.senderId) return c.peer.avatarThumb || c.peer.avatar || ''
   return ''
 }
 

@@ -331,8 +331,8 @@ curl https://站点/api/conversations -H 'Authorization: Bearer <token>'
 与 `web/src/types/proto.ts` 完全一致，完整定义见该文件与 `docs/后端需求规格.md` §3.1：
 
 ```
-User                { id, username, nickname, avatarColor, avatar?, email?, role:"user"|"admin", bannedUntil?, banReason? }
-User 摘要            { id, username, nickname, avatarColor, avatar? }
+User                { id, username, nickname, avatarColor, avatar?, avatarThumb?, email?, role:"user"|"admin", bannedUntil?, banReason? }
+User 摘要            { id, username, nickname, avatarColor, avatarThumb?, avatar? }
 Conversation        { id, type:1|2|3, name, avatar?, peer?, ownerId, memberCount, lastMessageId, lastMessageAt,
                       lastMessagePreview, lastMessageType, lastReadMessageId, unreadCount, pinned, muted,
                       archived?, muteAll?, mentionUnread, announcement, announcementAt, announcementBy }

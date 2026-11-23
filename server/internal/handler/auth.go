@@ -622,6 +622,9 @@ func (h *AuthHandler) UpdateMe(c *gin.Context) {
 		Nickname *string `json:"nickname"`
 		Email    *string `json:"email"`
 		Avatar   *string `json:"avatar"`
+		// AvatarThumb 同一头像的 64×64 缩略图，列表接口只读它。
+		// 允许缺省（老客户端升级期间仍只传 avatar），此时按主图回退。
+		AvatarThumb *string `json:"avatarThumb"`
 		// EmailCode 换绑邮箱时必填：发到新邮箱的 6 位验证码
 		EmailCode string `json:"emailCode"`
 	}
@@ -652,6 +655,17 @@ func (h *AuthHandler) UpdateMe(c *gin.Context) {
 			return
 		}
 		u.Avatar = a
+		// 换头像时若客户端没带缩略图，清掉旧的——否则列表会显示上一张头像
+		// 的缩略图，与新主图不一致。老客户端不带该字段时列表回退到主图。
+		u.AvatarThumb = ""
+	}
+	if req.AvatarThumb != nil {
+		th := strings.TrimSpace(*req.AvatarThumb)
+		if th != "" && !validAvatarThumbDataURL(th) {
+			fail(c, http.StatusBadRequest, "头像缩略图格式不支持（仅 png/jpeg/webp，≤16KB）")
+			return
+		}
+		u.AvatarThumb = th
 	}
 
 	if req.Nickname != nil {

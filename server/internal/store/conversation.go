@@ -761,10 +761,11 @@ func (s *ConversationStore) singlePeers(convIDs []uint, userID uint) (map[uint]m
 		Username       string `gorm:"column:username"`
 		Nickname       string `gorm:"column:nickname"`
 		AvatarColor    string `gorm:"column:avatar_color"`
+		AvatarThumb    string `gorm:"column:avatar_thumb"`
 		Avatar         string `gorm:"column:avatar"`
 	}
 	if err := s.db.Table("conversation_members cm").
-		Select("cm.conversation_id, u.id, u.username, u.nickname, u.avatar_color, u.avatar").
+		Select("cm.conversation_id, u.id, u.username, u.nickname, u.avatar_color, u.avatar_thumb, u.avatar").
 		Joins("JOIN users u ON u.id = cm.user_id").
 		Where("cm.conversation_id IN ? AND cm.user_id <> ?", convIDs, userID).
 		Scan(&rows).Error; err != nil {
@@ -772,7 +773,8 @@ func (s *ConversationStore) singlePeers(convIDs []uint, userID uint) (map[uint]m
 	}
 	for _, r := range rows {
 		out[r.ConversationID] = model.UserBrief{
-			ID: r.ID, Username: r.Username, Nickname: r.Nickname, AvatarColor: r.AvatarColor, Avatar: r.Avatar,
+			ID: r.ID, Username: r.Username, Nickname: r.Nickname,
+			AvatarColor: r.AvatarColor, AvatarThumb: r.AvatarThumb, Avatar: r.Avatar,
 		}
 	}
 	return out, nil
@@ -818,10 +820,11 @@ func (s *ConversationStore) MembersView(convID uint) ([]model.MemberView, error)
 		Username    string     `gorm:"column:username"`
 		Nickname    string     `gorm:"column:nickname"`
 		AvatarColor string     `gorm:"column:avatar_color"`
+		AvatarThumb string     `gorm:"column:avatar_thumb"`
 		Avatar      string     `gorm:"column:avatar"`
 	}
 	err := s.db.Table("conversation_members cm").
-		Select("cm.user_id, cm.role, cm.mute_until, cm.joined_at, u.id, u.username, u.nickname, u.avatar_color, u.avatar").
+		Select("cm.user_id, cm.role, cm.mute_until, cm.joined_at, u.id, u.username, u.nickname, u.avatar_color, u.avatar_thumb, u.avatar").
 		Joins("JOIN users u ON u.id = cm.user_id").
 		Where("cm.conversation_id = ?", convID).
 		Order("cm.id ASC").
@@ -841,6 +844,7 @@ func (s *ConversationStore) MembersView(convID uint) ([]model.MemberView, error)
 				Username:    r.Username,
 				Nickname:    r.Nickname,
 				AvatarColor: r.AvatarColor,
+				AvatarThumb: r.AvatarThumb,
 				Avatar:      r.Avatar,
 			},
 		})

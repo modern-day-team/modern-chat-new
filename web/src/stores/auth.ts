@@ -80,7 +80,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function updateMe(body: { nickname?: string; email?: string; avatar?: string }) {
+  async function updateMe(body: { nickname?: string; email?: string; avatar?: string; avatarThumb?: string }) {
     user.value = await authApi.updateMe(body)
   }
 

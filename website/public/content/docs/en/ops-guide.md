@@ -381,7 +381,7 @@ tar xzf uploads_2026-10-25.tar.gz -C server/data
 - Back up before upgrading (the script never touches data, but migration SQL alters schemas)
 - **Migrations that add indexes must run off-peak**: e.g. `0021_message_sender_index` (indexes `messages.sender_id`). MySQL 8 Online DDL does not lock the table by default, but building an index on a large table still uses IO; with a very large message table, run it at low traffic and watch `SHOW PROCESSLIST`
 
-### 5.1 One-time Notes on Migrations 0023 / 0024 / 0025 / 0031
+### 5.1 One-time Notes on Migrations 0023 / 0024 / 0025 / 0031 / 0032
 
 | Migration | Content | Impact | Rollback risk |
 |---|---|---|---|
@@ -390,11 +390,12 @@ tar xzf uploads_2026-10-25.tar.gz -C server/data
 | `0025_friend_email_unique` | unique indexes on `friends` / `email_codes`, including duplicate-friend cleanup | cleanup order is "accepted > pending > rejected, earliest id kept per status"; deleted rows are unrecoverable | you can only drop the index; dirty data does not come back — **backup is mandatory** |
 
 | `0031_friend_friend_index` | composite index `friends (friend_id, status)` | index only, no data changes; safe off-peak (Online DDL in MySQL 8 does not lock the table) | drop the index; friend reverse lookups fall back to a full scan (performance regression only, no data risk) |
+| `0032_user_avatar_thumb` | nullable `users.avatar_thumb` TEXT column | adds a column only, no data changes; legacy users have an empty thumb and the frontend falls back to the full image | drop the column; thumbs are not restored, regenerated on the user's next avatar change |
 
 > Numbering note: 0026–0030 are already used in production history (0026 legacy_migration, 0027 twofa, 0029 legacy-migration tables, 0030 group-management columns). This index is numbered 0031 to avoid colliding with versions already recorded in `schema_migrations`.
 
-Execution order: stop writes / off-peak → backup (full database recommended for 0025) → 0023 → 0024 → 0025 → 0031 → start the new version (`MIGRATE=true` runs them in order automatically).
-Run manually with `golang-migrate`; versions are recorded in `schema_migrations`; rollback order is reversed (0031 → 0025 → 0024 → 0023).
+Execution order: stop writes / off-peak → backup (full database recommended for 0025) → 0023 → 0024 → 0025 → 0031 → 0032 → start the new version (`MIGRATE=true` runs them in order automatically).
+Run manually with `golang-migrate`; versions are recorded in `schema_migrations`; rollback order is reversed (0032 → 0031 → 0025 → 0024 → 0023).
 Full rationale and verification items: [Security & Migration Guide.md](安全与迁移指南.md) §6.
 
 > Never run `go test -tags integration ./test/` against a production database: the integration tests DELETE all business tables first.

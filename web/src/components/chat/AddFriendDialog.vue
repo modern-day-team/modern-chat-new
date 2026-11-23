@@ -137,7 +137,7 @@ onBeforeUnmount(() => {
 
       <ul v-if="results.length" class="add-friend__list">
         <li v-for="u in results" :key="u.id" class="add-friend__item">
-          <AvatarBadge :name="u.nickname" :src="u.avatar" :color="u.avatarColor" :size="36" />
+          <AvatarBadge :name="u.nickname" :src="u.avatarThumb || u.avatar" :color="u.avatarColor" :size="36" />
           <span class="add-friend__meta">
             <span class="add-friend__name">{{ u.nickname }}</span>
             <span class="add-friend__username">@{{ u.username }}</span>

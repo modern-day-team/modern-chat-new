@@ -100,7 +100,7 @@ modernchat-new/
 │   │   ├── service/            # mailer / storage(本地+S3) / push / backup / updater
 │   │   ├── logx/ metrics/      # 日志轮转 / Prometheus 指标
 │   │   └── router/             # 全部路由与中间件装配
-│   ├── migrations/             # 0001_init … 0031_friend_friend_index（版本化 SQL）
+│   ├── migrations/             # 0001_init … 0032_user_avatar_thumb（版本化 SQL）
 │   ├── test/                   # 集成测试（-tags integration；需 MySQL，详见 server/README）
 │   └── Dockerfile
 ├── web/                        # Vue 前端

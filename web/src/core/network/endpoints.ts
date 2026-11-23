@@ -103,6 +103,8 @@ export const authApi = {
     nickname?: string
     email?: string
     avatar?: string
+    /** 同头像的 64×64 缩略图，列表接口只读它 */
+    avatarThumb?: string
     /** 换绑邮箱时必填：发到新邮箱的验证码 */
     emailCode?: string
   }) => http.patch<User>('/me', body),

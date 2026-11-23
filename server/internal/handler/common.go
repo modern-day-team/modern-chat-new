@@ -94,6 +94,17 @@ func validAvatarDataURL(s string) bool {
 	return avatarDataURLRe.MatchString(s)
 }
 
+// maxAvatarThumbLen 64×64 webp q0.7 的 base64 通常 1–4KB，16KB 足够宽裕。
+const maxAvatarThumbLen = 16 * 1024
+
+// validAvatarThumbDataURL 校验缩略图：与头像同样的 MIME 白名单，长度收紧到 16KB。
+func validAvatarThumbDataURL(s string) bool {
+	if len(s) > maxAvatarThumbLen {
+		return false
+	}
+	return avatarDataURLRe.MatchString(s)
+}
+
 func validateEmail(s string) string {
 	if s == "" {
 		return ""

@@ -145,7 +145,7 @@ modernchat-new/
 ├── docker-compose.yml      MySQL + 后端一键环境
 ├── server/
 │   ├── go.mod  .env.example  Dockerfile
-│   ├── migrations/                 版本化 SQL（0001…0031，生产用）
+│   ├── migrations/                 版本化 SQL（0001…0032，生产用）
 │   ├── test/                       集成测试（//go:build integration）
 │   ├── data/uploads/               上传的图片 / 语音 / 视频（本地存储时；已 gitignore）
 │   ├── cmd/server/main.go
@@ -686,7 +686,7 @@ cd web && npm install && npm run dev  # :5173，代理 /api 与 /ws 到 :8080
 
 ### 13.2 实施完成（2026-10-24）
 - **前端 `web/`**：认证（登录/注册/找回）、聊天四栏（图标栏 / 分组筛选栏 / 会话与联系人列表 / 聊天区 + 详情面板）、连续消息分组与已读/撤回收敛、添加好友弹窗（用户名/昵称搜索、就地同意）、群管理、插件沙箱宿主 + 描述式渲染器、插件管理抽屉、站长后台（用户 + 插件）、响应式（平板收详情 / 手机单面板）、设计规范打磨（对比度、tabular 数字、焦点可达性）。
-- **后端 `server/`**：§6 全部接口、§7 WS 协议（64 分片 Hub / 读写 pump / presence / kicked）、插件（manifest 校验 / SSRF / 升级覆盖 / 全局下架）、站长后台、限流三档、结构化日志、优雅停机、`migrations/0001…0031`。
+- **后端 `server/`**：§6 全部接口、§7 WS 协议（64 分片 Hub / 读写 pump / presence / kicked）、插件（manifest 校验 / SSRF / 升级覆盖 / 全局下架）、站长后台、限流三档、结构化日志、优雅停机、`migrations/0001…0032`。
 - **测试**：`go build` / `go vet` / `gofmt` / 单元测试 / 集成测试（真实 MySQL 全链路：认证→好友→单聊→WS 收发→幂等→已读→撤回→未读→群聊→封禁踢线→插件安装/升级/SSRF/下架）全绿；前端 `vue-tsc` / `oxlint+eslint` / `vite build` 全绿。
 - **安全补强**（代码审查后）：WS Origin 白名单、`JWT_SECRET` 生产强制、找回链接配置化 + 恒定耗时、证书类文件 gitignore。
 - **交付配套**：`docker-compose.yml`、`server/Dockerfile`、Nginx 双版配置、示例插件、`scripts/install.sh` / `package-release.sh` / `update.sh` / `uninstall.sh`、`/api/version` 版本核对。
