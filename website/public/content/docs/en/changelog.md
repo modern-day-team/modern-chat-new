@@ -13,6 +13,7 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 > - **Run the new migration `0033_user_sessions` (sign-in session table)**: it only creates a new table, touches no existing data, is safe to run off-peak and rolls back cleanly; `MIGRATE=true` applies it automatically. Old JWTs without a `sid` still work on first request (falling back to `tv`-only validation); the next login issues one with a session ID.
 > - Multi-client setups must register desktop / mobile origins in `FRONTEND_URL` (e.g. `http://localhost:1420`), otherwise those clients' WS handshake and cross-origin REST are rejected. See `docs/client-guide.md`.
 > - **All users must sign in again after upgrading**: security hardening rejects legacy JWTs without a `sid` (single-device revocation could otherwise be bypassed). Newly issued tokens include a `sid`; no further re-login required.
+> - **Repository location**: the Gitee repository has been closed; every project-group repo has moved to GitHub. Gitee mentions in the historical release entries below are background only (they record how installs/fixes worked at the time) and **no longer offer downloads or updates**. The only current repository and install/update source is `https://github.com/modern-day-team/modern-chat-new`.
 
 ### Changed
 
