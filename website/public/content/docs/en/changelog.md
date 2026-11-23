@@ -6,7 +6,13 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 
 ---
 
-## [Unreleased]
+## [0.11.1] — 2026-11-23
+
+> **Upgrade notes (from 0.11.0)**
+>
+> - **Two new migrations are required**: `0031_friend_friend_index` (friend reverse-lookup index) and `0032_user_avatar_thumb` (avatar thumbnail column). Both change schema only, never data; safe off-peak and reversible. `MIGRATE=true` applies them in order automatically.
+> - **Automatic updates are enabled by default after upgrading** (`AUTO_UPDATE=true`, release + systemd deployments only): GitHub Releases are checked every 30 minutes and a new tag triggers an automatic upgrade. Instances that must not auto-update need `AUTO_UPDATE=false` in `server/.env` plus a restart. See Ops Manual §4.2.
+> - Avatar thumbnails are **generated at upload time by the frontend**: existing avatars keep using the full image until their owner changes it; an old client changing the image without a thumb clears the stale thumb (lists fall back to the main image), so old and new avatars never mix.
 
 ### Performance
 
@@ -334,6 +340,7 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 
 ---
 
+[0.11.1]: https://github.com/modern-day-team/modern-chat-new/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/modern-day-team/modern-chat-new/compare/v0.10.3...v0.11.0
 [0.10.3]: https://github.com/modern-day-team/modern-chat-new/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/modern-day-team/modern-chat-new/compare/v0.10.1...v0.10.2

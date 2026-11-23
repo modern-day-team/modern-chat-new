@@ -6,7 +6,13 @@
 
 ---
 
-## [未发布]
+## [0.11.1] — 2026-11-23
+
+> **升级注意（从 0.11.0 升级）**
+>
+> - **需执行两个新迁移**：`0031_friend_friend_index`（好友反查索引）与 `0032_user_avatar_thumb`（头像缩略图列）。两者都只改结构、不动数据，低峰执行即可，可安全回滚；`MIGRATE=true` 会自动按序执行。
+> - **升级后默认开启自动更新**（`AUTO_UPDATE=true`，仅发行版 + systemd 部署）：每 30 分钟查一次 GitHub Release，发现新 tag 自动升级。不希望自动升级的实例须在 `server/.env` 设 `AUTO_UPDATE=false` 并重启。详见运维手册 §4.2。
+> - 头像缩略图由**前端上传时生成**：老头像在用户下次换图前仍以完整图传输；旧客户端换图不带缩略图时会清空旧缩略图（列表回退到主图），不会出现新旧混显。
 
 ### 性能
 
@@ -357,6 +363,7 @@
 
 ---
 
+[0.11.1]: https://github.com/modern-day-team/modern-chat-new/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/modern-day-team/modern-chat-new/compare/v0.10.3...v0.11.0
 [0.10.3]: https://github.com/modern-day-team/modern-chat-new/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/modern-day-team/modern-chat-new/compare/v0.10.1...v0.10.2
