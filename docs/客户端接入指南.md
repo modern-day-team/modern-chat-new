@@ -18,7 +18,10 @@
 ## 2. 登录与令牌
 
 - 密码登录 `POST /api/auth/login {username,password}` → `{token,user}`；开两步验证时先返回 `{twofa:true,ticket,method}`，再 `POST /api/auth/2fa/verify {ticket,code}` 换 token。
-- 桌面端推荐扫码登录：`POST /api/auth/qr/start` 渲染二维码 → `POST /api/auth/qr/status` 轮询 → confirmed 时拿到 token；手机端 `POST /api/auth/qr/confirm` 授权。票据一次性消费，轮询请用 POST body 避免进访问日志。
+- 桌面端推荐扫码登录：`POST /api/auth/qr/start` 渲染二维码 → `POST /api/auth/qr/status` 轮询（2.5s 一次）→ confirmed 时拿到 token；手机端 `POST /api/auth/qr/confirm` 授权。票据一次性消费（首个成功轮询取走，重试拿不到），轮询请用 POST body 避免进访问日志。
+  - **二维码载荷格式**：`https://<站点>/app/qr/<票据>`（票据是 `start` 返回的 `token`，256 位随机）。桌面端可用 `VITE_QR_BASE` 指定站点前端地址，默认取 API 根地址；**手机端扫描后只需取 URL 最后一段作为票据**，不必真的打开该 URL。
+  - **状态机**：`pending`（待确认）/ `confirmed`（带 `token` 与 `user`）/ `expired`（5 分钟过期或已消费）；过期后桌面端应重新 `start`。`confirm` 需手机端有效 JWT，票据无效返回 400。
+  - **已落地实现**：`Modernchat-desktop` 的 `src/components/QrLogin.vue`（生成 + 轮询 + 落 token）、`Modernchat-mobile` 的 `qr_confirm_page.dart`（`mobile_scanner` 扫描 + 解析票据 + 确认弹窗）。新端接入可照此口径。
 - SSO 场景：`GET /api/auth/sso/start?redirect=` 跳聚合中心 → `callback` 回跳 → `POST /api/auth/sso/exchange {ticket}` 换 token。
 - 令牌存储：
   - **必须用 `Authorization: Bearer <token>` 调 REST**。REST 中间件只认 Bearer，不认 cookie（避免 CSRF）；cookie `mc_auth` 仅用于浏览器加载 `/uploads` 图片/视频与 WS 握手回退。

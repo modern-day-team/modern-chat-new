@@ -18,7 +18,10 @@ All clients use the same backend: REST prefix `/api`, WebSocket `/ws`, uploads `
 ## 2. Login and tokens
 
 - Password login: `POST /api/auth/login {username,password}` → `{token,user}`; with 2FA enabled it first returns `{twofa:true,ticket,method}`, then `POST /api/auth/2fa/verify {ticket,code}` for the token.
-- Desktop apps should use QR login: `POST /api/auth/qr/start` renders a QR code → poll `POST /api/auth/qr/status` → receive the token on `confirmed`. The mobile side calls `POST /api/auth/qr/confirm`. Tickets are single-use; poll with a POST body so the token never enters access logs.
+- Desktop apps should use QR login: `POST /api/auth/qr/start` renders a QR code → poll `POST /api/auth/qr/status` every 2.5s → receive the token on `confirmed`. The mobile side calls `POST /api/auth/qr/confirm`. Tickets are single-use (the first successful poll consumes it; retries get nothing); poll with a POST body so the token never enters access logs.
+  - **QR payload format**: `https://<site>/app/qr/<ticket>` (the ticket is `start`'s `token`, 256-bit random). Desktop can set `VITE_QR_BASE` to the site front-end address (defaults to the API base); **mobile only needs the last URL path segment as the ticket** — it does not need to open that URL.
+  - **State machine**: `pending` / `confirmed` (with `token` + `user`) / `expired` (5 minutes or already consumed); on `expired` the desktop should call `start` again. `confirm` requires a valid mobile JWT; an invalid ticket returns 400.
+  - **Implemented**: `Modernchat-desktop` `src/components/QrLogin.vue` (generate + poll + store token) and `Modernchat-mobile` `qr_confirm_page.dart` (`mobile_scanner` + ticket extraction + confirmation dialog). New clients can follow the same contract.
 - SSO flow: `GET /api/auth/sso/start?redirect=` → hub → `callback` → `POST /api/auth/sso/exchange {ticket}`.
 - Token storage:
   - **Always call REST with `Authorization: Bearer <token>`.** REST only accepts Bearer (not cookies, to avoid CSRF); the `mc_auth` cookie is only for browser media loading (`/uploads`) and WS fallback.
