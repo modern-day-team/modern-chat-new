@@ -23,7 +23,7 @@ Single-instance Go service, module list:
 | Admin | User pagination, ban / unban / reset password |
 | Ops | Health check `/api/health`, version `/api/version`, structured logs, three rate-limit tiers, one-command upgrade script |
 
-**Interface types**: REST (JSON, prefix `/api`) + WebSocket (`/ws`). File storage is optional — local disk or S3-compatible object storage (images / audio / video / group files); avatars are user-uploaded data URLs, falling back to an id-derived color when not uploaded. No third-party dependencies (SMTP / Redis optional).
+**Interface types**: REST (JSON, prefix `/api`) + WebSocket (`/ws`). File storage is optional — local disk or S3-compatible object storage (images / audio / video / group files / avatars); avatars are cropped to 256px + 64px data URLs by the frontend, decoded and saved through the current Storage server-side with only URLs kept in the DB, falling back to an id-derived color when not uploaded. No third-party dependencies (SMTP / Redis optional).
 
 ## 2. Tech Stack & Versions
 
@@ -97,7 +97,7 @@ AdminPluginRow  { name, version, installCount, enabledCount, globalDisabled, cre
 | POST `/api/auth/qr/status` | `{token}` | `{status:"pending"\|"confirmed"\|"expired", token?, user?}`; **no auth**, desktop polls every 2.5s (dedicated 60/min limit; POST body keeps the ticket out of access logs). `confirmed` hands out the desktop JWT once — the first successful poll takes it, retries get expired; invalidated when the confirmer is banned |
 | POST `/api/auth/qr/confirm` | `{token}` | `{ok:true}`; **requires the phone's JWT** (authed group). Authorizes the desktop sign-in; invalid/expired QR→400 |
 | GET `/api/me` | — | `User` (with email) |
-| PATCH `/api/me` | `{nickname?, email?, avatar?, emailCode?}`. **Changing the bound email requires `emailCode`** (sent to the new address; stored and `email_verified=true` only after successful consumption; an empty `email` string means unbind and needs no verification); if the email is unchanged the verification state is untouched; with SMTP unconfigured the change returns 400. avatar is `data:image/(png\|jpeg\|webp);base64,…`, frontend compresses to 256×256, server validates prefix & ≤256KB, empty string clears | updated `User` |
+| PATCH `/api/me` | `{nickname?, email?, avatar?, avatarThumb?, emailCode?}`. **Changing the bound email requires `emailCode`** (sent to the new address; stored and `email_verified=true` only after successful consumption; an empty `email` string means unbind and needs no verification); if the email is unchanged the verification state is untouched; with SMTP unconfigured the change returns 400. avatar/avatarThumb accept `data:image/(png\|jpeg\|webp);base64,…` (frontend compresses to 256×256 / 64×64, server decodes and saves via the current Storage, keeping only URLs in DB) or an on-site upload URL (`Owns` check), empty string clears; legacy data URLs still display | updated `User` |
 | POST `/api/me/email-code` | `{email}` (new address) | `{ok:true, cooldownSeconds}`; same as the current email→400, taken by someone else→409, SMTP unavailable→503; 5 times/min per user, 60-second cooldown per email |
 | POST `/api/me/logout-others` | — | `{ok:true}`; `token_version+1` invalidates all old JWTs; also actively `KickUser`s all established WS connections of that account (sending `kicked` frames), the current device must log in again too |
 | GET `/api/me/2fa` | — | `{enabled, method, email}`; the user's own 2FA status |

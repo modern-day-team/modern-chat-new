@@ -401,7 +401,7 @@ tar xzf uploads_2026-10-25.tar.gz -C server/data
 - 建议每日一次，保留 7–30 天；也可在后台「备份」页签点「立即备份」，或设置 `BACKUP_INTERVAL_HOURS` / `BACKUP_RETAIN` 让服务自动备份（依赖 `mysqldump`，不在 PATH 时用 `MYSQLDUMP_PATH` 指定）
 - **消息里只存 URL**（`/uploads/2026/11/xxx.png`）。只备份数据库不备份 `uploads/` 的话，恢复后所有图片和语音都会 404——消息记录还在，但内容打不开
 - **用对象存储时不需要备份 `uploads/`**，由云厂商负责；此时数据库备份仍必须
-- `users.avatar` 存的是头像的 data URL（每张约 20–40 KB），会占库空间；用户多时按需清理
+- 用户头像现转存到当前 Storage（本地 `uploads/` 或对象存储），`users.avatar` / `avatar_thumb` 只存 URL；升级前的存量 data URL 仍可显示，用户下次换图自动转为 URL。备份策略与消息附件一致：本地部署需备份 `uploads/`，对象存储由云厂商负责
 - 升级前建议先备份一次（脚本不会动数据，但迁移 SQL 会改表结构）
 - **新增索引的迁移要在低峰期执行**：如 `0021_message_sender_index`（为 `messages.sender_id` 建索引）。MySQL 8 默认 Online DDL 不锁表，但大表建索引仍会占用 IO；消息表很大时建议放在业务低峰，并观察 `SHOW PROCESSLIST`
 
@@ -499,7 +499,7 @@ grep -E 'rate|ban|kick' server/logs/*.log | tail -30
 nginx 若缓存了静态资源，检查 `dist/assets` 的文件名哈希是否更新；浏览器强制刷新（Ctrl+F5）。前端是纯静态资源，重启后端不会刷新页面。
 
 **Q11：头像存哪了，会不会把库撑爆**
-存 `users.avatar`（data URL，256×256 webp，约 20–40 KB/张）。当前规模没问题；用户上千后建议改为文件存储 + URL。
+头像转存到当前 Storage，库里只留 URL：未配对象存储时落在 `DATA_DIR/uploads/2026/11/xxx.webp`，配了对象存储就在对应桶 / CDN，和消息附件走同一套。升级前的存量 data URL 仍显示，用户下次换图自动转为 URL。切换存储不会搬迁老头像，与消息附件口径一致。
 
 **Q12：找回密码邮件里的链接打不开**
 链接域名取自 `FRONTEND_URL`。生产环境务必改成真实域名，否则用户点开是 `localhost`。

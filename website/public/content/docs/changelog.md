@@ -8,6 +8,10 @@
 
 ## [未发布]
 
+### 变更
+
+- **头像改存存储层（本地默认，接入对象存储后自动上云）**：此前用户头像是 data URL 直接写进 `users.avatar`（256KB MEDIUMTEXT），列表还要再存一份 64×64 缩略图 data URL。现在 `PATCH /me` 收到 data URL 后由服务端解码并转存到当前 `Storage` 实现——未配对象存储时落 `DATA_DIR/uploads`，配了对象存储就写对应桶 / CDN，数据库只留可访问 URL。已上传的本站 URL 可直接提交（`Owns` 校验，防外链换头像）；旧客户端继续传 data URL 也能用，存量 data URL 照常显示、用户下次换图后自动转为 URL。孤儿清理同时覆盖 `users.avatar_thumb`，换图不再泄漏旧缩略图。顺带修复上一轮 `ByIDNoAvatar` 引入的回归：Auth 恢复加载完整行，避免 2FA 的 `Save(me)` 把头像写成空值（头像改存 URL 后也消除了大字段读放大，无需再省略该列）。**存量影响**：老头像在用户下次换图前仍是 data URL；切换存储后历史头像 URL 不会自动搬迁，与消息附件口径一致。
+
 ### 新增
 
 - **对象存储服务商预设 + 连接自检**：后台「系统设置 → 对象存储」新增「服务商」下拉（AWS S3 / MinIO / 阿里云 OSS / 腾讯云 COS / 华为云 OBS / 百度 BOS / 火山 TOS / 金山 KS3 / UCloud US3 / 自定义），选择后自动带出端点 / 区域模板；`StorageConfig` 新增 `Provider` / `PathStyle`，`minio.Options` 真正设置 `BucketLookup` 与 `Region`——此前一律走默认 DNS 寻址，自建 MinIO / 内网端点会得到 `403 SignatureDoesNotMatch` / DNS 失败。新增 `/api/admin/settings/storage/providers`（预设列表）与 `/api/admin/settings/storage/test`（`HEAD Bucket` 只读自检，不写对象）。老配置无 `provider` 时按 `custom` 处理（path 风格），用 AWS/OSS 且只手填端点的实例升级后请到后台选对应服务商，避免寻址风格变化。七牛 Kodo / 又拍云 USS 自有协议**仍未实现**，超前描述它们的孤儿文档 `docs/storage-providers.md` 已按实际能力重写。

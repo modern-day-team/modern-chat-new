@@ -374,7 +374,7 @@ Everything except register/login/forgot/reset/logout requires `Authorization: Be
 | GET | `/api/me` | current user |
 | POST | `/api/auth/forgot` `{email}` | sends a reset link (printed to log in dev) |
 | POST | `/api/auth/reset` `{token, newPassword}` | sets new password (token_version+1) |
-| PATCH | `/api/me` `{nickname?, email?, avatar?, emailCode?}` | edit profile; **changing the email requires a code sent to the new address**; avatar is a png/jpeg/webp data URL ≤256KB |
+| PATCH | `/api/me` `{nickname?, email?, avatar?, avatarThumb?, emailCode?}` | edit profile; **changing the email requires a code sent to the new address**; avatar/avatarThumb accept png/jpeg/webp data URLs (server transcodes to the current Storage, DB keeps only URLs) or on-site upload URLs (`Owns` check), empty string clears; legacy data URLs still work |
 | POST | `/api/me/email-code` `{email}` | sends an email-change code (to the new address) |
 | POST | `/api/me/logout-others` | log out all devices: `token_version+1` invalidates every old JWT; simultaneously `KickUser` closes every established WS connection for that account (including the current device, which must log in again) |
 | GET | `/api/users/search?kw=` | search people |

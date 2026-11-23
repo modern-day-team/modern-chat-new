@@ -370,7 +370,7 @@ modernchat-new/
 | GET | `/api/me` | 当前用户 |
 | POST | `/api/auth/forgot` `{email}` | 发重置链接（开发期打日志） |
 | POST | `/api/auth/reset` `{token, newPassword}` | 设新密码（token_version+1） |
-| PATCH | `/api/me` `{nickname?, email?, avatar?, emailCode?}` | 改资料；**换绑邮箱须带新邮箱验证码**；avatar 为 ≤256KB 的 png/jpeg/webp data URL |
+| PATCH | `/api/me` `{nickname?, email?, avatar?, avatarThumb?, emailCode?}` | 改资料；**换绑邮箱须带新邮箱验证码**；avatar/avatarThumb 可为 png/jpeg/webp data URL（服务端转存到当前 Storage，DB 只留 URL）或本站上传地址（`Owns` 校验），空串清除；老 data URL 继续兼容 |
 | POST | `/api/me/email-code` `{email}` | 发送换绑邮箱验证码（发往新邮箱） |
 | POST | `/api/me/logout-others` | 退出所有设备：`token_version+1`，旧 JWT 全部失效；同时 `KickUser` 断开该账号全部已建 WS 连接（含当前设备，需重新登录） |
 | GET | `/api/users/search?kw=` | 搜人 |

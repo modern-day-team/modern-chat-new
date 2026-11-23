@@ -75,7 +75,7 @@ curl https://站点/api/conversations -H 'Authorization: Bearer <token>'
 | POST `/api/auth/2fa/verify` | `{ticket, code}` | `{token, user}`；**免鉴权**。两步验证第二因子校验：6 位 = TOTP / 邮箱码（按开启方式），8 位十六进制（可带连字符）= 一次性恢复码；每票据最多试 5 次 |
 | POST `/api/auth/2fa/email-code` | `{ticket}` | `{ok:true, cooldownSeconds}`；**免鉴权**，登录两步验证阶段向本人邮箱发码（60s 冷却） |
 | GET `/api/me` | — | `User`（本人含 email / emailVerified） |
-| PATCH `/api/me` | `{nickname?, email?, avatar?, emailCode?}` | 更新后 `User`。换绑邮箱必须带 `emailCode`（发往新邮箱）；空串 `email`=解绑；avatar 为 dataURL（≤256KB）或空串清除。昵称/头像变更后广播 `user_change` |
+| PATCH `/api/me` | `{nickname?, email?, avatar?, avatarThumb?, emailCode?}` | 更新后 `User`。换绑邮箱必须带 `emailCode`（发往新邮箱）；空串 `email`=解绑；avatar/avatarThumb 为 dataURL（服务端转存 Storage，DB 留 URL）或本站上传地址，空串清除。昵称/头像变更后广播 `user_change` |
 | POST `/api/me/email-code` | `{email}`（新邮箱） | `{ok:true, cooldownSeconds}`；被他人占用→409 |
 | POST `/api/me/logout-others` | — | `{ok:true}`；`token_version+1` 全端失效并踢线（含 WS `kicked`） |
 | GET `/api/me/2fa` | — | `{enabled, method, email}`；本人两步验证状态（默认关闭，设置页展示） |

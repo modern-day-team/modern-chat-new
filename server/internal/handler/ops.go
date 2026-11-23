@@ -168,9 +168,14 @@ func (h *OpsHandler) referencedUploads() (map[string]bool, error) {
 		Where("avatar LIKE '/uploads/%'").Pluck("avatar", &userAvatars).Error; err != nil {
 		return nil, err
 	}
+	var userAvatarThumbs []string
+	if err := h.db.Model(&model.User{}).
+		Where("avatar_thumb LIKE '/uploads/%'").Pluck("avatar_thumb", &userAvatarThumbs).Error; err != nil {
+		return nil, err
+	}
 
-	out := make(map[string]bool, len(msgURLs)+len(stickerURLs)+len(fileURLs)+len(convAvatars)+len(userAvatars))
-	for _, list := range [][]string{msgURLs, stickerURLs, fileURLs, convAvatars, userAvatars} {
+	out := make(map[string]bool, len(msgURLs)+len(stickerURLs)+len(fileURLs)+len(convAvatars)+len(userAvatars)+len(userAvatarThumbs))
+	for _, list := range [][]string{msgURLs, stickerURLs, fileURLs, convAvatars, userAvatars, userAvatarThumbs} {
 		addUploadRefs(out, list)
 	}
 	return out, nil

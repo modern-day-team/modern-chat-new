@@ -2,6 +2,7 @@ package handler
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -29,6 +30,9 @@ type AuthHandler struct {
 	mailer *service.Mailer
 	convs  *store.ConversationStore
 	msgs   *store.MessageStore
+	// storage 头像落地层：本地部署写 DATA_DIR/uploads，配置了对象存储就写对象存储。
+	// 可为 nil（测试 / 未装配），此时 UpdateMe 拒绝 data URL 头像并给出明确错误。
+	storage service.Storage
 	// settings 用于读取「是否开放注册」这类可运营开关（可为 nil）
 	settings *store.SettingStore
 	// invites 邀请码核销（注册需要邀请码时使用）
@@ -64,6 +68,9 @@ func NewAuthHandler(
 		emailCodes: emailCodes, migrate: migrate,
 	}
 }
+
+// SetStorage 注入头像存储实现（router 装配时调用；nil 时头像上传返回明确错误）。
+func (h *AuthHandler) SetStorage(s service.Storage) { h.storage = s }
 
 type credentials struct {
 	Username string `json:"username"`
@@ -613,6 +620,27 @@ func (h *AuthHandler) Me(c *gin.Context) {
 	c.JSON(http.StatusOK, full)
 }
 
+// storeAvatarDataURL 把前端裁好的 data URL 转存到当前 Storage，返回可访问 URL。
+// maxChars 用 data URL 的字符长度上限（含 base64 头），解码后按真实字节交给
+// Storage.Save 再校验一次文件头与体积。
+func (h *AuthHandler) storeAvatarDataURL(dataURL string, maxChars int) (string, error) {
+	if h.storage == nil {
+		return "", fmt.Errorf("文件存储未初始化，无法保存头像")
+	}
+	comma := strings.IndexByte(dataURL, ',')
+	if comma < 0 || comma+1 >= len(dataURL) {
+		return "", fmt.Errorf("头像 data URL 格式错误")
+	}
+	if len(dataURL) > maxChars {
+		return "", fmt.Errorf("头像过大")
+	}
+	raw, err := base64.StdEncoding.DecodeString(dataURL[comma+1:])
+	if err != nil {
+		return "", fmt.Errorf("头像 data URL 解码失败: %w", err)
+	}
+	return h.storage.Save("image", raw, int64(maxChars))
+}
+
 // UpdateMe 改昵称 / 头像 / 邮箱。
 //
 // 换绑邮箱必须带新邮箱收到的验证码并核销通过：只校验唯一性就落库的话，
@@ -650,22 +678,48 @@ func (h *AuthHandler) UpdateMe(c *gin.Context) {
 
 	if req.Avatar != nil {
 		a := strings.TrimSpace(*req.Avatar)
-		if a != "" && !validAvatarDataURL(a) {
-			fail(c, http.StatusBadRequest, "头像格式不支持（仅 png/jpeg/webp，≤256KB）")
-			return
+		if a == "" {
+			u.Avatar = ""
+		} else if !validAvatarDataURL(a) && !validAvatarThumbDataURL(a) {
+			// 已经上传好的本站 URL（新客户端先 upload 再 PATCH）也允许，
+			// 只要归属本站——否则可把头像换成任意外链，泄露访客 IP。
+			if h.storage == nil || !h.storage.Owns(a) {
+				fail(c, http.StatusBadRequest, "头像格式不支持（仅 png/jpeg/webp 或本站上传地址）")
+				return
+			}
+			u.Avatar = a
+		} else {
+			// data URL：服务端转存到当前存储实现（本地磁盘 / 对象存储），
+			// 数据库只留 URL。这样头像跟着 storage 配置走，不再把 256KB
+			// base64 塞进用户行，也避免每次 GET /me 都拉一遍大字段。
+			stored, err := h.storeAvatarDataURL(a, maxAvatarLen)
+			if err != nil {
+				internal(c, err)
+				return
+			}
+			u.Avatar = stored
 		}
-		u.Avatar = a
-		// 换头像时若客户端没带缩略图，清掉旧的——否则列表会显示上一张头像
-		// 的缩略图，与新主图不一致。老客户端不带该字段时列表回退到主图。
+		// 换主图时若客户端没带缩略图，清掉旧的，避免新旧头像混显。
 		u.AvatarThumb = ""
 	}
 	if req.AvatarThumb != nil {
 		th := strings.TrimSpace(*req.AvatarThumb)
-		if th != "" && !validAvatarThumbDataURL(th) {
-			fail(c, http.StatusBadRequest, "头像缩略图格式不支持（仅 png/jpeg/webp，≤16KB）")
-			return
+		if th == "" {
+			u.AvatarThumb = ""
+		} else if !validAvatarThumbDataURL(th) {
+			if h.storage == nil || !h.storage.Owns(th) {
+				fail(c, http.StatusBadRequest, "头像缩略图格式不支持（仅 png/jpeg/webp 或本站上传地址）")
+				return
+			}
+			u.AvatarThumb = th
+		} else {
+			stored, err := h.storeAvatarDataURL(th, maxAvatarThumbLen)
+			if err != nil {
+				internal(c, err)
+				return
+			}
+			u.AvatarThumb = stored
 		}
-		u.AvatarThumb = th
 	}
 
 	if req.Nickname != nil {

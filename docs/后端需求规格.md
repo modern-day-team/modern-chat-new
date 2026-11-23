@@ -23,7 +23,7 @@
 | 站长 | 用户分页列表、封禁 / 解封 / 重置密码 |
 | 运维 | 健康检查 `/api/health`、版本 `/api/version`、结构化日志、三档限流、一键升级脚本 |
 
-**接口类型**：REST（JSON，前缀 `/api`）+ WebSocket（`/ws`）。文件存储可选本地磁盘或 S3 兼容对象存储（图片 / 语音 / 视频 / 群文件）；头像为用户上传的 data URL，未上传时按 id 取色生成。无第三方依赖（SMTP / Redis 可选）。
+**接口类型**：REST（JSON，前缀 `/api`）+ WebSocket（`/ws`）。文件存储可选本地磁盘或 S3 兼容对象存储（图片 / 语音 / 视频 / 群文件 / 头像）；头像由前端裁成 256px + 64px 两张 data URL 提交，服务端转存到当前 Storage 并在 DB 只留 URL，未上传时按 id 取色生成。无第三方依赖（SMTP / Redis 可选）。
 
 ## 2. 技术栈与版本
 
@@ -103,7 +103,7 @@ AdminPluginRow  { name, version, installCount, enabledCount, globalDisabled, cre
 | POST `/api/me/2fa/email/code` | — | `{ok:true, cooldownSeconds}`；purpose=twofa（60s 冷却，需 SMTP） |
 | POST `/api/me/2fa/email/enable` | `{code}` | `{ok:true, recoveryCodes[]}`；开启 email 方式 |
 | POST `/api/me/2fa/disable` | `{password}` | `{ok:true}`；密码再认证后关闭，密钥与恢复码清除 |
-| PATCH `/api/me` | `{nickname?, email?, avatar?, emailCode?}`。**换绑邮箱必须带 `emailCode`**（发往新邮箱、核销通过才落库并置 `email_verified=true`；空串 `email` 表示解绑、不需要验证）；邮箱未变化时不改动验证状态；SMTP 未配置时换绑返回 400。avatar 为 `data:image/(png\|jpeg\|webp);base64,…`，前端压至 256×256，服务端校验前缀与 ≤256KB，空串清除 | 更新后 `User` |
+| PATCH `/api/me` | `{nickname?, email?, avatar?, avatarThumb?, emailCode?}`。**换绑邮箱必须带 `emailCode`**（发往新邮箱、核销通过才落库并置 `email_verified=true`；空串 `email` 表示解绑、不需要验证）；邮箱未变化时不改动验证状态；SMTP 未配置时换绑返回 400。avatar/avatarThumb 为 `data:image/(png\|jpeg\|webp);base64,…`（前端压至 256×256 / 64×64，服务端解码后转存到当前 Storage，DB 只留 URL）或本站上传地址（`Owns` 校验，防外链），空串清除；存量 data URL 继续兼容 | 更新后 `User` |
 | POST `/api/me/email-code` | `{email}`（新邮箱） | `{ok:true, cooldownSeconds}`；与当前邮箱相同→400，被他人占用→409，SMTP 不可用→503；每用户 5 次/分，同邮箱 60 秒冷却 |
 | POST `/api/me/logout-others` | — | `{ok:true}`；`token_version+1`，所有旧 JWT 失效；同时主动 `KickUser` 断开该账号全部已建 WS 连接（发送 `kicked` 帧），当前设备也需重新登录 |
 | GET `/api/users/search` | `?kw=`（≤50） | `User摘要[]`（不含 email，≤20 条） |

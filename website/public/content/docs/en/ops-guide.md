@@ -379,7 +379,7 @@ tar xzf uploads_2026-10-25.tar.gz -C server/data
 - Recommended daily, retain 7–30 days; you can also click "Backup now" in the admin console "Backup" tab, or set `BACKUP_INTERVAL_HOURS` / `BACKUP_RETAIN` to let the service back up automatically (depends on `mysqldump`; use `MYSQLDUMP_PATH` when it is not on PATH)
 - **Messages store only URLs** (`/uploads/2026/11/xxx.png`). Backing up only the database without `uploads/` means every image and voice 404s after a restore — the records are there, but the content cannot be opened
 - **With object storage you do not need to back up `uploads/`** — the cloud provider handles it; the database backup is still mandatory
-- `users.avatar` stores avatar data URLs (~20–40 KB each), which grows the DB; clean up as needed with more users
+- Avatars are saved through the current Storage (local `uploads/` or object storage), with only URLs in `users.avatar` / `avatar_thumb`; pre-upgrade data URLs still display and convert on the user's next change. Backup follows the same rule as message attachments: back up `uploads/` for local deployments, rely on the provider for object storage
 - Back up before upgrading (the script never touches data, but migration SQL alters schemas)
 - **Migrations that add indexes must run off-peak**: e.g. `0021_message_sender_index` (indexes `messages.sender_id`). MySQL 8 Online DDL does not lock the table by default, but building an index on a large table still uses IO; with a very large message table, run it at low traffic and watch `SHOW PROCESSLIST`
 
@@ -477,7 +477,7 @@ When integration tests can't reach MySQL they `t.Skip`, and `go test` still repo
 If nginx caches static assets, check whether `dist/assets` filename hashes changed; hard refresh the browser (Ctrl+F5). The frontend is pure static — restarting the backend doesn't refresh pages.
 
 **Q11: Where are avatars stored, will they bloat the DB**
-In `users.avatar` (data URL, 256×256 webp, ~20–40 KB each). Fine at current scale; move to file storage + URLs beyond a thousand users.
+Avatars go through the current Storage now, with only URLs in the DB: local `DATA_DIR/uploads/2026/11/xxx.webp` when no object storage is configured, otherwise the configured bucket / CDN — same path as message attachments. Pre-upgrade data URLs still display and convert on the user's next avatar change. Switching storage does not migrate old avatars, consistent with message attachments.
 
 **Q12: The recovery email link doesn't open**
 The link domain comes from `FRONTEND_URL`. In production it must be the real domain, otherwise users land on `localhost`.

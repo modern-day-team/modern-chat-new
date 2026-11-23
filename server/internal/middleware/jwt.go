@@ -86,11 +86,10 @@ func Auth(users *store.UserStore, secret string) gin.HandlerFunc {
 			abort401(c)
 			return
 		}
-		// 鉴权不拉最多 256KB 的 avatar MEDIUMTEXT：此前每个 REST 请求都读一次，
-		// 100 RPS 即 25MB/s 的无效 DB 读流量。保留 password_hash / 2FA 等列——
-		// Save(me) 与 2FA 密码再认证都依赖它们（用 ByIDBasic 会把哈希写空）。
-		// 需要显示头像的端点（GET /me、UpdateMe）自行按 ID 再取一次完整行。
-		u, err := users.ByIDNoAvatar(cl.UID)
+		// 必须加载完整行：2FA 的 Save(me) 会写回所有列，半缺字段会把头像 /
+		// password_hash 写成空值。头像已改为存 Storage URL（短字符串），
+		// 不再有此前 256KB data URL 的读放大问题。
+		u, err := users.ByID(cl.UID)
 		if err != nil {
 			slog.Error("auth load user", "err", err)
 			abort401(c)

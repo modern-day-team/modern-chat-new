@@ -75,7 +75,7 @@ curl https://site/api/conversations -H 'Authorization: Bearer <token>'
 | POST `/api/auth/2fa/verify` | `{ticket, code}` | `{token, user}`; **no auth**. Two-factor second step: 6 digits = TOTP / email code (per the enabled method), 8 hex chars (dashes optional) = one-time recovery code; max 5 tries per ticket |
 | POST `/api/auth/2fa/email-code` | `{ticket}` | `{ok:true, cooldownSeconds}`; **no auth**, sends the second-factor email code during login (60s cooldown) |
 | GET `/api/me` | — | `User` (own record includes email / emailVerified) |
-| PATCH `/api/me` | `{nickname?, email?, avatar?, emailCode?}` | updated `User`. Changing email requires `emailCode` (sent to the new address); empty-string `email` unbinds; avatar is a dataURL (≤256KB) or empty string to clear. Nickname/avatar changes broadcast `user_change` |
+| PATCH `/api/me` | `{nickname?, email?, avatar?, avatarThumb?, emailCode?}` | updated `User`. Changing email requires `emailCode` (sent to the new address); empty-string `email` unbinds; avatar/avatarThumb accept a dataURL (stored via current Storage, DB keeps URL) or an on-site URL, empty string clears. Nickname/avatar changes broadcast `user_change` |
 | POST `/api/me/email-code` | `{email}` (new email) | `{ok:true, cooldownSeconds}`; taken by someone else→409 |
 | POST `/api/me/logout-others` | — | `{ok:true}`; `token_version+1` invalidates all devices and kicks them (incl. WS `kicked`) |
 | GET `/api/me/2fa` | — | `{enabled, method, email}`; the user's own 2FA status (off by default, shown in settings) |
