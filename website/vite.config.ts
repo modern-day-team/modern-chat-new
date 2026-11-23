@@ -17,7 +17,17 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    chunkSizeWarningLimit: 900,
+    // 不再抬高阈值掩盖大包：路由懒加载后每个 chunk 都应低于默认 500KB。
+    // 基础框架单独分包，内容/页面更新时用户无需重新下载 vue runtime。
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (/[\\/]node_modules[\\/](vue|@vue|vue-router|vue-i18n)[\\/]/.test(id)) return 'vue-vendor'
+          }
+        },
+      },
+    },
   },
   server: {
     port: 5174,

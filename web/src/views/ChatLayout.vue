@@ -296,7 +296,14 @@ onUnmounted(() => {
           <div class="mc-empty">
             <div class="mc-empty__mark" aria-hidden="true">
               <!-- 产品 favicon 作为空态门面标记 -->
-              <img :src="faviconUrl" alt="" class="mc-empty__mark-img" />
+              <img
+                :src="faviconUrl"
+                alt=""
+                width="32"
+                height="32"
+                decoding="async"
+                class="mc-empty__mark-img"
+              />
             </div>
             <h1 class="mc-empty__title">{{ t('app.name') }}</h1>
             <p class="mc-empty__slogan">{{ t('app.slogan') }}</p>

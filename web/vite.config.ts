@@ -45,11 +45,12 @@ export default defineConfig(({ mode }) => ({
   build: {
     rollupOptions: {
       output: {
-        // 只把框架核心固定为 vendor；TDesign 组件跟随引用它的路由分包，
-        // 这样首屏（登录页）不会连带下载只有聊天页/后台才用的组件（Drawer/List/Table 等）。
+        // 框架核心固定为 vendor；图标库单独成 chunk（跨路由复用，避免每个页面各打一份）；
+        // TDesign 组件仍跟随引用它的路由分包——首屏（登录页）不下载后台才用的 Table/Drawer。
         manualChunks(id: string) {
           if (!id.includes('node_modules')) return
           if (/node_modules\/(vue|vue-router|pinia|vue-i18n|@vue)\//.test(id)) return 'vendor'
+          if (id.includes('tdesign-icons-vue-next')) return 'icons'
         },
       },
     },

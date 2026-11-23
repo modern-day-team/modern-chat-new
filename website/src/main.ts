@@ -5,13 +5,11 @@ import { i18n, setLang } from './i18n'
 import { router } from './router'
 import { applyTheme, readMode } from './theme'
 
-// 样式分层：令牌 → 基础层 → 站点外壳 → 各页面
+// 首屏样式：令牌 → 基础层 → 站点外壳。
+// docs.css / market.css / home.css 由各自页面按需 import，不进入首屏 CSS。
 import './styles/tokens.css'
 import './styles/base.css'
 import './styles/site.css'
-import './styles/home.css'
-import './styles/docs.css'
-import './styles/market.css'
 
 const app = createApp(App)
 

@@ -8,6 +8,9 @@ import ProductPreview from '@/components/ProductPreview.vue'
 import UiIcon from '@/components/UiIcon.vue'
 import { REPO } from '@/links'
 
+// 首页样式随路由分包加载，不阻塞首屏 HTML 解析
+import '@/styles/home.css'
+
 const { t } = useI18n()
 
 /** 去掉高亮标签得到可复制的纯文本 */

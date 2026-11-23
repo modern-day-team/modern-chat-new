@@ -380,3 +380,13 @@ The three zones of the chat page (group pane / conversation list / detail panel)
 **State**: `stores/layout.ts` persists `{ panes: {width, drawer}, opened }` to `localStorage.mc_layout`, so width, mode and expanded state **survive reloads**. Drawers are mutually exclusive (several open at once would overlap each other).
 
 > Implementation note: each zone component writes its width as `width: var(--mc-w-conv, 300px)` (the default matches the historical hardcoded value so the first screen doesn't jump), and the actual width is handed down as an inline CSS variable on `.mc-layout`.
+
+## 14. Performance strategy (2026-11-23)
+
+**Images**: avatars go through `AvatarBadge` (thumbnail first, `loading="lazy"` + `decoding="async"`, initials fallback). Message images intentionally skip lazy loading because DynamicScroller needs item heights; they only use `decoding="async"`. Custom backgrounds are compressed to WebP (JPEG fallback) with a 600 KB data-URL cap (was 1.5 MB) — localStorage writes are synchronous, so a large string is a main-thread long task. The empty-state mark declares `width/height=32` to prevent CLS; the auth scene no longer probes a nonexistent `login-bg.jpg` and reuses the configured `appBgImage` instead.
+
+**Chunking / Tree Shaking**: all 10 main-app routes use `() => import()`; framework core is pinned to `vendor`, `tdesign-icons-vue-next` has its own shared chunk, and TDesign components still follow the route that imports them (the login screen doesn't download admin Table/Drawer). The marketing site's three pages are route-level lazy, `marked` is dynamically imported with a module-level cache, and page CSS (home/docs/market) is imported by each view. The inflated `chunkSizeWarningLimit: 900` was removed. Measured: first-load JS 244 KB single bundle → `index 34 KB + vue-vendor 151 KB` (vendor is long-cached), parser 37 KB only on docs; first-load CSS 37.6 KB → 22.2 KB.
+
+**Critical render path**: both `index.html` files inline the anti-flash theme script in `<head>` (module scripts are deferred), with no font blocking (system font stack). Vite automatically injects `modulepreload` and CSS `<link>` tags — no manual preload needed.
+
+**Long tasks / forced reflow**: `MessagePane`'s scroll callback is rAF-throttled (one `scrollTop/clientHeight/scrollHeight` read per frame, cancelled on unmount). Large Markdown parses yield via `requestIdleCallback` before `marked.parse` + three regex passes. Existing good practices stay: virtual scrolling, background-tab skip in scroll/heartbeat/QR polling, no `deep: true` watchers.

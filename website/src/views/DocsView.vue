@@ -2,9 +2,32 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { marked } from 'marked'
 
 import { currentLang } from '@/i18n'
+
+// 文档页样式随路由分包加载
+import '@/styles/docs.css'
+
+/**
+ * marked 动态导入：文档解析器只进入 /docs 分包，不阻塞首页。
+ * 模块级 Promise 缓存，切换文档不重复 import。
+ */
+let markedPromise: Promise<typeof import('marked')['marked']> | null = null
+function loadMarked() {
+  if (!markedPromise) markedPromise = import('marked').then((m) => m.marked)
+  return markedPromise
+}
+
+/** 让出主线程：大文档解析放到空闲时段，避免切换文档时卡住输入 */
+function whenIdle(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof window.requestIdleCallback === 'function') {
+      window.requestIdleCallback(() => resolve(), { timeout: 200 })
+    } else {
+      setTimeout(resolve, 0)
+    }
+  })
+}
 
 type Lang = 'zh' | 'en'
 
@@ -169,12 +192,12 @@ async function loadDoc() {
       if (lang.value === 'en') {
         const fallback = await fetch(`${import.meta.env.BASE_URL}${zhPath}`)
         if (!fallback.ok) throw new Error(String(fallback.status))
-        html.value = renderMd(await fallback.text(), true)
+        html.value = await renderMd(await fallback.text(), true)
       } else {
         throw new Error(String(res.status))
       }
     } else {
-      html.value = renderMd(await res.text(), false)
+      html.value = await renderMd(await res.text(), false)
     }
   } catch {
     failed.value = true
@@ -183,7 +206,10 @@ async function loadDoc() {
   }
 }
 
-function renderMd(md: string, fallbackNote: boolean) {
+async function renderMd(md: string, fallbackNote: boolean) {
+  // 大文档（changelog ~98KB）解析是长任务：先让出主线程，再按需加载解析器。
+  await whenIdle()
+  const marked = await loadMarked()
   // 文档自身的 h1 与页面标题重复，去掉首个 h1（正文从 h2 开始层级也正确）
   const body = (marked.parse(md, { async: false }) as string)
     .replace(/^\s*<h1[^>]*>[\s\S]*?<\/h1>/, '')

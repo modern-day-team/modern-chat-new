@@ -33,8 +33,12 @@ export const APP_BG_PRESETS = [
 /** 全站背景色的不透明度：保证正文/次要文字在亮暗主题下都保持可读 */
 const APP_BG_ALPHA = 0.3
 
-/** 背景图 data URL 上限：压缩后仍超过该长度就拒绝，避免撑爆 localStorage */
-export const MAX_APP_BG_IMAGE_LEN = 1_500_000
+/**
+ * 背景图 data URL 上限：600KB。
+ * localStorage 是同步写入，1.5MB 字符串会在主线程产生明显长任务；
+ * 背景图本就是柔化后的装饰层，1600px WebP 足够，再大收益极低。
+ */
+export const MAX_APP_BG_IMAGE_LEN = 600_000
 
 /** 预设背景色：均为中低明度，白色光晕在其上可见且卡片对比度稳定 */
 export const SCENE_PRESETS = [

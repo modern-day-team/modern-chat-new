@@ -393,5 +393,26 @@ UiCheckbox  UiInputNumber  UiTooltip  UiPopup  UiDialog  UiDrawer
 
 > 实现要点：各区域组件的宽度写 `width: var(--mc-w-conv, 300px)`（默认值与历史硬编码一致，首屏不跳变），宽度值由 `.mc-layout` 的内联 CSS 变量下发。
 
+## 14. 性能策略（2026-11-23）
+
+**图片**：
+- 头像统一走 `AvatarBadge`：优先缩略图、`loading="lazy"` + `decoding="async"`，失败回退首字母；消息图片因 DynamicScroller 依赖 item 高度**故意不加 lazy**，只加 `decoding="async"`。
+- 自定义背景图片走 canvas WebP 压缩（不支持回退 JPEG），逐级缩小直到落入 600KB 上限（原 1.5MB）。降低上限是因为 localStorage 同步写入大字符串会产生主线程长任务；背景是柔化装饰层，1600px 足够。
+- 首屏空态图写死 `width/height=32` 防 CLS；认证页不再探测不存在的 `login-bg.jpg`，复用设置页的 `appBgImage`。
+
+**代码分割 / Tree Shaking**：
+- 主 web：10 条路由全部 `() => import()`；框架核心固定 `vendor`，`tdesign-icons-vue-next` 独立 `icons` chunk 避免跨路由重复下载；TDesign 组件仍跟随引用它的路由分包（首屏登录页不下载后台 Table/Drawer）。
+- 官网：三个页面改路由懒加载；`marked` 动态 import 并模块级缓存；页面 CSS（home/docs/market）由各自 View import，首屏 CSS 只留令牌/基础/外壳。取消被抬高的 `chunkSizeWarningLimit: 900`，让大包重新暴露。
+- 实测：官网首屏 JS 244KB 单包 → `index 34KB + vue-vendor 151KB`（vendor 可长期缓存），`marked 37KB` 仅文档页加载；首屏 CSS 37.6KB → 22.2KB。
+
+**关键渲染路径**：
+- 两个 `index.html` 都把防闪烁主题脚本内联在 `<head>`（module script 默认 defer），无字体阻塞（系统字体栈）。
+- Vite 构建自动为入口注入 `modulepreload` 与 CSS `<link>`，无需手写 preload。
+
+**避免长任务 / 强制重排**：
+- `MessagePane` 滚动回调改 rAF 节流：一帧内多次 scroll 合并为一次 `scrollTop/clientHeight/scrollHeight` 读取，卸载时 `cancelAnimationFrame`。
+- 文档页大 Markdown（changelog ~98KB）解析前 `await requestIdleCallback`，`marked.parse` + 三次正则替换不再阻塞用户输入。
+- 已有良好实践保持：聊天区 DynamicScroller 虚拟滚动、`onScroll` 在后台跳过、ws 心跳与二维码轮询都有清理、无 `deep: true` 监听。
+
 
 

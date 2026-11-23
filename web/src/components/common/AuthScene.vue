@@ -3,23 +3,21 @@ import { usePrefsStore } from '@/stores/prefs'
 
 /**
  * 认证页背景：单色基色 + 可选动效（光晕 / 波纹 / 网格 / 无）。
- * 基色来自 prefs（用户可在右上角调色板修改），图片 web/public/login-bg.jpg 存在时覆盖基色。
+ * 基色来自 prefs；自定义背景复用设置页配置的 appBgImage（有值时才渲染）。
+ * 不再探测 web/public/login-bg.jpg——仓库里没有该文件，每次认证页都发一个 404。
  * 所有动效仅使用 transform / opacity，避免重绘；尊重 prefers-reduced-motion。
  */
 const prefs = usePrefsStore()
-
-/**
- * 可选自定义背景：web/public/login-bg.jpg 存在即覆盖基色（404 时无副作用）。
- * 部署在 /app/ 下，路径必须带 BASE_URL；scoped CSS 里访问不到 import.meta.env，
- * 所以用行内 style 绑定 background-image。
- */
-const bgUrl = `${import.meta.env.BASE_URL}login-bg.jpg`
 </script>
 
 <template>
   <div class="auth-scene" aria-hidden="true">
-    <!-- 自定义图片（可选）：存在即覆盖基色 -->
-    <div class="auth-scene__img" :style="{ backgroundImage: `url(${bgUrl})` }" />
+    <!-- 自定义图片（可选）：仅设置页配置了背景时才发起请求 -->
+    <div
+      v-if="prefs.appBgImage"
+      class="auth-scene__img"
+      :style="{ backgroundImage: `url(${prefs.appBgImage})` }"
+    />
 
     <!-- 暗化层：保证任意基色/图片下卡片与文字的对比度 -->
     <div class="auth-scene__shade" />

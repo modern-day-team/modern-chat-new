@@ -7,6 +7,9 @@ import UiIcon from '@/components/UiIcon.vue'
 import { currentLang } from '@/i18n'
 import { REPO } from '@/links'
 
+// 插件市场样式随路由分包加载
+import '@/styles/market.css'
+
 const { t } = useI18n()
 
 interface MarketPlugin {

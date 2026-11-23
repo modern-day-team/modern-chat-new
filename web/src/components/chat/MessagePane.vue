@@ -140,16 +140,25 @@ function fmtTime(ts: string): string {
 
 // ===== 滚动 =====
 
+/**
+ * 滚动事件 rAF 节流：一帧内多次 scroll 合并为一次布局读取，
+ * 避免高频 scrollTop/clientHeight/scrollHeight 触发强制同步布局。
+ */
+let scrollRaf = 0
 function onScroll() {
-  const el = scrollerRef.value?.$el as HTMLElement | undefined
-  if (!el) return
-  const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 80
-  stickToBottom.value = atBottom
-  // 回到末尾即视为已看过这些新消息；未读数由 markRead 统一走服务端
-  if (atBottom) unseenCount.value = 0
-  if (el.scrollTop < 40 && conv.value && convStore.hasMoreByConv[conv.value.id] && !convStore.loadingMessages) {
-    void convStore.loadMore(conv.value.id)
-  }
+  if (scrollRaf) return
+  scrollRaf = requestAnimationFrame(() => {
+    scrollRaf = 0
+    const el = scrollerRef.value?.$el as HTMLElement | undefined
+    if (!el) return
+    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 80
+    stickToBottom.value = atBottom
+    // 回到末尾即视为已看过这些新消息；未读数由 markRead 统一走服务端
+    if (atBottom) unseenCount.value = 0
+    if (el.scrollTop < 40 && conv.value && convStore.hasMoreByConv[conv.value.id] && !convStore.loadingMessages) {
+      void convStore.loadMore(conv.value.id)
+    }
+  })
 }
 
 /** 回到底部：清掉提示、恢复自动已读，并等虚拟列表实测高度后滚到底 */
@@ -640,6 +649,7 @@ onBeforeUnmount(() => {
   clearTimeout(recallTimer)
   clearTimeout(typingTimer)
   window.clearTimeout(jumpTimer)
+  if (scrollRaf) cancelAnimationFrame(scrollRaf)
 })
 
 // ===== 消息右键菜单 =====

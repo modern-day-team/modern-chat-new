@@ -16,6 +16,7 @@
 
 ### 变更
 
+- **前端性能优化（图片 / 分包 / 渲染路径 / 长任务）**：官网三个页面改路由级懒加载，`marked` 改动态 import（首屏 JS 244KB 单包 → `index 34KB + vue-vendor 151KB`，解析器 37KB 仅文档页加载），页面 CSS 各自按需引入（首屏 CSS 37.6KB → 22.2KB），取消被抬高的 `chunkSizeWarningLimit`；大 Markdown 解析改 `requestIdleCallback` 让出主线程，避免切换文档时长任务。主 web 的 `MessagePane` 滚动事件改 rAF 节流（合并一帧内多次布局读写）、卸载时取消未执行帧；图标库单独分包避免跨路由重复下载；认证页移除不存在的 `login-bg.jpg` 探测改为复用已配置的自定义背景；背景图 data URL 上限 1.5MB → 600KB（压缩起点 1920px → 1600px），减少 localStorage 同步写入长任务；空态图补 width/height 防 CLS。
 - **业务规则归位 service 内核（第一批）**：新增 `service/session.go` 与 `service/invite.go`，会话的「当前设备」标记/单设备撤销原子流程/全量撤销、邀请码的范围校验/有效期/CSPRNG 生成/批量创建全部收进内核；`handler/session.go`、`handler/invite.go`、`handler/user.go` 改为依赖消费方定义的窄接口，删除 `store` 直连；会话 handler 的 notifier 从 gin context 旁路取改为显式注入（消除 `_ Notifier` 丢弃参数与类型断言 panic 风险）。新增 `service/session_test.go`；REST 响应形状与状态码不变。
 - **跨端视觉风格统一（第一批）**：`docs/UI设计方案.md` §3.0 补齐跨端统一色板（品牌主色亮 `#0052D9`/暗 `#7CB8FF`、页面底色、容器、浮层、hairline、语义色），作为五端唯一色值真源；官网暗色品牌色由 `#6FA8FF` 对齐为 `#7CB8FF`（含插件市场）；桌面端建立 `src/assets/main.css` 令牌层，App/QrLogin 的硬编码色值/圆角/字号全部改用令牌。官网小部件（28px 图标、聊天气泡尖角）的尺度微调圆角保留，属有意设计。
 - **高内聚低耦合治理（第一批）**：CORS 与 WS Origin 的归一化/白名单统一到 `middleware.NormalizeOrigin` / `OriginAllowed`（同一安全边界单一实现，消除两套口径漂移）；前端 store 裸 `fetch('/api/auth/logout')` 收敛到 `core/network/http.ts` 的 `keepalivePost()` 专用出口。存量 handler 直连 store、WS 承担业务规则等历史耦合列为后续分项重构，本批不动以降低风险。
