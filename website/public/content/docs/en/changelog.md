@@ -6,7 +6,7 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 
 ---
 
-## [Unreleased]
+## [0.12.0] — 2026-11-23
 
 > **Upgrade notes (from 0.11.1)**
 >
