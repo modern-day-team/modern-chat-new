@@ -244,6 +244,8 @@ func (s *LocalStorage) SaveStream(kind string, r io.Reader, maxBytes int64) (str
 		_ = os.Remove(tmpName)
 		return "", err
 	}
+	// 图片统一转 WebP（GIF 动画跳过、失败保留原图）；扩展名随之更新。
+	ext = convertToWebP(tmpName, kind, ext)
 	name := randomName() + ext
 	if err := os.Rename(tmpName, filepath.Join(dir, name)); err != nil {
 		_ = os.Remove(tmpName)
@@ -411,6 +413,11 @@ func (s *S3Storage) SaveStream(kind string, r io.Reader, maxBytes int64) (string
 	if err := tmp.Close(); err != nil {
 		_ = os.Remove(tmpName)
 		return "", err
+	}
+	// 与本地存储一致：图片统一转 WebP，ContentType 由下面的 mimeOfExt(kind, ext) 自动跟随
+	ext = convertToWebP(tmpName, kind, ext)
+	if st, statErr := os.Stat(tmpName); statErr == nil {
+		total = st.Size() // 转换后体积变了，PutObject 的长度必须跟随
 	}
 
 	key := path.Join(time.Now().Format("2006"), time.Now().Format("01"), randomName()+ext)

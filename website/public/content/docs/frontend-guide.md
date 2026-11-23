@@ -398,6 +398,7 @@ UiCheckbox  UiInputNumber  UiTooltip  UiPopup  UiDialog  UiDrawer
 **图片**：
 - 头像统一走 `AvatarBadge`：优先缩略图、`loading="lazy"` + `decoding="async"`，失败回退首字母；消息图片因 DynamicScroller 依赖 item 高度**故意不加 lazy**，只加 `decoding="async"`。
 - 自定义背景图片走 canvas WebP 压缩（不支持回退 JPEG），逐级缩小直到落入 600KB 上限（原 1.5MB）。降低上限是因为 localStorage 同步写入大字符串会产生主线程长任务；背景是柔化装饰层，1600px 足够。
+- 消息图片：前端上传前压缩到最大边 1600 / WebP q0.82（<300KB 的小图与 GIF 跳过）；服务端 `SaveStream` 再做一次兜底统一转 WebP，覆盖移动端/第三方来源。两端策略一致，任一端失败都回退原图，不阻断发送。
 - 首屏空态图写死 `width/height=32` 防 CLS；认证页不再探测不存在的 `login-bg.jpg`，复用设置页的 `appBgImage`。
 
 **代码分割 / Tree Shaking**：
