@@ -349,6 +349,9 @@ func New(d Deps) *gin.Engine {
 		admin.GET("/settings", adminH.GetSettings)
 		admin.PUT("/settings", adminH.SaveSettings)
 		admin.POST("/settings/smtp/test", adminH.TestSMTP)
+		// 对象存储服务商预设 + 只读连通性自检（HEAD Bucket，不写对象）
+		admin.GET("/settings/storage/providers", adminH.StorageProviders)
+		admin.POST("/settings/storage/test", adminH.TestStorage)
 
 		// 运维：附件统计/孤儿清理、数据库备份
 		admin.GET("/storage/stats", opsH.StorageStats)

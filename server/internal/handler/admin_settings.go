@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/modern-day-team/modern-chat-new/server/internal/middleware"
+	"github.com/modern-day-team/modern-chat-new/server/internal/service"
 	"github.com/modern-day-team/modern-chat-new/server/internal/store"
 )
 
@@ -24,10 +25,16 @@ import (
 //     图片 / 语音上传会随新配置写入对象存储。
 
 type smtpSetting struct {
-	Host string `json:"host"`
-	Port string `json:"port"`
-	User string `json:"user"`
-	From string `json:"from"`
+	// Provider smtp（默认，走 host/port/user/pass）或 api（走 apiUrl/apiKey）。
+	Provider string `json:"provider"`
+	APIURL   string `json:"apiUrl"`
+	// APIKey 仅用于提交；留空表示不修改
+	APIKey    string `json:"apiKey,omitempty"`
+	HasAPIKey bool   `json:"hasApiKey"`
+	Host      string `json:"host"`
+	Port      string `json:"port"`
+	User      string `json:"user"`
+	From      string `json:"from"`
 	// Pass 仅用于提交；读取时为空 → omitempty 不出现在响应里
 	Pass    string `json:"pass,omitempty"`
 	HasPass bool   `json:"hasPass"`
@@ -42,6 +49,7 @@ type redisSetting struct {
 }
 
 type storageSetting struct {
+	Provider     string `json:"provider"`
 	Endpoint     string `json:"endpoint"`
 	Region       string `json:"region"`
 	Bucket       string `json:"bucket"`
@@ -123,11 +131,14 @@ func (h *AdminHandler) GetSettings(c *gin.Context) {
 	}
 	view := settingsView{
 		SMTP: smtpSetting{
-			Host:    all[store.KeySMTPHost],
-			Port:    all[store.KeySMTPPort],
-			User:    all[store.KeySMTPUser],
-			From:    all[store.KeySMTPFrom],
-			HasPass: all[store.KeySMTPPass] != "",
+			Provider:  all[store.KeyMailProvider],
+			APIURL:    all[store.KeyMailAPIURL],
+			HasAPIKey: all[store.KeyMailAPIKey] != "",
+			Host:      all[store.KeySMTPHost],
+			Port:      all[store.KeySMTPPort],
+			User:      all[store.KeySMTPUser],
+			From:      all[store.KeySMTPFrom],
+			HasPass:   all[store.KeySMTPPass] != "",
 		},
 		Redis: redisSetting{
 			Addr:    all[store.KeyRedisAddr],
@@ -135,6 +146,7 @@ func (h *AdminHandler) GetSettings(c *gin.Context) {
 			HasPass: all[store.KeyRedisPass] != "",
 		},
 		Storage: storageSetting{
+			Provider:     all[store.KeyStorageProvider],
 			Endpoint:     all[store.KeyStorageEndpoint],
 			Region:       all[store.KeyStorageRegion],
 			Bucket:       all[store.KeyStorageBucket],
@@ -267,18 +279,32 @@ func (h *AdminHandler) SaveSettings(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "存储配额需为 0（不限制）或 1-102400 MB")
 		return
 	}
+	// 邮件 / 存储服务商 ID 白名单：拒绝任意值（避免把错拼的字符串存进去，
+	// 下次启动时静默走错通道）。
+	if p := strings.TrimSpace(req.SMTP.Provider); p != "" && p != "smtp" && p != "api" {
+		fail(c, http.StatusBadRequest, "邮件服务商仅支持 smtp 或 api")
+		return
+	}
+	if p := strings.TrimSpace(req.Storage.Provider); p != "" && !validStorageProvider(p) {
+		fail(c, http.StatusBadRequest, "对象存储服务商不在支持列表中")
+		return
+	}
 
 	updates := map[string]string{
-		store.KeySMTPHost: strings.TrimSpace(req.SMTP.Host),
-		store.KeySMTPPort: strings.TrimSpace(req.SMTP.Port),
-		store.KeySMTPUser: strings.TrimSpace(req.SMTP.User),
-		store.KeySMTPFrom: strings.TrimSpace(req.SMTP.From),
-		store.KeySMTPPass: req.SMTP.Pass,
+		store.KeyMailProvider: strings.TrimSpace(req.SMTP.Provider),
+		store.KeyMailAPIURL:   strings.TrimSpace(req.SMTP.APIURL),
+		store.KeyMailAPIKey:   req.SMTP.APIKey,
+		store.KeySMTPHost:     strings.TrimSpace(req.SMTP.Host),
+		store.KeySMTPPort:     strings.TrimSpace(req.SMTP.Port),
+		store.KeySMTPUser:     strings.TrimSpace(req.SMTP.User),
+		store.KeySMTPFrom:     strings.TrimSpace(req.SMTP.From),
+		store.KeySMTPPass:     req.SMTP.Pass,
 
 		store.KeyRedisAddr: strings.TrimSpace(req.Redis.Addr),
 		store.KeyRedisDB:   strings.TrimSpace(req.Redis.DB),
 		store.KeyRedisPass: req.Redis.Pass,
 
+		store.KeyStorageProvider:   strings.TrimSpace(req.Storage.Provider),
 		store.KeyStorageEndpoint:   strings.TrimSpace(req.Storage.Endpoint),
 		store.KeyStorageRegion:     strings.TrimSpace(req.Storage.Region),
 		store.KeyStorageBucket:     strings.TrimSpace(req.Storage.Bucket),
@@ -326,6 +352,66 @@ func (h *AdminHandler) SaveSettings(c *gin.Context) {
 		"storageApplied": strings.TrimSpace(req.Storage.Endpoint) != "" &&
 			strings.TrimSpace(req.Storage.Bucket) != "",
 	})
+}
+
+func validStorageProvider(id string) bool {
+	for _, p := range service.S3Providers {
+		if p.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// StorageProviders 返回 S3 服务商预设（id / label / region / pathStyle）。
+// 前端据此渲染下拉并在选择时自动填 endpoint/region 占位值。
+func (h *AdminHandler) StorageProviders(c *gin.Context) {
+	type providerView struct {
+		ID               string `json:"id"`
+		Label            string `json:"label"`
+		DefaultRegion    string `json:"defaultRegion"`
+		EndpointTemplate string `json:"endpointTemplate"`
+		PathStyle        bool   `json:"pathStyle"`
+	}
+	out := make([]providerView, 0, len(service.S3Providers))
+	for _, p := range service.S3Providers {
+		out = append(out, providerView{
+			ID: p.ID, Label: p.Label, DefaultRegion: p.DefaultRegion,
+			EndpointTemplate: p.EndpointTemplate, PathStyle: p.PathStyle,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"providers": out})
+}
+
+// TestStorage 用当前保存的对象存储配置做只读连通性自检（HEAD Bucket）。
+// 不复用运行中的 Storage 实例：后台可能刚保存了新配置还没重启，这里按
+// 刚保存的值重建客户端探测，让站长在重启前就知道配置对不对。
+func (h *AdminHandler) TestStorage(c *gin.Context) {
+	ss := h.settings.StorageSettings()
+	if !ss.Configured {
+		fail(c, http.StatusBadRequest, "尚未配置对象存储（bucket 为空）")
+		return
+	}
+	cfg := service.StorageConfig{
+		Kind: "s3", Provider: ss.Provider, Endpoint: ss.Endpoint, Region: ss.Region,
+		Bucket: ss.Bucket, AccessKey: ss.AccessKey, SecretKey: ss.SecretKey,
+		PublicBase: ss.PublicBase, PathStyle: service.FindS3Provider(ss.Provider).PathStyle,
+	}
+	s, err := service.NewStorage(cfg)
+	if err != nil {
+		fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	probe, ok := s.(interface{ Probe() error })
+	if !ok {
+		fail(c, http.StatusBadRequest, "当前存储不支持连接自检")
+		return
+	}
+	if err := probe.Probe(); err != nil {
+		fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true, "provider": ss.Provider, "endpoint": service.ResolveEndpoint(ss.Provider, ss.Endpoint, service.ResolveRegion(ss.Provider, ss.Region))})
 }
 
 // TestSMTP 用当前配置发一封测试邮件，返回具体失败原因（配错了要看得到）。

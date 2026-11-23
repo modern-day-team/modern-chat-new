@@ -18,6 +18,7 @@ declare -A MAP=(
   ["docs/前端技术方案.md"]="frontend-guide.md"
   ["docs/运维手册.md"]="ops-guide.md"
   ["docs/安全与迁移指南.md"]="security-migration-guide.md"
+  ["docs/storage-providers.md"]="storage-providers.md"
   ["server/README.md"]="server-readme.md"
   ["web/README.md"]="web-readme.md"
 )

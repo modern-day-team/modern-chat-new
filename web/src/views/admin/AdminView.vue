@@ -25,6 +25,7 @@ import {
   type AdminSettingsPayload,
   type AdminStats,
   type AdminUpdateCheck,
+  type S3ProviderView,
   type AdminUpdateStatus,
   type AdminUserDetail,
   type AdminUserRow,
@@ -69,6 +70,7 @@ function switchTab(next: AdminTab) {
   // 设置只加载一次：反复拉取会把用户尚未保存的修改覆盖掉
   if (next === 'settings' && !settingsLoaded.value && !settingsLoading.value) {
     void fetchSettings()
+    void loadStorageProviders()
   }
   // 更新页签：进入时拉状态（available/phase 决定界面形态）
   if (next === 'updates') void fetchUpdateStatus()
@@ -156,12 +158,48 @@ const testEmail = ref('')
 /** 服务器实际生效状态（与表单值不是一回事：Redis 改了要重启才生效） */
 const settingsMeta = ref({ smtpEnabled: false, redisEnabled: false, storageApplied: false })
 /** 密钥字段是否已设置：接口只回 hasXxx，密码框永远空白，不提示的话站长无从判断 */
-const secretMeta = ref({ smtpPass: false, redisPass: false, storageKey: false })
+const secretMeta = ref({ smtpPass: false, smtpApiKey: false, redisPass: false, storageKey: false })
 
+const storageProviders = ref<S3ProviderView[]>([])
+const testingStorage = ref(false)
+
+async function loadStorageProviders() {
+  try {
+    storageProviders.value = (await adminApi.storageProviders()).providers
+  } catch {
+    // 自检非关键路径：失败时不阻断设置页，下拉保留默认的 custom
+  }
+}
+
+/** 选择服务商时自动填 region / endpoint 占位（用户仍可覆盖） */
+function onStorageProviderChange(id: string) {
+  const p = storageProviders.value.find((x) => x.id === id)
+  if (!p) return
+  if (!settingsForm.value.storage.region) settingsForm.value.storage.region = p.defaultRegion
+  if (!settingsForm.value.storage.endpoint && p.endpointTemplate) {
+    settingsForm.value.storage.endpoint = p.endpointTemplate.replace(
+      '{region}',
+      settingsForm.value.storage.region,
+    )
+  }
+}
+
+async function testStorageConnection() {
+  testingStorage.value = true
+  try {
+    await adminApi.testStorage()
+    void MessagePlugin.success(t('admin.testStorageOk'))
+  } catch (e) {
+    void MessagePlugin.error(te(e))
+  } finally {
+    testingStorage.value = false
+  }
+}
 const settingsForm = ref<AdminSettingsPayload>({
-  smtp: { host: '', port: '465', user: '', from: '', pass: '' },
+  smtp: { provider: 'smtp', apiUrl: '', apiKey: '', host: '', port: '465', user: '', from: '', pass: '' },
   redis: { addr: '', db: '0', pass: '' },
   storage: {
+    provider: 'custom',
     endpoint: '',
     region: '',
     bucket: '',
@@ -203,6 +241,9 @@ async function fetchSettings() {
     const s = await adminApi.settings()
     settingsForm.value = {
       smtp: {
+        provider: s.smtp.provider || 'smtp',
+        apiUrl: s.smtp.apiUrl,
+        apiKey: '',
         host: s.smtp.host,
         port: s.smtp.port || '465',
         user: s.smtp.user,
@@ -212,6 +253,7 @@ async function fetchSettings() {
       },
       redis: { addr: s.redis.addr, db: s.redis.db || '0', pass: '' },
       storage: {
+        provider: s.storage.provider || 'custom',
         endpoint: s.storage.endpoint,
         region: s.storage.region,
         bucket: s.storage.bucket,
@@ -233,6 +275,7 @@ async function fetchSettings() {
     }
     secretMeta.value = {
       smtpPass: s.smtp.hasPass,
+      smtpApiKey: s.smtp.hasApiKey,
       redisPass: s.redis.hasPass,
       storageKey: s.storage.hasSecretKey,
     }
@@ -452,6 +495,7 @@ async function saveSettings() {
     )
     // 保存后清空密码输入框（已落库，不需要留在表单里）
     settingsForm.value.smtp.pass = ''
+    settingsForm.value.smtp.apiKey = ''
     settingsForm.value.redis.pass = ''
     settingsForm.value.storage.secretKey = ''
     await fetchSettings()
@@ -605,6 +649,20 @@ async function fetchStats() {
 }
 
 // ---- 筛选 ----
+
+function mailProviderOptions() {
+  return [
+    { label: t('admin.mailProviderSmtp'), value: 'smtp' },
+    { label: t('admin.mailProviderApi'), value: 'api' },
+  ]
+}
+
+function storageProviderOptions() {
+  return [
+    { label: t('admin.storageProviderCustom'), value: 'custom' },
+    ...storageProviders.value.map((p) => ({ label: p.label, value: p.id })),
+  ]
+}
 
 function filterRoleOptions() {
   return [
@@ -1489,6 +1547,31 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
           <p class="mc-settings__desc text-placeholder">{{ t('admin.smtpDesc') }}</p>
           <div class="mc-settings__grid">
             <label class="mc-settings__field">
+              <span>{{ t('admin.mailProvider') }}</span>
+              <UiSelect v-model="settingsForm.smtp.provider" :options="mailProviderOptions()" />
+            </label>
+            <template v-if="settingsForm.smtp.provider === 'api'">
+              <label class="mc-settings__field mc-settings__field--wide">
+                <span>{{ t('admin.mailApiUrl') }}</span>
+                <UiInput
+                  v-model="settingsForm.smtp.apiUrl"
+                  placeholder="https://api.resend.com/emails"
+                />
+              </label>
+              <label class="mc-settings__field">
+                <span>{{ t('admin.mailApiKey') }}</span>
+                <UiInput
+                  v-model="settingsForm.smtp.apiKey"
+                  type="password"
+                  :placeholder="t('admin.secretPlaceholder')"
+                />
+                <span v-if="secretMeta.smtpApiKey" class="mc-settings__hint">
+                  {{ t('admin.secretSaved') }}
+                </span>
+              </label>
+            </template>
+            <template v-else>
+            <label class="mc-settings__field">
               <span>{{ t('admin.smtpHost') }}</span>
               <UiInput v-model="settingsForm.smtp.host" placeholder="smtp.qq.com" />
             </label>
@@ -1515,6 +1598,7 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
               <span>{{ t('admin.smtpFrom') }}</span>
               <UiInput v-model="settingsForm.smtp.from" :placeholder="t('admin.smtpFromHint')" />
             </label>
+            </template>
           </div>
           <div class="mc-settings__actions">
             <UiInput
@@ -1561,7 +1645,7 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
           <p class="mc-settings__warn">{{ t('admin.redisRestartHint') }}</p>
         </section>
 
-        <!-- 对象存储：暂无消费方 -->
+        <!-- 对象存储（S3 兼容） -->
         <section class="mc-settings">
           <div class="mc-settings__head">
             <h3 class="mc-settings__title">{{ t('admin.storageTitle') }}</h3>
@@ -1571,6 +1655,14 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
           </div>
           <p class="mc-settings__desc text-placeholder">{{ t('admin.storageDesc') }}</p>
           <div class="mc-settings__grid">
+            <label class="mc-settings__field">
+              <span>{{ t('admin.storageProvider') }}</span>
+              <UiSelect
+                v-model="settingsForm.storage.provider"
+                :options="storageProviderOptions()"
+                @change="onStorageProviderChange(settingsForm.storage.provider)"
+              />
+            </label>
             <label class="mc-settings__field mc-settings__field--wide">
               <span>{{ t('admin.storageEndpoint') }}</span>
               <UiInput
@@ -1610,6 +1702,11 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
             </label>
           </div>
           <p class="mc-settings__warn">{{ t('admin.storageRestartHint') }}</p>
+          <div class="mc-settings__actions">
+            <UiButton variant="outline" :loading="testingStorage" @click="testStorageConnection">
+              {{ t('admin.testStorage') }}
+            </UiButton>
+          </div>
         </section>
 
         <div class="mc-settings__save">

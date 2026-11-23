@@ -429,6 +429,11 @@ export const adminApi = {
       payload,
     ),
   testSMTP: (to: string) => http.post<{ ok: true }>('/admin/settings/smtp/test', { to }),
+  /** 对象存储服务商预设 */
+  storageProviders: () =>
+    http.get<{ providers: S3ProviderView[] }>('/admin/settings/storage/providers'),
+  /** 对象存储只读自检（HEAD Bucket），不写对象 */
+  testStorage: () => http.post<{ ok: true; provider: string; endpoint: string }>('/admin/settings/storage/test'),
 
   /** 运维：附件统计 / 孤儿文件清理 / 数据库备份 */
   storageStats: () => http.get<StorageStats>('/admin/storage/stats'),
@@ -506,10 +511,24 @@ export interface InviteCode {
 }
 
 /** 系统设置（读）：敏感字段只有 hasXxx，永不回显明文 */
+export interface S3ProviderView {
+  id: string
+  label: string
+  defaultRegion: string
+  endpointTemplate: string
+  pathStyle: boolean
+}
+
 export interface AdminSettings {
-  smtp: { host: string; port: string; user: string; from: string; hasPass: boolean }
+  smtp: {
+    provider: string
+    apiUrl: string
+    hasApiKey: boolean
+    host: string; port: string; user: string; from: string; hasPass: boolean
+  }
   redis: { addr: string; db: string; hasPass: boolean }
   storage: {
+    provider: string
     endpoint: string
     region: string
     bucket: string
@@ -592,9 +611,15 @@ export interface BackupFile {
 
 /** 系统设置（写）：敏感字段留空表示不修改 */
 export interface AdminSettingsPayload {
-  smtp: { host: string; port: string; user: string; from: string; pass?: string }
+  smtp: {
+    provider: string
+    apiUrl: string
+    apiKey?: string
+    host: string; port: string; user: string; from: string; pass?: string
+  }
   redis: { addr: string; db: string; pass?: string }
   storage: {
+    provider: string
     endpoint: string
     region: string
     bucket: string

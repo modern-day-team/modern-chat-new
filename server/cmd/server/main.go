@@ -102,18 +102,18 @@ func main() {
 	settings := store.NewSettingStore(db, box)
 
 	storageCfg := service.StorageConfig{Kind: "local", DataDir: cfg.DataDir}
-	if all, sErr := settings.All(); sErr == nil {
-		if all[store.KeyStorageEndpoint] != "" && all[store.KeyStorageBucket] != "" {
-			storageCfg = service.StorageConfig{
-				Kind:       "s3",
-				DataDir:    cfg.DataDir,
-				Endpoint:   all[store.KeyStorageEndpoint],
-				Region:     all[store.KeyStorageRegion],
-				Bucket:     all[store.KeyStorageBucket],
-				AccessKey:  all[store.KeyStorageAccessKey],
-				SecretKey:  all[store.KeyStorageSecretKey],
-				PublicBase: all[store.KeyStoragePublicBase],
-			}
+	if ss := settings.StorageSettings(); ss.Configured {
+		storageCfg = service.StorageConfig{
+			Kind:       "s3",
+			DataDir:    cfg.DataDir,
+			Provider:   ss.Provider,
+			Endpoint:   ss.Endpoint,
+			Region:     ss.Region,
+			Bucket:     ss.Bucket,
+			AccessKey:  ss.AccessKey,
+			SecretKey:  ss.SecretKey,
+			PublicBase: ss.PublicBase,
+			PathStyle:  service.FindS3Provider(ss.Provider).PathStyle,
 		}
 	}
 	uploadStorage, stErr := service.NewStorage(storageCfg)

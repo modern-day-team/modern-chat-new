@@ -15,6 +15,10 @@ import (
 // 已知配置键。只有这里列出的键才能通过后台写入，
 // 避免变成一个任意 key 的"伪 KV 数据库"。
 const (
+	KeyMailProvider = "mail.provider" // smtp | api
+	KeyMailAPIURL   = "mail.apiUrl"
+	KeyMailAPIKey   = "mail.apiKey" // 加密
+
 	KeySMTPHost = "smtp.host"
 	KeySMTPPort = "smtp.port"
 	KeySMTPUser = "smtp.user"
@@ -27,6 +31,7 @@ const (
 
 	// 对象存储：S3 兼容（MinIO / AWS S3 / OSS / COS）。Endpoint + Bucket 都配置时
 	// 上传走对象存储；否则回落到本地磁盘（DATA_DIR/uploads）。
+	KeyStorageProvider  = "storage.provider" // S3 服务商 ID（见 service.S3Providers）
 	KeyStorageEndpoint  = "storage.endpoint"
 	KeyStorageRegion    = "storage.region"
 	KeyStorageBucket    = "storage.bucket"
@@ -67,9 +72,10 @@ const (
 )
 
 var knownKeys = map[string]bool{
+	KeyMailProvider: true, KeyMailAPIURL: true, KeyMailAPIKey: true,
 	KeySMTPHost: true, KeySMTPPort: true, KeySMTPUser: true, KeySMTPPass: true, KeySMTPFrom: true,
 	KeyRedisAddr: true, KeyRedisPass: true, KeyRedisDB: true,
-	KeyStorageEndpoint: true, KeyStorageRegion: true, KeyStorageBucket: true,
+	KeyStorageProvider: true, KeyStorageEndpoint: true, KeyStorageRegion: true, KeyStorageBucket: true,
 	KeyStorageAccessKey: true, KeyStorageSecretKey: true, KeyStoragePublicBase: true,
 
 	KeySiteName: true, KeySiteAllowRegister: true,
@@ -85,6 +91,7 @@ var knownKeys = map[string]bool{
 
 // secretKeys 落库前加密、返回前端时脱敏。
 var secretKeys = map[string]bool{
+	KeyMailAPIKey:       true,
 	KeySMTPPass:         true,
 	KeyRedisPass:        true,
 	KeyStorageSecretKey: true,
@@ -389,14 +396,53 @@ func clampInt(raw string, min, max, fallback int) int {
 	return n
 }
 
-// SMTPConfig 用库里的配置构造 SMTPConfig。
-// 第二个返回值表示库里是否真的配过（host 为空则调用方应保留环境变量配置）。
+// StorageSettings 对象存储的原始配置快照（不依赖 service 包，避免循环导入）。
+// configured 表示 bucket 非空，即确实启用了对象存储。
+type StorageSettings struct {
+	Provider, Endpoint, Region, Bucket, AccessKey, SecretKey, PublicBase string
+	Configured                                                           bool
+}
+
+func (s *SettingStore) StorageSettings() StorageSettings {
+	all, err := s.All()
+	if err != nil {
+		return StorageSettings{}
+	}
+	out := StorageSettings{
+		Provider:   strings.TrimSpace(all[KeyStorageProvider]),
+		Endpoint:   strings.TrimSpace(all[KeyStorageEndpoint]),
+		Region:     strings.TrimSpace(all[KeyStorageRegion]),
+		Bucket:     strings.TrimSpace(all[KeyStorageBucket]),
+		AccessKey:  strings.TrimSpace(all[KeyStorageAccessKey]),
+		SecretKey:  all[KeyStorageSecretKey],
+		PublicBase: strings.TrimSpace(all[KeyStoragePublicBase]),
+	}
+	out.Configured = out.Bucket != ""
+	return out
+}
+
+// MailConfig 用库里的配置构造邮件发送配置。
+// 第二个返回值表示库里是否真的配过（未配置时调用方保留环境变量配置）。
 //
+// Provider=api 只看 apiUrl/apiKey；Provider=smtp 沿用原 host/from 判断。
 // logResetLink 由调用方传入：它只跟运行模式有关，不属于站长可改项。
-func (s *SettingStore) SMTPConfig(logResetLink bool) (config.SMTPConfig, bool) {
+func (s *SettingStore) MailConfig(logResetLink bool) (config.SMTPConfig, bool) {
 	all, err := s.All()
 	if err != nil {
 		return config.SMTPConfig{}, false
+	}
+	provider := strings.TrimSpace(all[KeyMailProvider])
+	if provider == "api" {
+		apiURL := strings.TrimSpace(all[KeyMailAPIURL])
+		apiKey := strings.TrimSpace(all[KeyMailAPIKey])
+		if apiURL == "" || apiKey == "" {
+			return config.SMTPConfig{}, false
+		}
+		return config.SMTPConfig{
+			Provider: "api", APIURL: apiURL, APIKey: apiKey,
+			From:         strings.TrimSpace(all[KeySMTPFrom]),
+			LogResetLink: logResetLink,
+		}, true
 	}
 	host := all[KeySMTPHost]
 	if host == "" {
@@ -411,6 +457,7 @@ func (s *SettingStore) SMTPConfig(logResetLink bool) (config.SMTPConfig, bool) {
 		from = all[KeySMTPUser]
 	}
 	return config.SMTPConfig{
+		Provider:     "smtp",
 		Host:         host,
 		Port:         port,
 		User:         all[KeySMTPUser],
@@ -418,4 +465,9 @@ func (s *SettingStore) SMTPConfig(logResetLink bool) (config.SMTPConfig, bool) {
 		From:         from,
 		LogResetLink: logResetLink,
 	}, true
+}
+
+// SMTPConfig 兼容旧调用点（router / admin_settings 里已有引用）。
+func (s *SettingStore) SMTPConfig(logResetLink bool) (config.SMTPConfig, bool) {
+	return s.MailConfig(logResetLink)
 }

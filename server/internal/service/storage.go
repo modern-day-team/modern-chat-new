@@ -105,12 +105,16 @@ type FileStreamSaver interface {
 type StorageConfig struct {
 	Kind       string
 	DataDir    string // local 用
-	Endpoint   string // s3：如 minio.example.com:9000 或 s3.amazonaws.com
-	Region     string
+	Provider   string // s3：服务商 ID（见 storage_provider.go），空串按 custom 处理
+	Endpoint   string // s3：如 minio.example.com:9000 或 s3.amazonaws.com；留空则用 provider 模板
+	Region     string // s3：留空则用 provider 默认值
 	Bucket     string
 	AccessKey  string
 	SecretKey  string
 	PublicBase string // s3：对外访问前缀（CDN 域名），留空则按 endpoint/bucket 拼
+	// PathStyle s3：true=endpoint/bucket/key，false=bucket.endpoint/key。
+	// 由 provider 预设给出；用户手填 endpoint 时仍按 provider 的风格走。
+	PathStyle bool
 }
 
 // NewStorage 按配置构造存储实现。
@@ -265,7 +269,12 @@ type S3Storage struct {
 }
 
 func newS3Storage(cfg StorageConfig) (*S3Storage, error) {
-	endpoint := strings.TrimSuffix(cfg.Endpoint, "/")
+	p := FindS3Provider(cfg.Provider)
+	region := ResolveRegion(cfg.Provider, cfg.Region)
+	endpoint := ResolveEndpoint(cfg.Provider, cfg.Endpoint, region)
+	if endpoint == "" {
+		return nil, fmt.Errorf("对象存储 endpoint 为空：请填服务商或手填端点")
+	}
 	secure := true
 	if strings.HasPrefix(endpoint, "http://") {
 		secure = false
@@ -274,10 +283,18 @@ func newS3Storage(cfg StorageConfig) (*S3Storage, error) {
 		endpoint = strings.TrimPrefix(endpoint, "https://")
 	}
 
+	// 寻址风格必须显式设置：minio-go 默认按 DNS（虚拟主机）风格发请求，
+	// 而 MinIO 自建服务只认 path 风格——不设置会得到 403/301 且报错信息
+	// 完全看不出根因。PathStyle 从 provider 预设继承，不依赖用户手填。
+	lookup := minio.BucketLookupDNS
+	if cfg.PathStyle || p.PathStyle {
+		lookup = minio.BucketLookupPath
+	}
 	client, err := minio.New(endpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
-		Secure: secure,
-		Region: cfg.Region,
+		Creds:        credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
+		Secure:       secure,
+		Region:       region,
+		BucketLookup: lookup,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("初始化对象存储失败: %w", err)
@@ -296,6 +313,21 @@ func newS3Storage(cfg StorageConfig) (*S3Storage, error) {
 }
 
 func (s *S3Storage) Kind() string { return "s3" }
+
+// Probe 连接自检：列出一次 bucket 是否存在（HEAD Bucket），不写任何对象。
+// 只读探测避免"测试连接"在桶里留下垃圾文件，也不会覆盖同名对象。
+func (s *S3Storage) Probe() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	ok, err := s.client.BucketExists(ctx, s.bucket)
+	if err != nil {
+		return fmt.Errorf("连接对象存储失败: %w", err)
+	}
+	if !ok {
+		return fmt.Errorf("bucket %q 不存在或无权限访问", s.bucket)
+	}
+	return nil
+}
 
 func (s *S3Storage) Owns(url string) bool {
 	if strings.Contains(url, "..") {

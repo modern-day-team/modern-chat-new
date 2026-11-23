@@ -16,6 +16,7 @@
 | [docs/前端技术方案.md](docs/前端技术方案.md) | 前端结构、状态管理、WS 实时链路、性能约定、易踩的坑 | 改前端 |
 | [docs/运维手册.md](docs/运维手册.md) | 环境变量全表、后台可配置项、对象存储、部署、备份升级、日志、排障 FAQ | 部署与运维 |
 | [docs/安全与迁移指南.md](docs/安全与迁移指南.md) | 附件鉴权、登出与 token_version、WS 复核、插件沙箱、上传链路、0023–0025 迁移、Docker 参数 | 接手项目 / 排查安全与数据一致性 |
+| [docs/storage-providers.md](docs/storage-providers.md) | 对象存储服务商预设、端点/区域/寻址风格、连接自检与已知边界 | 配置对象存储 / 排查 403 |
 | [docs/UI设计方案.md](docs/UI设计方案.md) | 设计令牌、动效规范、组件手感、验收标准与实施记录 | 改样式 / 加动效 / 新增控件 |
 | [server/README.md](server/README.md) | 后端运行手册（配置、迁移、测试、结构） | 部署与运维后端 |
 | [web/README.md](web/README.md) | 前端结构速览与命令 | 改前端 |

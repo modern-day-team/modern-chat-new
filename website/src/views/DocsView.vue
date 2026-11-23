@@ -83,6 +83,13 @@ const DOCS: DocItem[] = [
     descEn: 'Attachment auth, sessions, realtime, plugin security, migrations',
   },
   {
+    file: 'storage-providers.md',
+    zh: '对象存储接入',
+    en: 'Object storage providers',
+    descZh: '服务商预设、端点/区域/寻址风格、连接自检与已知边界',
+    descEn: 'Provider presets, endpoint/region/addressing, connection test & limits',
+  },
+  {
     file: 'server-readme.md',
     zh: '后端运行手册',
     en: 'Server runbook',
@@ -132,6 +139,7 @@ const LINK_MAP: Record<string, string> = {
   '前端技术方案.md': 'frontend-guide.md',
   '运维手册.md': 'ops-guide.md',
   '安全与迁移指南.md': 'security-migration-guide.md',
+  'storage-providers.md': 'storage-providers.md',
 }
 
 async function loadDoc() {

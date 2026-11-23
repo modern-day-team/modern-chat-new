@@ -64,7 +64,7 @@ func (m *Mailer) SendResetLink(to, link, token string) {
 		}
 		return
 	}
-	if err := sendMail(cfg, to, buildResetMessage(cfg, to, link, token)); err != nil {
+	if err := deliver(cfg, to, "ModernChat 密码重置", resetBody(link, token)); err != nil {
 		slog.Error("mail send failed", "to", to, "host", cfg.Host, "port", cfg.Port, "err", err.Error())
 		return
 	}
@@ -84,7 +84,7 @@ func (m *Mailer) SendVerifyCode(to, code string, ttl time.Duration) error {
 	body := "你的注册验证码是：" + code + "\r\n\r\n" +
 		fmt.Sprintf("有效期 %d 分钟，仅可使用一次，请勿转发给他人。\r\n\r\n", int(ttl.Minutes())) +
 		"若非本人操作，请忽略本邮件。\r\n"
-	if err := sendMail(cfg, to, buildPlainMessage(cfg, to, "ModernChat 注册验证码", body)); err != nil {
+	if err := deliver(cfg, to, "ModernChat 注册验证码", body); err != nil {
 		slog.Error("mail send failed", "to", to, "host", cfg.Host, "port", cfg.Port, "err", err.Error())
 		return err
 	}
@@ -99,9 +99,24 @@ func (m *Mailer) SendTest(to string) error {
 	if !cfg.Enabled() {
 		return errors.New("SMTP 尚未配置（host / from 为空）")
 	}
-	msg := buildPlainMessage(cfg, to, "ModernChat SMTP 测试",
-		"这是一封来自 ModernChat 后台的测试邮件。\r\n\r\n收到它说明 SMTP 配置可用。\r\n")
-	return sendMail(cfg, to, msg)
+	return deliver(cfg, to, "ModernChat 邮件测试",
+		"这是一封来自 ModernChat 后台的测试邮件。\r\n\r\n收到它说明邮件服务配置可用。\r\n")
+}
+
+// deliver 按 Provider 分派：smtp 用原 net/smtp 实现，api 用通用 HTTP JSON 通道。
+// 两种通道都保留原来的安全语义（调用点决定失败是静默还是返回错误）。
+func deliver(cfg config.SMTPConfig, to, subject, body string) error {
+	if apiConfigured(cfg) {
+		return sendAPIMail(cfg, to, subject, body)
+	}
+	return sendMail(cfg, to, buildPlainMessage(cfg, to, subject, body))
+}
+
+// resetBody 重置邮件正文（链接 + 令牌原文，兼容客户端改写链接的场景）。
+func resetBody(link, token string) string {
+	return "请在 15 分钟内点击以下链接重置密码：\r\n\r\n" + link +
+		"\r\n\r\n若链接无法点击，可打开「忘记密码」页面并把下面的令牌粘贴进去：\r\n\r\n" + token +
+		"\r\n\r\n若非本人操作，请忽略本邮件。\r\n"
 }
 
 // buildResetMessage 组装 MIME 邮件：主题 RFC 2047 编码、正文 base64，避免中文乱码。

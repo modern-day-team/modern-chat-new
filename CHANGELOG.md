@@ -6,6 +6,15 @@
 
 ---
 
+## [未发布]
+
+### 新增
+
+- **对象存储服务商预设 + 连接自检**：后台「系统设置 → 对象存储」新增「服务商」下拉（AWS S3 / MinIO / 阿里云 OSS / 腾讯云 COS / 华为云 OBS / 百度 BOS / 火山 TOS / 金山 KS3 / UCloud US3 / 自定义），选择后自动带出端点 / 区域模板；`StorageConfig` 新增 `Provider` / `PathStyle`，`minio.Options` 真正设置 `BucketLookup` 与 `Region`——此前一律走默认 DNS 寻址，自建 MinIO / 内网端点会得到 `403 SignatureDoesNotMatch` / DNS 失败。新增 `/api/admin/settings/storage/providers`（预设列表）与 `/api/admin/settings/storage/test`（`HEAD Bucket` 只读自检，不写对象）。老配置无 `provider` 时按 `custom` 处理（path 风格），用 AWS/OSS 且只手填端点的实例升级后请到后台选对应服务商，避免寻址风格变化。七牛 Kodo / 又拍云 USS 自有协议**仍未实现**，超前描述它们的孤儿文档 `docs/storage-providers.md` 已按实际能力重写。
+- **邮件多通道（SMTP + HTTP API）**：`config.SMTPConfig` 增加 `Provider`（`smtp` | `api`）与 `APIURL` / `APIKey`，`Mailer` 内部按通道分派（`deliver`），对外方法签名与四个发送场景的失败语义（找回密码静默、验证码显式报错）完全不变。HTTP API 通道用通用 JSON 投递（`POST {apiUrl}`，`{from,to,subject,text}`，`Authorization: Bearer`），不引入厂商 SDK，可填 SendGrid / Resend / Mailgun 等对应端点接入；有 10s 超时与错误状态回显（不含 API Key）。新增环境变量 `MAIL_PROVIDER` / `MAIL_API_URL` / `MAIL_API_KEY`，后台邮件设置页加通道选择与 API 字段，API Key 加密落库、不回显。
+
+---
+
 ## [0.11.1] — 2026-11-23
 
 > **升级注意（从 0.11.0 升级）**

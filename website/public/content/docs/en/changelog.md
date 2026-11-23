@@ -6,6 +6,15 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **Object storage provider presets + connection self-test**: the admin "System Settings → Object Storage" page gains a Provider dropdown (AWS S3 / MinIO / Alibaba OSS / Tencent COS / Huawei OBS / Baidu BOS / Volcano TOS / Kingsoft KS3 / UCloud US3 / Custom); selecting one pre-fills endpoint and region templates. `StorageConfig` gains `Provider` / `PathStyle`, and `minio.Options` now actually sets `BucketLookup` and `Region` — previously everything used the default DNS-style addressing, so self-hosted MinIO / internal endpoints got `403 SignatureDoesNotMatch` or DNS failures. New endpoints: `/api/admin/settings/storage/providers` (presets) and `/api/admin/settings/storage/test` (read-only `HEAD Bucket` self-test, writes no object). Configs without `provider` fall back to `custom` (path-style); instances using AWS/OSS with a hand-filled endpoint should select the matching provider after upgrading to avoid an addressing-style change. Qiniu Kodo / Uppyun USS proprietary protocols are **still not implemented**; the orphaned doc that described them has been rewritten to match reality.
+- **Multi-channel email (SMTP + HTTP API)**: `config.SMTPConfig` gains `Provider` (`smtp` | `api`) plus `APIURL` / `APIKey`; `Mailer` dispatches internally via `deliver`, with unchanged public methods and unchanged failure semantics for the four send scenarios (password reset silent, verification codes explicit). The HTTP API channel uses generic JSON delivery (`POST {apiUrl}` with `{from,to,subject,text}`, `Authorization: Bearer`) — no vendor SDK, so SendGrid / Resend / Mailgun endpoints can be used directly. 10s timeout and error status echoed back (never the API key). New env vars `MAIL_PROVIDER` / `MAIL_API_URL` / `MAIL_API_KEY`; the admin email settings page gains a transport selector and API fields, with the API key encrypted at rest and never echoed.
+
+---
+
 ## [0.11.1] — 2026-11-23
 
 > **Upgrade notes (from 0.11.0)**

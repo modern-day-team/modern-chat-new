@@ -88,16 +88,28 @@ type RedisConfig struct {
 // Enabled 是否配置了 Redis（Addr 为空即禁用）。
 func (r RedisConfig) Enabled() bool { return r.Addr != "" }
 
-// SMTPConfig 找回密码邮件发送；为空时打日志（开发期）。
+// SMTPConfig 邮件发送配置；为空时打日志（开发期）。
+// Provider=smtp（默认）走原有 SMTP 实现；Provider=api 走通用 HTTP 邮件 API。
 type SMTPConfig struct {
+	Provider                     string // smtp | api
 	Host, Port, User, Pass, From string
-	// LogResetLink 未配置 SMTP 时，是否把完整的重置链接写进日志。
+	// HTTP API 通道（Provider=api 时必填）：
+	// APIURL 形如 https://api.resend.com/emails，APIKey 走 Bearer 头。
+	// 只做通用 JSON 投递，不绑定任何厂商私有字段。
+	APIURL string
+	APIKey string
+	// LogResetLink 未配置邮件服务时，是否把完整的重置链接写进日志。
 	// 默认仅在非 release 模式开启：日志里出现可用令牌等于把账户接管入口
 	// 暴露给所有能看日志的人（含日志采集平台）。
 	LogResetLink bool
 }
 
-func (c SMTPConfig) Enabled() bool { return c.Host != "" }
+func (c SMTPConfig) Enabled() bool {
+	if c.Provider == "api" {
+		return c.APIURL != "" && c.APIKey != ""
+	}
+	return c.Host != ""
+}
 
 // LegacyEnabled 旧站迁移功能是否启用：两个配置项都非空才启用。
 // 任一为空时迁移相关接口统一返回 503，且不会建立旧库连接（不影响正常启动）。
@@ -162,11 +174,14 @@ func Load() (Config, error) {
 			DB:       int(geti("REDIS_DB", 0)),
 		},
 		SMTP: SMTPConfig{
-			Host: os.Getenv("SMTP_HOST"),
-			Port: getv("SMTP_PORT", "587"),
-			User: os.Getenv("SMTP_USER"),
-			Pass: os.Getenv("SMTP_PASS"),
-			From: getv("SMTP_FROM", "modernchat@localhost"),
+			Provider: getv("MAIL_PROVIDER", "smtp"),
+			APIURL:   os.Getenv("MAIL_API_URL"),
+			APIKey:   os.Getenv("MAIL_API_KEY"),
+			Host:     os.Getenv("SMTP_HOST"),
+			Port:     getv("SMTP_PORT", "587"),
+			User:     os.Getenv("SMTP_USER"),
+			Pass:     os.Getenv("SMTP_PASS"),
+			From:     getv("SMTP_FROM", "modernchat@localhost"),
 			// 生产默认不把可用令牌写进日志；本地开发保留便利
 			LogResetLink: getBool("LOG_RESET_LINK", getv("GIN_MODE", "release") != "release"),
 		},

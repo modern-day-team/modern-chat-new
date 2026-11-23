@@ -69,11 +69,14 @@ https://chat.example.com/qiniu/<key> → 对象存储 CDN（私有空间，需�
 | `SMTP_USER` | 空 | 否 | 登录用户名；QQ / 163 填**授权码**不是登录密码。**可在后台改** |
 | `SMTP_PASS` | 空 | 否 | 授权码 / 密码。**可在后台改**（加密存储） |
 | `SMTP_FROM` | `modernchat@localhost` | 否 | 发件人，**QQ / 163 必须与 `SMTP_USER` 一致**，否则被拒信。**可在后台改** |
+| `MAIL_PROVIDER` | `smtp` | 否 | 邮件通道：`smtp`（用上方 `SMTP_*`）或 `api`（HTTP API）。后台配置优先 |
+| `MAIL_API_URL` / `MAIL_API_KEY` | 空 | 否 | `MAIL_PROVIDER=api` 时必填：通用 JSON 投递地址与 Bearer 令牌。可填 SendGrid / Resend / Mailgun 等端点；后台配置加密落库、不回显 |
 | `LOG_RESET_LINK` | release 下 `false`，其他模式 `true` | 否 | 未配置 SMTP 时是否把**完整重置链接**写进日志。生产默认关闭：日志里的可用令牌等于账户接管入口（日志平台/备份都能看到）。确实要靠日志取链接时再显式开 |
 | `WEB_UPDATE` | `true` | 否 | 站长后台「在线更新」开关。`false` 时 `/api/admin/update/*` 全部不可用，自动更新也一并关闭；Docker / 裸机部署自动不可用（见 §4.2） |
 | `AUTO_UPDATE` | `true` | 否 | 自动更新开关：发行版 + systemd 部署定时查 GitHub Release，发现新 tag 自动升级（与后台一键更新同一条链路）。仅发行版部署生效，源码 / Docker / 裸机自动跳过；每次触发写 `auto_update` 审计。设 `false` 关闭 |
 | `AUTO_UPDATE_INTERVAL` | `30` | 否 | 自动更新检查间隔（分钟），下限 5、上限 1440；低于 5 或非法值回退 30。GitHub 匿名 API 限流 60 次/小时/IP，多实例同 IP 建议配 `GITHUB_TOKEN` 或调大间隔 |
 | `RELEASE_API_URL` / `RELEASE_DL_URL` | 空 | 否 | 发行版模式：GitHub Release 最新版本 API 与下载前缀，由 `install.sh` 写入 `.env`；两值为空时安装目录有 `.git` 走源码模式，否则按 `RELEASE_REPO_GITHUB`（或默认官方仓库）派生 GitHub 地址兜底 |
+| 对象存储服务商 | 后台配置 | 否 | 后台「系统设置 → 对象存储」新建「服务商」下拉（AWS S3 / MinIO / OSS / COS / OBS / BOS / TOS / KS3 / UCloud / 自定义），选中后自动带出端点 / 区域模板并正确设置 path-style / 虚拟主机寻址。改完需重启才切换上传实现，保存后可点「测试连接」只读自检。详见 [对象存储服务商接入手册](storage-providers.md) |
 | `RELEASE_REPO_GITHUB` | `modern-day-team/modern-chat-new` | 否 | Release 托管仓库（`owner/repo`）：显式 URL 未配置时用它派生更新源，Release 放在 fork / 镜像仓库时配置 |
 | `GITHUB_TOKEN` | 空 | 否 | GitHub API 令牌（可选）：匿名 `api.github.com` 限流 60 次/小时/IP，配置后提升到 5000 次/小时，并支持私有仓库检查。仅随 GitHub 域更新请求发送，不落日志 |
 | `SSO_SITE_URL` / `SSO_APP_BASE` / `SSO_HUB_URL` / `SSO_CLIENT_ID` / `SSO_CLIENT_SECRET` | 空 / `/app` | 否 | 统一登录（聚合登录中心）：全部配置才启用，未启用时 `/api/auth/sso/*` 一律 404。`SSO_APP_BASE` 与前端挂载前缀一致（站点根部署设为空） |
