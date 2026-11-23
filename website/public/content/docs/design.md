@@ -705,3 +705,11 @@ cd web && npm install && npm run dev  # :5173，代理 /api 与 /ws 到 :8080
 - **修复：自己发出的消息不更新会话列表**：发送者本端收不到「纯新消息」的 `conv_change`，消息回显分支没有写 `lastMessage*`，列表预览 / 时间 / 排序会一直停在旧消息；同时去掉「发送即记已读水位」的错误优化，避免转发到有未读的会话后服务端未读数永远清不掉。
 - **修复：新成员加入群后列表显示「暂无消息」**：`initInboxes` 只插入空收件箱行，没有按设计（§5）同步当前最新消息；主动加入 / 被邀请 / 注册自动进公共群时统一改为写入最新预览与时间，并把 `last_read` 推到最新，不追溯加入前的历史未读。
 - **修复：`FRONTEND_URL` 解析为空导致找回密码 panic**：`FRONTEND_URL=","` 或全空白项时 `FrontendURLs` 为空，`Forgot` 取 `[0]` 越界；现在 `config.Load` 直接返回错误并提示至少配置一个来源。
+
+### 13.5 多端接入（2026-11-23）
+- **定位**：`Modernchat-new` 是项目组核心项目；`Modernchat-desktop`（Tauri 2）、`Modernchat-mobile`（Flutter）、SSO、Hub 均可独立运行，但都是本项目的组件。新增 `docs/客户端接入指南.md` 作为跨端接入总入口。
+- **CORS**：新增 `middleware/cors.go`，按 `FRONTEND_URL` 白名单精确回显 `Access-Control-Allow-Origin`（不回 `*`，因带凭据），预检 `OPTIONS` 直接 204；装在限流之前，避免预检被认证接口的 10/min 误伤。与 WS Origin 白名单共用同一配置。
+- **登录会话**：JWT claims 增加 `sid`（128 位随机）；`user_sessions` 表（迁移 0033）只存 sid 不存 token。会话行由 `Auth` / WS 握手**首次见到时 lazy 落库**，因此密码 / 2FA / 扫码 / SSO / 迁移 7 处签发点无需改动；扫码登录的客户端归属也由桌面端首次请求自动带对。老 token 无 sid 时跳过会话校验（兼容存量登录态）。
+- **单设备下线**：`GET /api/me/sessions` 列出各端会话，`DELETE /api/me/sessions/:id` 撤销该 sid 并踢对应 WS（`Hub.KickSession`），不影响其他设备；设置页账号卡片新增会话列表（L3，低频、仅本人）。
+- **客户端标识与版本协商**：`X-Client-Platform` / `X-Client-Type` / `X-Client-Version`（WS 为 query 参数）入库到会话；`GET /api/client/version` 按 `MIN_CLIENT_VERSION` 提示升级，不阻断旧端。
+- **契约同步**：`docs/后端需求规格.md` §3.2/§3.3/§6/§9、`web/src/types/proto.ts`、设置页中英文案同提交更新。

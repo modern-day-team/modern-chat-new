@@ -38,6 +38,13 @@ const DOCS: DocItem[] = [
     descZh: '各版本新增、修复与性能变更记录',
     descEn: 'Features, fixes and perf changes per release',
   },
+  {
+    file: 'client-guide.md',
+    zh: '客户端接入指南',
+    en: 'Client integration guide',
+    descZh: '桌面 / 移动 / SSO / Hub 接入主站的来源登记、登录、WS 与会话管理',
+    descEn: 'Origin setup, auth, WS and sessions for desktop / mobile / SSO / Hub',
+  },
   { group: true, zh: '设计与架构', en: 'Design & architecture' },
   {
     file: 'design.md',
@@ -134,6 +141,7 @@ const failed = ref(false)
 const LINK_MAP: Record<string, string> = {
   'README.md': 'getting-started.md',
   'CHANGELOG.md': 'changelog.md',
+  '客户端接入指南.md': 'client-guide.md',
   '设计文档.md': 'design.md',
   '后端需求规格.md': 'api-spec.md',
   '前端技术方案.md': 'frontend-guide.md',

@@ -54,7 +54,8 @@ https://chat.example.com/qiniu/<key> → 对象存储 CDN（私有空间，需�
 | `DB_DSN` | `root:root@tcp(127.0.0.1:3306)/modernchat?...` | **是** | MySQL 连接串，建议带 `utf8mb4&parseTime=True&loc=Local` |
 | `JWT_SECRET` | 无 | **是**（生产） | 签名密钥，**≥32 字节**；生产未设置会拒绝启动。生成：`openssl rand -hex 32`。**更换它会导致后台已保存的 SMTP / Redis / 对象存储密钥无法解密**（详见 §2.1） |
 | `MIGRATE` | `false` | 否 | `true` 时启动自动执行 `migrations/`（生产建议用版本化 SQL 手工执行） |
-| `FRONTEND_URL` | `http://localhost:5173` | **是** | 允许的前端来源，逗号分隔。用于 **WS Origin 白名单**与找回密码链接里的站点地址 |
+| `FRONTEND_URL` | `http://localhost:5173` | **是** | 允许的前端来源，逗号分隔。用于 **WS Origin 白名单 + CORS 白名单 + 找回密码链接**里的站点地址。多端接入时把各端来源都列入（如桌面端开发 `http://localhost:1420`、移动端调试地址）；漏配会导致该端 WS 握手被拒、REST 跨源被浏览器拦截 |
+| `MIN_CLIENT_VERSION` | 空 | 否 | 最低客户端版本（如 `0.2.0`）。各端通过 `GET /api/client/version` 探测并提示升级；**空 = 不限制**，不阻断旧端登录 |
 | `TRUSTED_PROXIES` | `127.0.0.1,::1` | 否 | 可信反向代理网段；**显式设为空串 = 不信任任何代理**（此时不使用 XFF 判定来源 IP） |
 | `PLUGIN_MAX_SIZE` | `1048576`（1 MB） | 否 | 插件上传大小上限（字节） |
 | `LOG_LEVEL` | `info` | 否 | `debug` / `info` / `warn` / `error` |

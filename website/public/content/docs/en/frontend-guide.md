@@ -338,6 +338,8 @@ The "Local cache" section of the settings page manages **Cache Storage only** (P
 - **Types**: `web/src/types/proto.ts` maps 1:1 to `server/internal/model/view.go` (field names, types, enums); changing one side requires changing the other
 - **WS frames**: `proto.ts`'s `ClientFrame` / `ServerFrame` correspond to the backend's uplink/downlink handling in `ws/dispatch.go`
 - **Errors**: the backend returns `{ error, code? }`; `api/client.ts` normalizes it into `ApiError`; Chinese errors map to English in `i18n/errors.ts`. `fetch` network-layer failures are wrapped as "network connection failed", and non-401 failures **never** clear the login state (only 401 clears the token and redirects to login, carrying `?redirect=` to return to the original page)
+- **Client identity**: `core/network/http.ts` sends `X-Client-Platform` / `X-Client-Type` / `X-Client-Version` on REST requests and as WS query params (Web is fixed to `web` / `browser` / the package version); the server uses them to distinguish devices in the session list. Desktop / mobile builds just set their own identity — no backend change needed
+- **Sessions**: `authApi.sessions()` / `authApi.revokeSession(id)` map to `GET` / `DELETE /api/me/sessions`; revoking the current device clears the local token and disconnects WS
 - **API change workflow**: update [后端需求规格.md](后端需求规格.md) first → then the backend & `proto.ts` → finally the frontend
 
 ## 12. Information Architecture (Which Layer Does a New Entry Belong To)
@@ -348,7 +350,7 @@ Don't pile buttons onto the UI. Every new entry must be classified by the three 
 |---|---|---|---|
 | **L1 Main UI** | icon rail + list pane | actions used repeatedly while chatting: switching views, search, starting a new conversation | used many times a day |
 | **L2 Context panel** | `DetailPanel` (right) | actions aimed at **the current conversation or the current member**: in-conversation search, renaming a group, transfer ownership, removing members, leaving a group | tightly bound to the current conversation |
-| **L3 Settings page** | `SettingsView` | global, low-frequency, one-time configuration: account profile, appearance theme, language, plugin management, admin console, about, logout | global / low-frequency / only for the user or an admin |
+| **L3 Settings page** | `SettingsView` | global, low-frequency, one-time configuration: account profile, signed-in devices (session list), appearance theme, language, plugin management, admin console, about, logout | global / low-frequency / only for the user or an admin |
 
 Three hard constraints:
 

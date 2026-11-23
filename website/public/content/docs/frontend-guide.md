@@ -350,6 +350,8 @@ UiCheckbox  UiInputNumber  UiTooltip  UiPopup  UiDialog  UiDrawer
 - **类型**：`web/src/types/proto.ts` 与 `server/internal/model/view.go` 一一对应（字段名、类型、枚举值），改一侧必须改另一侧
 - **WS 帧**：`proto.ts` 的 `ClientFrame` / `ServerFrame` 对应后端 `ws/dispatch.go` 的上下行处理
 - **错误**：后端返回 `{ error, code? }`，前端 `api/client.ts` 归一化成 `ApiError`；中文错误在 `i18n/errors.ts` 中映射为英文。`fetch` 的网络层异常统一包装成「网络连接失败」，非 401 的失败**不会**清登录态（只有 401 才清 token 并跳登录，且带 `?redirect=` 回到原页面）
+- **客户端标识**：`core/network/http.ts` 统一在 REST 请求头与 WS 握手 query 里带 `X-Client-Platform` / `X-Client-Type` / `X-Client-Version`（Web 固定 `web` / `browser` / 包版本）；服务端据此在会话列表里区分设备。桌面 / 移动构建改为自己的标识即可，无需改后端
+- **会话管理**：`authApi.sessions()` / `authApi.revokeSession(id)` 对应 `GET` / `DELETE /api/me/sessions`；撤销当前设备时前端自行清 token 并断 WS
 - **改接口的流程**：先改 [后端需求规格.md](后端需求规格.md) → 再改后端与 `proto.ts` → 最后改前端
 
 ## 12. 信息架构（新增入口该放哪一层）
@@ -360,7 +362,7 @@ UiCheckbox  UiInputNumber  UiTooltip  UiPopup  UiDialog  UiDrawer
 |---|---|---|---|
 | **L1 主界面** | 图标栏 + 列表栏 | 聊天过程中反复用的动作：切换视图、搜索、发起新对话 | 每天用多次 |
 | **L2 上下文面板** | `DetailPanel`（右侧） | 针对**当前会话或当前成员**的动作：会话内搜索、改名群、转让群主、移出成员、退群 | 与当前会话强绑定 |
-| **L3 设置页** | `SettingsView` | 全局、低频、一次性配置：账号资料、外观主题、语言、插件管理、站长后台、关于、退出登录 | 全局 / 低频 / 仅本人或管理员 |
+| **L3 设置页** | `SettingsView` | 全局、低频、一次性配置：账号资料、**登录设备（会话列表）**、外观主题、语言、插件管理、站长后台、关于、退出登录 | 全局 / 低频 / 仅本人或管理员 |
 
 三条硬性约束：
 

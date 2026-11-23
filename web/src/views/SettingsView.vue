@@ -27,6 +27,7 @@ import {
 import QRCode from 'qrcode'
 
 import { authApi, systemApi, type TwofaStatus, type VersionInfo } from '@/core/network/endpoints'
+import type { UserSession } from '@/types/proto'
 import { useAuthStore } from '@/stores/auth'
 import { useConversationsStore } from '@/stores/conversations'
 import { useFriendsStore } from '@/stores/friends'
@@ -130,6 +131,7 @@ async function onNotifyToggle(v: unknown) {
 onMounted(async () => {
   void refreshCacheUsage()
   void loadTwofa()
+  void loadSessions()
   if (!auth.token || auth.user) return
   try {
     await auth.fetchMe()
@@ -137,6 +139,55 @@ onMounted(async () => {
     /* 令牌失效由请求拦截器统一处理 */
   }
 })
+
+// ===== 登录会话（L3 设置页：低频、仅本人）=====
+
+const sessions = ref<UserSession[]>([])
+const sessionsLoading = ref(false)
+
+async function loadSessions() {
+  if (!auth.token) return
+  sessionsLoading.value = true
+  try {
+    const r = await authApi.sessions()
+    sessions.value = r.sessions ?? []
+  } catch {
+    sessions.value = []
+  } finally {
+    sessionsLoading.value = false
+  }
+}
+
+function sessionLabel(s: UserSession): string {
+  const part = { web: '网页', desktop: '桌面端', mobile: '手机', tablet: '平板', other: '其他' }[
+    s.platform
+  ] ?? '其他'
+  return s.clientType ? `${part} · ${s.clientType}` : part
+}
+
+function confirmRevokeSession(s: UserSession) {
+  const dialog = DialogPlugin.confirm({
+    header: t('settings.sessionRevoke'),
+    body: t('settings.sessionRevokeConfirm'),
+    confirmBtn: { content: t('settings.sessionRevoke'), theme: 'danger' },
+    onConfirm: async () => {
+      try {
+        await authApi.revokeSession(s.id)
+        await loadSessions()
+        // 撤销当前设备：按服务端口径立即清本地登录态
+        if (s.current) {
+          auth.logout()
+          ws.disconnect()
+          convStore.reset()
+        }
+        void MessagePlugin.success(t('settings.sessionRevoked'))
+      } catch (e) {
+        void MessagePlugin.error(te(e) || t('auth.opFailed'))
+      }
+      dialog.destroy()
+    },
+  })
+}
 
 // ===== 两步验证（默认关闭，设置页开启 / 关闭）=====
 
@@ -600,6 +651,39 @@ function goBack() {
             </UiButton>
           </div>
 
+          <div class="settings-subhead">
+            <span class="settings-row__label">{{ t('settings.sessions') }}</span>
+            <UiButton variant="text" size="small" :loading="sessionsLoading" @click="loadSessions">
+              {{ t('common.refresh') }}
+            </UiButton>
+          </div>
+          <p class="settings-card__hint text-placeholder">{{ t('settings.sessionsHint') }}</p>
+          <div v-if="sessions.length" class="session-list">
+            <div v-for="s in sessions" :key="s.id" class="session-item">
+              <div class="settings-row__text">
+                <span class="settings-row__label">
+                  {{ sessionLabel(s) }}
+                  <span v-if="s.current" class="session-current">{{ t('settings.sessionCurrent') }}</span>
+                </span>
+                <span class="settings-row__hint text-placeholder">
+                  {{ s.appVersion || '-' }} · {{ s.ip || '-' }} · {{ s.lastSeenAt }}
+                </span>
+              </div>
+              <UiButton
+                variant="outline"
+                theme="danger"
+                size="small"
+                :disabled="s.current"
+                @click="confirmRevokeSession(s)"
+              >
+                {{ t('settings.sessionRevoke') }}
+              </UiButton>
+            </div>
+          </div>
+          <p v-else-if="!sessionsLoading" class="settings-card__hint text-placeholder">
+            {{ t('settings.sessionsEmpty') }}
+          </p>
+
           <div class="settings-row">
             <div class="settings-row__text">
               <span class="settings-row__label">{{ t('settings.logoutOthers') }}</span>
@@ -968,6 +1052,40 @@ function goBack() {
 .settings-row__hint {
   font-size: 12px;
   line-height: 1.4;
+}
+
+/* ===== 登录会话（各端设备） ===== */
+.settings-subhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--mc-hairline);
+}
+
+.session-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--mc-hairline);
+}
+
+.session-item:last-child {
+  border-bottom: none;
+}
+
+.session-current {
+  font-size: 12px;
+  color: var(--mc-link);
 }
 
 /* ===== 两步验证恢复码 ===== */

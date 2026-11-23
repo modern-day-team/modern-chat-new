@@ -106,6 +106,9 @@ AdminPluginRow  { name, version, installCount, enabledCount, globalDisabled, cre
 | PATCH `/api/me` | `{nickname?, email?, avatar?, avatarThumb?, emailCode?}`。**换绑邮箱必须带 `emailCode`**（发往新邮箱、核销通过才落库并置 `email_verified=true`；空串 `email` 表示解绑、不需要验证）；邮箱未变化时不改动验证状态；SMTP 未配置时换绑返回 400。avatar/avatarThumb 为 `data:image/(png\|jpeg\|webp);base64,…`（前端压至 256×256 / 64×64，服务端解码后转存到当前 Storage，DB 只留 URL）或本站上传地址（`Owns` 校验，防外链），空串清除；存量 data URL 继续兼容 | 更新后 `User` |
 | POST `/api/me/email-code` | `{email}`（新邮箱） | `{ok:true, cooldownSeconds}`；与当前邮箱相同→400，被他人占用→409，SMTP 不可用→503；每用户 5 次/分，同邮箱 60 秒冷却 |
 | POST `/api/me/logout-others` | — | `{ok:true}`；`token_version+1`，所有旧 JWT 失效；同时主动 `KickUser` 断开该账号全部已建 WS 连接（发送 `kicked` 帧），当前设备也需重新登录 |
+| GET `/api/me/sessions` | — | `{sessions: Session[]}`；当前账号的登录会话列表（新→旧），空为 `[]`。`Session = {id, platform, clientType, appVersion, ip, createdAt, lastSeenAt, current}`；`platform` ∈ `web|desktop|mobile|tablet|other`，`current=true` 表示签发本次请求的会话；IP 只展示给本人 |
+| DELETE `/api/me/sessions/:id` | 路径参数 = 会话 ID | `{ok:true}`；撤销该会话：JWT `sid` 加入失效名单（该 token 再请求 REST 返回 401、WS 握手被拒），并踢掉该 `sid` 对应的已建 WS 连接；不能撤销他人会话（404）；撤销当前会话等价于退出当前设备（客户端需自行清 token） |
+| GET `/api/client/version` | `?platform=&clientType=&appVersion=`（均可选，≤32 字符） | `{version, minVersion, upgradeRequired, message?}`；**免鉴权**。各端启动时探测兼容性：`minVersion` 取自 `MIN_CLIENT_VERSION`（空=不限制），`appVersion` 低于它时 `upgradeRequired=true` 并给出中文提示；比较规则为点分数字逐段比较，非数字段按 0。该接口不写库、不限流 |
 | GET `/api/users/search` | `?kw=`（≤50） | `User摘要[]`（不含 email，≤20 条） |
 | GET `/api/friends` | — | `FriendItem[]`（已通过的好友；同意后双向记录按对方去重，每人一条） |
 | GET `/api/friends/requests` | — | `FriendRequestItem[]`（status=0 且指向我） |
@@ -197,7 +200,8 @@ AdminPluginRow  { name, version, installCount, enabledCount, globalDisabled, cre
 
 ### 3.3 WebSocket（`/ws`）
 
-- 连接：`GET /ws?token=<JWT>`，握手时校验签名、tv、封禁；失败直接关闭（401/403 响应码）
+- 连接：`GET /ws?token=<JWT>`，握手时校验签名、tv、会话 `sid` 是否撤销、封禁；失败直接关闭（401/403 响应码）
+- 客户端标识：握手可带 `?platform=desktop&clientType=tauri&appVersion=0.1.0`（均可选）；服务端将其写入该 `sid` 的会话记录，供 `/api/me/sessions` 展示。浏览器客户端来源仍受 `FRONTEND_URL` Origin 白名单约束；无 Origin 的原生/Tauri 客户端放行（仍受 token 保护）
 - 心跳：客户端 25s 发 `{"type":"ping"}`，服务端立即回 `{"type":"pong"}`；服务端读超时 60s 断开
 - 上行帧与下行帧**字段与 `web/src/types/proto.ts` 完全一致**（`chat` 帧的 `msgType` 为 string，插件自定义类型透传存储）
 - 所有上行帧先校验"发送者是 `convId` 的成员"，否则回 `{"type":"error","reason":"..."}`
@@ -281,8 +285,10 @@ HTTP 状态码 + `{"error": "<中文消息>"}`。消息直接展示给用户，�
 
 ## 6. 鉴权与权限
 
-- JWT：HS256，secret ≥32 字节（`JWT_SECRET`），claims `{uid, tv, iat, exp}`，有效期 7 天
-- 中间件顺序：Recover → Logger → RateLimit(按路由) → JWT → Ban
+- JWT：HS256，secret ≥32 字节（`JWT_SECRET`），claims `{uid, tv, sid, iat, exp}`，有效期 7 天；`sid` 为 128 位随机会话标识，首次经 Auth / WS 握手时落库，供会话列表与单设备撤销使用
+- 跨源（CORS）：按 `FRONTEND_URL` 白名单回 `Access-Control-Allow-Origin`（精确匹配单个来源，**不用 `*`**，因需携带凭据）、`Access-Control-Allow-Credentials: true`、`Vary: Origin`；预检 `OPTIONS` 直接 204。非白名单来源不发头（浏览器自会拦截），不影响同源与原生客户端
+- 客户端标识：已登录请求可带 `X-Client-Platform` / `X-Client-Type` / `X-Client-Version`（≤32 字符，非法值忽略）；Auth 首次见到某 `sid` 时按请求头落库，之后仅刷新 `lastSeenAt`。缺省 `platform=web`
+- 中间件顺序：Recover → Logger → CORS → RateLimit(按路由) → JWT → Ban
 - Ban 中间件：查 `banned_until`，未过期返回 403 `账号已被封禁：<原因>`
 - 角色控制：`/api/admin/*` 校验 `role=admin`（403）；群管理操作校验成员表 `role=owner`（403）
 - tv 触发 `+1` 的操作：改密（本期无独立入口）、重置密码、管理员重置、封禁 → 全部旧 token 401，WS 推 `kicked`
@@ -324,7 +330,9 @@ PORT=8080
 GIN_MODE=release            # debug|release
 DB_DSN=user:pass@tcp(127.0.0.1:3306)/modernchat?charset=utf8mb4&parseTime=True&loc=Local
 JWT_SECRET=                 # ≥32 字节；release 模式缺省拒绝启动；dev 模式随机生成并告警
-FRONTEND_URL=http://localhost:5173   # 逗号分隔；WS Origin 白名单 + 找回密码链接前缀
+FRONTEND_URL=http://localhost:5173   # 逗号分隔；WS Origin + CORS 白名单 + 找回密码链接前缀
+                                    # 多端接入时把各端来源都列入（如 http://localhost:1420、http://10.0.2.2:5173）
+MIN_CLIENT_VERSION=                  # 最低客户端版本（如 0.2.0）；/api/client/version 据此提示升级，空=不限制
 TRUSTED_PROXIES=127.0.0.1,::1        # 可信反代；显式空串=不信任任何代理
 LOG_LEVEL=info
 LOG_DIR=logs

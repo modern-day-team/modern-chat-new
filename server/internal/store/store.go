@@ -81,6 +81,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.ConversationInvite{},
 		&model.PushSubscription{},
 		&model.EmailCode{},
+		&model.UserSession{},
 		// 旧站迁移（生产由迁移 0026 建表，开发期 AutoMigrate 保持一致）
 		&model.LegacyUserMap{},
 		&model.MigrationJob{},

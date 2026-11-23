@@ -16,6 +16,8 @@ import type {
   TwofaEnableResult,
   TwofaStatus,
   User,
+  UserSession,
+  ClientVersionInfo,
 } from '@/types/proto'
 
 // 供业务模块复用的登录/两步验证类型（与 proto.ts 同源）
@@ -99,6 +101,10 @@ export const authApi = {
   me: () => http.get<User>('/me'),
   /** 退出所有设备：后端 token_version+1，所有旧 JWT 失效 */
   logoutOthers: () => http.post<{ ok: true }>('/me/logout-others'),
+  /** 登录会话列表（设置页展示各端设备） */
+  sessions: () => http.get<{ sessions: UserSession[] }>('/me/sessions'),
+  /** 退出指定设备：该 token 立即失效并踢掉其 WS */
+  revokeSession: (id: number) => http.delete<{ ok: true }>(`/me/sessions/${id}`),
   updateMe: (body: {
     nickname?: string
     email?: string
@@ -699,6 +705,9 @@ export interface VersionInfo {
 export const systemApi = {
   /** 当前构建版本（免鉴权，用于核对升级是否生效） */
   version: () => http.get<VersionInfo>('/version'),
+  /** 各端版本探测（免鉴权；appVersion 低于服务端下限时为 true） */
+  clientVersion: (appVersion: string, platform = 'web') =>
+    http.get<ClientVersionInfo>('/client/version', { platform, appVersion }),
 }
 
 /** 站长视角：按插件名聚合的行 */

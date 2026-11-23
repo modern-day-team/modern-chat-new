@@ -4,7 +4,7 @@ import { defineStore } from 'pinia'
 import { MessagePlugin } from '@/components/ui/feedback'
 
 import { authApi } from '@/core/network/endpoints'
-import { ApiError } from '@/core/network/http'
+import { ApiError, CLIENT_IDENTITY } from '@/core/network/http'
 import { WsChannel } from '@/core/network/ws'
 import type { ServerFrame } from '@/types/proto'
 import { useAuthStore } from './auth'
@@ -48,7 +48,13 @@ export const useWsStore = defineStore('ws', () => {
   const channel = new WsChannel({
     url: () => {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-      return `${proto}://${location.host}/ws?token=${encodeURIComponent(auth.token)}`
+      const q = new URLSearchParams({
+        token: auth.token,
+        platform: CLIENT_IDENTITY.platform,
+        clientType: CLIENT_IDENTITY.clientType,
+        appVersion: CLIENT_IDENTITY.appVersion,
+      })
+      return `${proto}://${location.host}/ws?${q.toString()}`
     },
     canConnect: () => !!auth.token,
     onOpen: () => {

@@ -3,6 +3,24 @@
 const BASE = '/api'
 const TOKEN_KEY = 'mc_token'
 
+import { version as appVersion } from '../../../package.json'
+
+/**
+ * 客户端标识：服务端据此在会话列表里区分 Web / 桌面 / 移动端。
+ * Web 端固定为 web/browser；桌面与移动端的构建可覆盖这些值。
+ */
+export const CLIENT_IDENTITY = {
+  platform: 'web',
+  clientType: 'browser',
+  appVersion,
+} as const
+
+const CLIENT_HEADERS: Record<string, string> = {
+  'X-Client-Platform': CLIENT_IDENTITY.platform,
+  'X-Client-Type': CLIENT_IDENTITY.clientType,
+  'X-Client-Version': CLIENT_IDENTITY.appVersion,
+}
+
 /**
  * 请求超时。
  * 没有超时的话，代理/扩展/后端任一环节挂住时 fetch 会永久 pending，
@@ -117,6 +135,7 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
         method: opts.method ?? 'GET',
         headers: {
           'Content-Type': 'application/json',
+          ...CLIENT_HEADERS,
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
@@ -161,7 +180,7 @@ async function upload<T>(path: string, form: FormData): Promise<T> {
     try {
       res = await fetch(BASE + path, {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: { ...CLIENT_HEADERS, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: form,
         signal: ctrl.signal,
       })
@@ -204,7 +223,10 @@ export async function rawFetch(
   const run = async (): Promise<Response> => {
     let res: Response
     try {
-      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {}
+      const headers: Record<string, string> = {
+        ...CLIENT_HEADERS,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      }
       const extra = init.headers as Record<string, string> | undefined
       if (extra) Object.assign(headers, extra)
       res = await fetch(path, {

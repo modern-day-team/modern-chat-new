@@ -65,7 +65,9 @@ type Hub struct {
 type Client struct {
 	UserID uint
 	// tv JWT 中的 token_version（握手时已校验）；handleChat 用它做连接级复核。
-	tv   int64
+	tv int64
+	// sid JWT 中的会话 ID；KickSession 按它单独断开某台设备，不影响其他连接。
+	sid  string
 	Conn *websocket.Conn
 	send chan []byte
 	hub  *Hub
@@ -209,6 +211,40 @@ func (h *Hub) KickUser(userID uint, reason string) {
 	}
 	if len(targets) > 0 {
 		slog.Info("ws kicked user conns", "uid", userID, "conns", len(targets))
+	}
+}
+
+// KickSession 强制断开指定会话的全部连接（单设备下线）。
+// 与 KickUser 的区别：只匹配 sid 相同的连接，该用户其他设备不受影响。
+// sid 为空的老 token 不会命中（老登录态只能靠 tv 全局失效）。
+func (h *Hub) KickSession(sid, reason string) {
+	if sid == "" {
+		return
+	}
+	data, err := json.Marshal(ginH{"type": "kicked", "reason": reason})
+	if err != nil {
+		slog.Error("ws marshal kicked frame", "err", err.Error())
+		return
+	}
+	var targets []*Client
+	for i := range h.shards {
+		s := h.shards[i]
+		s.mu.Lock()
+		for _, set := range s.conns {
+			for c := range set {
+				if c.sid == sid {
+					c.trySend(data)
+					targets = append(targets, c)
+				}
+			}
+		}
+		s.mu.Unlock()
+	}
+	for _, c := range targets {
+		c.requestKick(true)
+	}
+	if len(targets) > 0 {
+		slog.Info("ws kicked session conns", "sid", sid, "conns", len(targets))
 	}
 }
 

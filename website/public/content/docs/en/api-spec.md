@@ -100,6 +100,9 @@ AdminPluginRow  { name, version, installCount, enabledCount, globalDisabled, cre
 | PATCH `/api/me` | `{nickname?, email?, avatar?, avatarThumb?, emailCode?}`. **Changing the bound email requires `emailCode`** (sent to the new address; stored and `email_verified=true` only after successful consumption; an empty `email` string means unbind and needs no verification); if the email is unchanged the verification state is untouched; with SMTP unconfigured the change returns 400. avatar/avatarThumb accept `data:image/(png\|jpeg\|webp);base64,…` (frontend compresses to 256×256 / 64×64, server decodes and saves via the current Storage, keeping only URLs in DB) or an on-site upload URL (`Owns` check), empty string clears; legacy data URLs still display | updated `User` |
 | POST `/api/me/email-code` | `{email}` (new address) | `{ok:true, cooldownSeconds}`; same as the current email→400, taken by someone else→409, SMTP unavailable→503; 5 times/min per user, 60-second cooldown per email |
 | POST `/api/me/logout-others` | — | `{ok:true}`; `token_version+1` invalidates all old JWTs; also actively `KickUser`s all established WS connections of that account (sending `kicked` frames), the current device must log in again too |
+| GET `/api/me/sessions` | — | `{sessions: Session[]}`; sign-in sessions of this account (newest first), empty is `[]`. `Session = {id, platform, clientType, appVersion, ip, createdAt, lastSeenAt, current}`; `platform` ∈ `web|desktop|mobile|tablet|other`, `current=true` marks the session making this request; IP is visible only to the owner |
+| DELETE `/api/me/sessions/:id` | path param = session ID | `{ok:true}`; revokes the session: the JWT `sid` is invalidated (REST returns 401, WS handshake refused) and its WS connections are kicked; cannot revoke others' sessions (404) |
+| GET `/api/client/version` | `?platform=&clientType=&appVersion=` (optional, ≤32 chars) | `{version, minVersion, upgradeRequired, message?}`; **public**. Clients probe compatibility at startup; `minVersion` comes from `MIN_CLIENT_VERSION` (empty = no limit); dotted-numeric comparison, non-numeric segments count as 0 |
 | GET `/api/me/2fa` | — | `{enabled, method, email}`; the user's own 2FA status |
 | POST `/api/me/2fa/totp/setup` | — | `{secret, otpauthUrl}`; generates the TOTP secret (not enabled until enable passes) |
 | POST `/api/me/2fa/totp/enable` | `{code}` | `{ok:true, recoveryCodes[]}`; enables the app method + 8 recovery codes (sha256 stored) |
@@ -197,7 +200,8 @@ AdminPluginRow  { name, version, installCount, enabledCount, globalDisabled, cre
 
 ### 3.3 WebSocket (`/ws`)
 
-- Connection: `GET /ws?token=<JWT>`; the handshake validates signature, tv, ban; failures close directly (401/403 responses)
+- Connection: `GET /ws?token=<JWT>`; the handshake validates signature, tv, session `sid` revocation and ban; failures close directly (401/403 responses)
+- Client identity: the handshake may include `?platform=desktop&clientType=tauri&appVersion=0.1.0` (all optional); the server records them on that `sid` for `/api/me/sessions`. Browser origins are still subject to the `FRONTEND_URL` whitelist; native/Tauri clients without `Origin` pass (still token-protected)
 - Heartbeat: client sends `{"type":"ping"}` every 25s, server replies `{"type":"pong"}` immediately; server read timeout 60s disconnects
 - Uplink & downlink frames **match `web/src/types/proto.ts` field for field** (the `chat` frame's `msgType` is a string; plugin custom types pass through and are stored)
 - Every uplink frame first checks "is the sender a member of `convId`", otherwise replies `{"type":"error","reason":"..."}`
@@ -285,8 +289,10 @@ HTTP status + `{"error": "<Chinese message>"}`. Messages are shown to users dire
 
 ## 6. Auth & Permissions
 
-- JWT: HS256, secret ≥32 bytes (`JWT_SECRET`), claims `{uid, tv, iat, exp}`, valid 7 days
-- Middleware order: Recover → Logger → RateLimit(per route) → JWT → Ban
+- JWT: HS256, secret ≥32 bytes (`JWT_SECRET`), claims `{uid, tv, sid, iat, exp}`, valid 7 days; `sid` is a 128-bit random session ID, recorded lazily on the first Auth / WS handshake, used for session lists and single-device revocation
+- CORS: `Access-Control-Allow-Origin` is echoed only for origins in the `FRONTEND_URL` whitelist (exact match, never `*`, because credentials are used), with `Access-Control-Allow-Credentials: true` and `Vary: Origin`; `OPTIONS` preflight returns 204
+- Client identity: authenticated requests may send `X-Client-Platform` / `X-Client-Type` / `X-Client-Version` (≤32 chars, invalid values ignored); the first request of a `sid` records them, later requests only refresh `lastSeenAt`. Default `platform=web`
+- Middleware order: Recover → Logger → CORS → RateLimit(per route) → JWT → Ban
 - Ban middleware: checks `banned_until`; unexpired returns 403 `账号已被封禁：<原因>` (Account banned: <reason>)
 - Roles: `/api/admin/*` checks `role=admin` (403); group admin ops check member-table `role=owner` (403)
 - Operations that bump `tv` +1: password change (no dedicated entry this phase), password reset, admin reset, ban → all old tokens 401, WS pushes `kicked`
@@ -328,7 +334,9 @@ PORT=8080
 GIN_MODE=release            # debug|release
 DB_DSN=user:pass@tcp(127.0.0.1:3306)/modernchat?charset=utf8mb4&parseTime=True&loc=Local
 JWT_SECRET=                 # ≥32 bytes; refuses to start unset in release mode; dev generates randomly with a warning
-FRONTEND_URL=http://localhost:5173   # comma-separated; WS Origin whitelist + recovery-link prefix
+FRONTEND_URL=http://localhost:5173   # comma-separated; WS Origin + CORS whitelist + recovery-link prefix
+                                    # list every client origin (e.g. http://localhost:1420, http://10.0.2.2:5173)
+MIN_CLIENT_VERSION=                  # minimum client version (e.g. 0.2.0); probed by /api/client/version, empty = no limit
 TRUSTED_PROXIES=127.0.0.1,::1        # trusted reverse proxies; explicit empty string = trust no proxy
 LOG_LEVEL=info
 LOG_DIR=logs

@@ -20,14 +20,17 @@ type Config struct {
 	LegacyAPISecret string
 	// LegacyDBDSN 旧站 MySQL 只读 DSN（LEGACY_DB_DSN）。
 	// 为空 = 迁移功能整体关闭；服务只读旧库，绝不写入。
-	LegacyDBDSN    string
-	Migrate        bool
-	PluginMaxSize  int64
-	FrontendURLs   []string // 允许的前端来源（WS Origin 校验 + 找回密码链接）
-	TrustedProxies []string // 可信反向代理网段；空表示不信任任何代理（不使用 XFF 判定 ClientIP）
-	LogDir         string   // 日志目录；留空则只输出 stdout
-	DataDir        string   // 数据目录（图片/语音等上传文件），默认 ./data
-	LogRetainDays  int      // 日志保留天数（默认 15）
+	LegacyDBDSN   string
+	Migrate       bool
+	PluginMaxSize int64
+	FrontendURLs  []string // 允许的前端来源（WS Origin + CORS 白名单 + 找回密码链接）
+	// MinClientVersion 最低客户端版本（如 0.2.0）；空表示不限制。
+	// 仅作提示：各端通过 /api/client/version 探测，不阻断旧端登录。
+	MinClientVersion string
+	TrustedProxies   []string // 可信反向代理网段；空表示不信任任何代理（不使用 XFF 判定 ClientIP）
+	LogDir           string   // 日志目录；留空则只输出 stdout
+	DataDir          string   // 数据目录（图片/语音等上传文件），默认 ./data
+	LogRetainDays    int      // 日志保留天数（默认 15）
 	// MetricsToken 非空时 /api/metrics 需要 Bearer token
 	MetricsToken string
 	// BackupDir 备份目录；默认 <DataDir>/backups
@@ -140,6 +143,7 @@ func Load() (Config, error) {
 		LegacyDBDSN:         getv("LEGACY_DB_DSN", ""),
 		Migrate:             getv("MIGRATE", "false") == "true",
 		PluginMaxSize:       geti("PLUGIN_MAX_SIZE", 1<<20),
+		MinClientVersion:    strings.TrimSpace(os.Getenv("MIN_CLIENT_VERSION")),
 		LogDir:              getv("LOG_DIR", "logs"),
 		DataDir:             getv("DATA_DIR", "data"),
 		LogRetainDays:       int(geti("LOG_RETAIN_DAYS", 15)),

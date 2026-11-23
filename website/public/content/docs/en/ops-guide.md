@@ -35,7 +35,8 @@ The backend reads all config from environment variables (`server/internal/config
 | `DB_DSN` | `root:root@tcp(127.0.0.1:3306)/modernchat?...` | **yes** | MySQL DSN, keep `utf8mb4&parseTime=True&loc=Local` |
 | `JWT_SECRET` | none | **yes** (prod) | signing key, **≥32 bytes**; production refuses to start unset. Generate: `openssl rand -hex 32`. **Changing it makes stored SMTP / Redis / object storage secrets undecryptable** (see §2.1) |
 | `MIGRATE` | `false` | no | `true` runs `migrations/` at startup (prod recommended to run versioned SQL manually) |
-| `FRONTEND_URL` | `http://localhost:5173` | **yes** | allowed frontend origins, comma-separated. Used for the **WS Origin whitelist** and the site base of recovery links |
+| `FRONTEND_URL` | `http://localhost:5173` | **yes** | allowed frontend origins, comma-separated. Used for the **WS Origin whitelist + CORS whitelist** and the site base of recovery links. List every client origin (e.g. desktop dev `http://localhost:1420`, mobile debug address); omissions cause that client's WS handshake and cross-origin REST to be rejected |
+| `MIN_CLIENT_VERSION` | empty | no | minimum client version (e.g. `0.2.0`). Clients probe `GET /api/client/version` and prompt upgrades; **empty = no limit**, never blocks older clients |
 | `TRUSTED_PROXIES` | `127.0.0.1,::1` | no | trusted reverse-proxy ranges; **setting it explicitly to an empty string = trust no proxy** (XFF is then not used to derive client IPs) |
 | `PLUGIN_MAX_SIZE` | `1048576` (1 MB) | no | plugin upload size cap (bytes) |
 | `LOG_LEVEL` | `info` | no | `debug` / `info` / `warn` / `error` |

@@ -27,6 +27,16 @@ const (
 	maxMsgSize = 64 * 1024
 )
 
+// firstNonEmpty 返回第一个非空串（query 优先于请求头）。
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
 // upgraderFor 构造带 Origin 白名单的升级器：
 // 浏览器 WS 升级必带 Origin，非白名单来源拒绝（防跨站 WebSocket 劫持）；
 // 无 Origin（curl / 服务端客户端）放行，仍受 token 鉴权保护。
@@ -63,7 +73,12 @@ func Serve(
 	settings *store.SettingStore,
 	w http.ResponseWriter,
 	r *http.Request,
+	sessions ...*store.SessionStore,
 ) {
+	var sessionStore *store.SessionStore
+	if len(sessions) > 0 {
+		sessionStore = sessions[0]
+	}
 	// token 优先取 query（兼容现有前端），没有时回退到登录下发的同源 cookie。
 	// 走 cookie 可避免 token 出现在反向代理 / 访问日志的 URL 里；
 	// query 方式继续保留，不改变现有握手契约。
@@ -94,6 +109,29 @@ func Serve(
 		http.Error(w, `{"error":"账号已被封禁"}`, http.StatusForbidden)
 		return
 	}
+	// 会话校验与 lazy 登记：与 REST Auth 同一套口径。
+	// 二维码登录常见的顺序是「先拿到 token、再带 platform 参数握手」，
+	// 因此客户端标识同时接受 query 与请求头。
+	sid := cl.SID
+	if sessionStore != nil && sid != "" {
+		sess, err := sessionStore.ActiveBySID(sid)
+		if err != nil {
+			slog.Error("ws load session", "err", err.Error())
+			http.Error(w, `{"error":"服务暂时不可用"}`, http.StatusServiceUnavailable)
+			return
+		}
+		if sess == nil {
+			http.Error(w, `{"error":"该设备已退出登录，请重新登录"}`, http.StatusUnauthorized)
+			return
+		}
+		q := r.URL.Query()
+		platform := middleware.ClientPlatform(firstNonEmpty(q.Get("platform"), r.Header.Get("X-Client-Platform")))
+		clientType := middleware.SanitizeHeader(firstNonEmpty(q.Get("clientType"), r.Header.Get("X-Client-Type")))
+		appVersion := middleware.SanitizeHeader(firstNonEmpty(q.Get("appVersion"), r.Header.Get("X-Client-Version")))
+		if _, err := sessionStore.Touch(u.ID, sid, platform, clientType, appVersion, r.RemoteAddr); err != nil {
+			slog.Warn("ws touch session failed", "err", err.Error())
+		}
+	}
 	// 维护模式下非管理员不许建连：REST 已经被中间件挡住，
 	// 这里不挡的话页面虽然显示维护页，已有连接仍能继续收发消息
 	if settings != nil && settings.Ops().MaintenanceMode && u.Role != "admin" {
@@ -113,6 +151,7 @@ func Serve(
 	client := &Client{
 		UserID: u.ID,
 		tv:     cl.TV, // 缓存握手时的 token_version，供 handleChat 连接级复核
+		sid:    sid,   // 会话标识，供 KickSession 单设备踢线
 		Conn:   conn,
 		send:   make(chan []byte, sendBuffer),
 		kickCh: make(chan struct{}),

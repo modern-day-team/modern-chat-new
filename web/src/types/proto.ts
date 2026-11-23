@@ -43,6 +43,27 @@ export interface TwofaEnableResult {
   recoveryCodes: string[]
 }
 
+/** 登录会话（设置页展示各端设备，支持单设备下线） */
+export interface UserSession {
+  id: number
+  platform: 'web' | 'desktop' | 'mobile' | 'tablet' | 'other'
+  clientType: string
+  appVersion: string
+  ip: string
+  createdAt: string
+  lastSeenAt: string
+  /** 是否为签发本次请求的设备 */
+  current: boolean
+}
+
+/** /api/client/version 版本探测结果（免鉴权） */
+export interface ClientVersionInfo {
+  version: string
+  minVersion: string
+  upgradeRequired: boolean
+  message?: string
+}
+
 // ===== 会话 =====
 
 /** 1=单聊 2=群聊 3=系统公告会话 */

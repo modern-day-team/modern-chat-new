@@ -12,6 +12,7 @@ cd "$(dirname "$0")/../.."   # 仓库根
 declare -A MAP=(
   ["README.md"]="getting-started.md"
   ["CHANGELOG.md"]="changelog.md"
+  ["docs/客户端接入指南.md"]="client-guide.md"
   ["docs/设计文档.md"]="design.md"
   ["docs/后端需求规格.md"]="api-spec.md"
   ["docs/API文档.md"]="api-reference.md"

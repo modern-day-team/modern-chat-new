@@ -12,10 +12,14 @@ import (
 
 // UserHandler 用户搜索。
 type UserHandler struct {
-	users *store.UserStore
+	users    *store.UserStore
+	sessions *store.SessionStore
 }
 
 func NewUserHandler(users *store.UserStore) *UserHandler { return &UserHandler{users: users} }
+
+// SetSessions 注入会话存储（可选；未注入时 logout-others 仍靠 tv+1 全端失效）。
+func (h *UserHandler) SetSessions(sessions *store.SessionStore) { h.sessions = sessions }
 
 // Search 搜人（摘要，不含 email）。
 func (h *UserHandler) Search(c *gin.Context) {
@@ -44,6 +48,12 @@ func (h *UserHandler) LogoutOthers(c *gin.Context) {
 	}
 	// 仅 bump token_version 不会影响已建立的 WS 连接（它们只缓存握手时的 tv），
 	// 必须显式踢掉，否则旧连接可以继续收发消息直到自然断开。
+	if h.sessions != nil {
+		if err := h.sessions.RevokeAllForUser(me.ID); err != nil {
+			// 撤销记录失败不阻断：tv+1 本身已经让所有旧 token 失效
+			slog.Warn("logout others revoke sessions failed", "uid", me.ID, "err", err.Error())
+		}
+	}
 	notifyFor(c).KickUser(me.ID, "已退出所有设备，请重新登录")
 	slog.Info("logout all devices", "uid", me.ID)
 	c.JSON(http.StatusOK, gin.H{"ok": true})

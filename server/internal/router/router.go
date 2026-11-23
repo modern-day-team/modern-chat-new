@@ -55,6 +55,10 @@ func New(d Deps) *gin.Engine {
 		_ = r.SetTrustedProxies(nil)
 	}
 	r.Use(gin.Recovery(), middleware.Logger())
+	// 跨源（CORS）：按 FRONTEND_URL 白名单放行 Web / 桌面 WebView / 移动 WebView 的
+	// 浏览器来源，预检 OPTIONS 直接 204。必须在路由与限流之前——否则预检会被
+	// 认证接口的 10/min 限流误伤。原生客户端无 Origin，不受影响。
+	r.Use(middleware.CORS(d.Cfg.FrontendURLs))
 	// Prometheus 指标：记录路由级请求计数，并导出 /api/metrics
 	metrics.Init(d.DB, func() int {
 		if d.WS == nil {
@@ -103,6 +107,7 @@ func New(d Deps) *gin.Engine {
 	plugins := store.NewPluginStore(d.DB)
 	resets := store.NewPasswordResetStore(d.DB)
 	audits := store.NewAuditStore(d.DB)
+	sessions := store.NewSessionStore(d.DB)
 
 	// 系统设置与上传存储由 main 装配（Hub 也要用同一个 Storage 做 URL 归属校验）
 	settings := d.Settings
@@ -122,6 +127,8 @@ func New(d Deps) *gin.Engine {
 	authH.SetStorage(d.Storage)
 	inviteH := handler.NewInviteHandler(invites)
 	userH := handler.NewUserHandler(users)
+	userH.SetSessions(sessions)
+	sessionH := handler.NewSessionHandler(sessions, d.WS)
 	friendH := handler.NewFriendHandler(users, friends, convs, moderation)
 	convH := handler.NewConversationHandler(users, friends, convs, msgs, moderation, settings, d.Storage)
 	modH := handler.NewModerationHandler(users, convs, msgs, moderation)
@@ -171,6 +178,8 @@ func New(d Deps) *gin.Engine {
 	// 站点信息（免鉴权）：站点名、注册开关、消息长度/撤回时限/上传上限。
 	// 不含任何密钥类配置。
 	api.GET("/site", handler.NewSiteHandler(settings, d.Mailer, users).Get)
+	// 客户端版本探测（免鉴权）：各端启动时提示升级，不阻断旧端登录
+	api.GET("/client/version", handler.ClientVersion(d.Cfg.MinClientVersion))
 	// 群邀请落地页信息（免登录可看；实际加入需要登录）
 	api.GET("/invite/:token", convH.InviteInfo)
 
@@ -224,7 +233,7 @@ func New(d Deps) *gin.Engine {
 	// 需登录（Auth → Ban → Maintenance：维护模式要能读到用户角色）
 	authed := api.Group(
 		"",
-		middleware.Auth(users, d.Cfg.JWTSecret),
+		middleware.Auth(users, d.Cfg.JWTSecret, sessions),
 		middleware.Ban(),
 		middleware.Maintenance(settings),
 	)
@@ -245,6 +254,9 @@ func New(d Deps) *gin.Engine {
 		authed.POST("/me/email-code", emailCodeLimit, authH.EmailCodeChange)
 
 		authed.GET("/users/search", userH.Search)
+		// 登录会话：查看各端设备 / 单独退出某台
+		authed.GET("/me/sessions", sessionH.List)
+		authed.DELETE("/me/sessions/:id", sessionH.Revoke)
 		// 退出所有设备：旧 JWT 全部失效（需重新登录）
 		authed.POST("/me/logout-others", userH.LogoutOthers)
 
@@ -323,7 +335,7 @@ func New(d Deps) *gin.Engine {
 	}
 
 	// 站长
-	admin := api.Group("/admin", middleware.Auth(users, d.Cfg.JWTSecret), middleware.Ban(), middleware.Admin())
+	admin := api.Group("/admin", middleware.Auth(users, d.Cfg.JWTSecret, sessions), middleware.Ban(), middleware.Admin())
 	{
 		admin.GET("/stats", adminH.Stats)
 		admin.GET("/users", adminH.Users)
@@ -371,7 +383,7 @@ func New(d Deps) *gin.Engine {
 	// WebSocket（握手自行校验 JWT 与 Origin，不走中间件组）
 	if d.WS != nil {
 		r.GET("/ws", func(c *gin.Context) {
-			ws.Serve(d.Cfg.JWTSecret, d.Cfg.FrontendURLs, users, d.WS, settings, c.Writer, c.Request)
+			ws.Serve(d.Cfg.JWTSecret, d.Cfg.FrontendURLs, users, d.WS, settings, c.Writer, c.Request, sessions)
 		})
 	}
 

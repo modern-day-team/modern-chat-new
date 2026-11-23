@@ -11,6 +11,8 @@ type Notifier interface {
 	// KickUser 强制断开该用户的全部既有连接（封禁 / 重置密码后使用）。
 	// 修复缺陷：仅推 kicked 帧不会断开连接，客户端忽略该帧即可继续收发。
 	KickUser(userID uint, reason string)
+	// KickSession 强制断开指定会话（sid）的 WS 连接，不影响该用户其他设备。
+	KickSession(sid, reason string)
 	// OnlineCount 当前在线用户数（后台概览用）。
 	OnlineCount() int
 	// Online 该用户是否在线。
@@ -31,6 +33,8 @@ func (NoopNotifier) ToUsers([]uint, any) {}
 func (NoopNotifier) NotifyUserChange(uint, string, string, string) {}
 
 func (NoopNotifier) KickUser(uint, string) {}
+
+func (NoopNotifier) KickSession(string, string) {}
 
 func (NoopNotifier) OnlineCount() int { return 0 }
 
