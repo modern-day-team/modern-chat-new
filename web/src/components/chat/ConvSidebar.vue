@@ -363,7 +363,11 @@ const sortedConvs = computed(() => {
     const pa = pinned.has(a.id) ? 1 : 0
     const pb = pinned.has(b.id) ? 1 : 0
     if (pa !== pb) return pb - pa
-    return (b.lastMessageAt ?? '').localeCompare(a.lastMessageAt ?? '')
+    // ISO8601 UTC 字符串的字典序 == 时间序；localeCompare 走 ICU 比较，
+    // 200 会话每条消息重排 = 上万次 ICU 调用，直接比字符串即可。
+    const ba = b.lastMessageAt ?? ''
+    const aa = a.lastMessageAt ?? ''
+    return ba > aa ? 1 : ba < aa ? -1 : 0
   })
   const f = convStore.filter
   if (f === 'archived') {

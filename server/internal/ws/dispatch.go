@@ -137,14 +137,10 @@ func (h *Hub) handleChat(c *Client, f *clientFrame) {
 		h.sendError(c, "操作过于频繁，请稍后再试", f.ClientMsgID)
 		return
 	}
-	if !h.requireMember(c, f.ConvID, f.ClientMsgID) {
-		return
-	}
-	// 成员行一次取足：禁言检查与全员禁言的角色判定都复用它，
-	// 此前一条消息要重复查 2-3 次 MemberOf（逐帧成本 × 消息速率）。
-	member, err := h.deps.Convs.MemberOf(f.ConvID, c.UserID)
-	if err != nil || member == nil {
-		h.sendError(c, "无权访问该会话", f.ClientMsgID)
+	// 成员行一次取足：成员校验、禁言检查与全员禁言的角色判定都复用它。
+	// 此前 requireMember + 下方各查一次 MemberOf，一条消息重复两次成员查询。
+	member, ok := h.memberForFrame(c, f.ConvID, f.ClientMsgID)
+	if !ok {
 		return
 	}
 	// 禁言：到时间自动失效；命中时直接拒绝发送
@@ -519,7 +515,9 @@ func (h *Hub) handleEdit(c *Client, f *clientFrame) {
 	if f.MessageID == 0 || h.deps == nil || h.deps.Messages == nil {
 		return
 	}
-	msg, err := h.deps.Messages.ByID(uint(f.MessageID))
+	// 编辑只校验归属 / 类型 / 时间，不读正文：ByIDMeta 不拉最多 5000 字的
+	// content（edit 是逐条人工操作，仍省一次大字段传输与序列化）。
+	msg, err := h.deps.Messages.ByIDMeta(uint(f.MessageID))
 	if err != nil {
 		slog.Error("ws edit lookup", "err", err.Error(), "uid", c.UserID)
 		h.sendError(c, "服务器开小差了，请稍后再试")
@@ -541,13 +539,9 @@ func (h *Hub) handleEdit(c *Client, f *clientFrame) {
 		h.sendError(c, "超过 5 分钟，无法编辑")
 		return
 	}
-	if !h.requireMember(c, msg.ConversationID) {
-		return
-	}
-	member, err := h.deps.Convs.MemberOf(msg.ConversationID, c.UserID)
-	if err != nil {
-		slog.Error("ws edit member lookup", "err", err.Error(), "uid", c.UserID)
-		h.sendError(c, "服务器开小差了，请稍后再试")
+	// 成员行一次取足：此前 requireMember + 下方 MemberOf 各查一次，重复两次。
+	member, ok := h.memberForFrame(c, msg.ConversationID)
+	if !ok {
 		return
 	}
 	if h.memberMuted(member) {
@@ -698,20 +692,28 @@ func (h *Hub) memberMuted(m *model.ConversationMember) bool {
 	return m != nil && m.MuteUntil != nil && m.MuteUntil.After(time.Now())
 }
 
-// requireMember 上行帧的会话成员校验。clientMsgID 可选：chat 发送被拒时回传
-// 被拒帧的 clientMsgId（F33），其余帧类型不传，错误帧保持不带该字段。
-func (h *Hub) requireMember(c *Client, convID uint, clientMsgID ...string) bool {
-	if convID == 0 || h.deps == nil {
-		return false
+// memberForFrame 上行帧的「取成员行 + 校验」二合一：只需要成员判空时用
+// requireMember，需要成员行做禁言 / 角色判定时用本函数，避免同一帧查两次 MemberOf。
+// clientMsgID 可选：chat 发送被拒时回传被拒帧的 clientMsgId（F33）。
+func (h *Hub) memberForFrame(c *Client, convID uint, clientMsgID ...string) (*model.ConversationMember, bool) {
+	if convID == 0 || h.deps == nil || h.deps.Convs == nil {
+		h.sendError(c, "无权访问该会话", clientMsgID...)
+		return nil, false
 	}
 	m, err := h.deps.Convs.MemberOf(convID, c.UserID)
 	if err != nil || m == nil {
 		// 非成员上行帧可能来自被踢后的残留客户端，也可能是越权探测：记 info 便于排查
 		slog.Info("ws frame rejected: not a member", "uid", c.UserID, "conv", convID, "err", errStr(err))
 		h.sendError(c, "无权访问该会话", clientMsgID...)
-		return false
+		return nil, false
 	}
-	return true
+	return m, true
+}
+
+// requireMember 上行帧的会话成员校验（只要判空、不复用成员行时用）。
+func (h *Hub) requireMember(c *Client, convID uint, clientMsgID ...string) bool {
+	_, ok := h.memberForFrame(c, convID, clientMsgID...)
+	return ok
 }
 
 func errStr(err error) string {

@@ -99,9 +99,32 @@ func NewHub(deps *Deps) *Hub {
 	return h
 }
 
-// Run 阻塞至 Close（预留统一事件循环扩展位）。
+// Run 阻塞至 Close，并定期清扫过期的成员列表缓存。
+// TTL 30s 只表示"过期后重查"，此前过期条目永不删除：十年运行的站点上
+// 每个曾用过的 convID 都常驻一份成员 ID 切片（可占数十 MB）。每 5 分钟
+// 扫一遍即可，清扫本身 O(缓存条目数)，频率足够低。
 func (h *Hub) Run() {
-	<-h.done
+	cleanup := time.NewTicker(5 * time.Minute)
+	defer cleanup.Stop()
+	for {
+		select {
+		case <-h.done:
+			return
+		case <-cleanup.C:
+			h.evictExpiredMembers()
+		}
+	}
+}
+
+// evictExpiredMembers 删除超过 TTL 未访问的缓存条目（供单测直接驱动）。
+func (h *Hub) evictExpiredMembers() {
+	now := time.Now()
+	h.membersCache.Range(func(key, value any) bool {
+		if e, ok := value.(*membersEntry); ok && now.Sub(e.at) >= membersCacheTTL {
+			h.membersCache.Delete(key)
+		}
+		return true
+	})
 }
 
 // IsOnline 该用户当前是否有任意在线连接。

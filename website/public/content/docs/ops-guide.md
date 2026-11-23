@@ -402,7 +402,7 @@ tar xzf uploads_2026-10-25.tar.gz -C server/data
 - 升级前建议先备份一次（脚本不会动数据，但迁移 SQL 会改表结构）
 - **新增索引的迁移要在低峰期执行**：如 `0021_message_sender_index`（为 `messages.sender_id` 建索引）。MySQL 8 默认 Online DDL 不锁表，但大表建索引仍会占用 IO；消息表很大时建议放在业务低峰，并观察 `SHOW PROCESSLIST`
 
-### 5.1 迁移 0023 / 0024 / 0025 一次性说明
+### 5.1 迁移 0023 / 0024 / 0025 / 0031 一次性说明
 
 | 迁移 | 内容 | 影响 | 回滚风险 |
 |---|---|---|---|
@@ -410,8 +410,12 @@ tar xzf uploads_2026-10-25.tar.gz -C server/data
 | `0024_conversation_direct_key` | `conversations.direct_key` + 唯一索引；`EnsureSingle` 事务化 | 并发建单聊不再产生重复会话；存量单聊保持 `NULL` | 删索引再删列，并发重复问题回归 |
 | `0025_friend_email_unique` | `friends` / `email_codes` 唯一索引，含重复好友清理 | 清理按“已通过 > 待处理 > 已拒绝、同状态保留最早 id”；被删行不可恢复 | 只能删索引，脏数据不会回来，**必须备份** |
 
-执行顺序：停写/低峰 → 备份（0025 建议整库）→ 0023 → 0024 → 0025 → 启动新版本（`MIGRATE=true` 会自动按序执行）。
-手工执行使用 `golang-migrate`，版本记录在 `schema_migrations`；回滚顺序相反（0025 → 0024 → 0023）。
+| `0031_friend_friend_index` | `friends (friend_id, status)` 复合索引 | 只建索引，无数据变更；低峰执行即可（MySQL 8 Online DDL 不锁表） | 删索引即可，好友反查退回全表扫描（性能退化，无数据风险） |
+
+> 编号说明：0026–0030 已在生产库的历史升级 / 旧站迁移中使用（0026 legacy_migration、0027 twofa、0029 旧站迁移表、0030 群聊管理列），本索引顺延到 0031，避免与 `schema_migrations` 已有版本冲突。
+
+执行顺序：停写/低峰 → 备份（0025 建议整库）→ 0023 → 0024 → 0025 → 0031 → 启动新版本（`MIGRATE=true` 会自动按序执行）。
+手工执行使用 `golang-migrate`，版本记录在 `schema_migrations`；回滚顺序相反（0031 → 0025 → 0024 → 0023）。
 完整动机与验证项见 [安全与迁移指南.md](安全与迁移指南.md) §6。
 
 > 禁止在生产库执行 `go test -tags integration ./test/`：集成测试会先 DELETE 全部业务表。

@@ -180,10 +180,12 @@ func (c *ConversationInvite) Valid() bool {
 // Friend 好友关系：user_id 视角指向 friend_id。
 // status: 0=待申请（user 申请加 friend）1=已通过 2=已拒绝。
 type Friend struct {
-	ID        uint      `gorm:"primaryKey" json:"-"`
-	UserID    uint      `gorm:"index:idx_uf,priority:1;uniqueIndex:uk_friends_pair,priority:1" json:"-"`
-	FriendID  uint      `gorm:"index:idx_uf,priority:2;uniqueIndex:uk_friends_pair,priority:2" json:"-"`
-	Status    int8      `json:"-"`
+	ID     uint `gorm:"primaryKey" json:"-"`
+	UserID uint `gorm:"index:idx_uf,priority:1;uniqueIndex:uk_friends_pair,priority:1" json:"-"`
+	// FriendID 单独建复合索引：FriendIDs()/PendingToUser() 按 friend_id 反查，
+	// 每次 WS 上下线都会触发；idx_uf 以 user_id 为最左前缀无法命中。
+	FriendID  uint      `gorm:"index:idx_friends_friend_status,priority:1;index:idx_uf,priority:2;uniqueIndex:uk_friends_pair,priority:2" json:"-"`
+	Status    int8      `gorm:"index:idx_friends_friend_status,priority:2" json:"-"`
 	CreatedAt time.Time `json:"createdAt"`
 }
 

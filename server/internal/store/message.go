@@ -38,7 +38,7 @@ func (s *MessageStore) ByID(id uint) (*model.Message, error) {
 // 需要正文或要写 Content 的路径（edit / 幂等回放）仍用 ByID。
 func (s *MessageStore) ByIDMeta(id uint) (*model.Message, error) {
 	var m model.Message
-	err := s.db.Select("id", "conversation_id", "sender_id", "is_recalled", "created_at").
+	err := s.db.Select("id", "conversation_id", "sender_id", "msg_type", "is_recalled", "created_at").
 		First(&m, id).Error
 	if err == gorm.ErrRecordNotFound {
 		return nil, nil

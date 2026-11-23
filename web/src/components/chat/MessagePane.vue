@@ -66,14 +66,17 @@ function recallVisible(m: Message): boolean {
 
 // 精确调度到最近的到期时刻，不做每秒轮询（有 2000 条历史的会话也不该空转）。
 // nowTick 到期后 computed 重算，提示随之下线。
-// 单次遍历取最小 deadline：不在 filter/map 里建中间数组（每条新消息都会重跑
-// 这个 getter，全量分配是纯浪费），且只为撤回消息解析时间。
+// 用 Date.now() 而不是 recallVisible()：后者读 nowTick，会让本 watcher 在
+// 到期回调里再次触发、反复重排定时器；这里只需「仍未到期的最小 deadline」。
 watch(
   () => {
+    const now = Date.now()
     let min = 0
     for (const m of messages.value) {
-      if (!m.isRecalled || !recallVisible(m)) continue
-      const dl = new Date(m.recalledAt as string).getTime() + RECALL_TTL
+      if (!m.isRecalled || !m.recalledAt) continue
+      const at = new Date(m.recalledAt).getTime()
+      if (!Number.isFinite(at) || at + RECALL_TTL <= now) continue
+      const dl = at + RECALL_TTL
       if (min === 0 || dl < min) min = dl
     }
     return min
@@ -91,13 +94,26 @@ watch(
   { immediate: true },
 )
 
+// createdAt 是不可变的 ISO 时间戳：toDateString() 涉及 ICU 本地化，2000 条历史
+// 每来一条消息就重算全是浪费。按时间戳缓存，内存上限约等于会话内消息数。
+const dateKeyCache = new Map<string, string>()
+function dateKey(ts: string): string {
+  let v = dateKeyCache.get(ts)
+  if (v === undefined) {
+    v = new Date(ts).toDateString()
+    if (dateKeyCache.size > 5000) dateKeyCache.clear()
+    dateKeyCache.set(ts, v)
+  }
+  return v
+}
+
 const displayItems = computed<DisplayItem[]>(() => {
   const out: DisplayItem[] = []
   let lastDate = ''
   for (const m of messages.value) {
     // 过期（或无时间的）撤回提示：整条从聊天记录里移除
     if (!recallVisible(m)) continue
-    const d = new Date(m.createdAt).toDateString()
+    const d = dateKey(m.createdAt)
     if (d !== lastDate) {
       lastDate = d
       out.push({ key: `date-${d}`, kind: 'date', label: formatDateLabel(m.createdAt) })
@@ -1132,8 +1148,8 @@ provide(messageRowKey, {
         </div>
       </template>
 
-      <template #default="{ item }">
-        <DynamicScrollerItem :item="item" :active="true">
+      <template #default="{ item, active }">
+        <DynamicScrollerItem :item="item" :active="active">
           <template v-if="item.kind === 'date'">
             <div class="mc-msgpane__date text-placeholder">{{ item.label }}</div>
           </template>

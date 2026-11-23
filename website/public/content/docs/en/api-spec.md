@@ -251,7 +251,7 @@ All tables (users / conversations / conversation_members / messages / user_conve
 | automatic update | active only when `AUTO_UPDATE=true` (default) + release mode + systemd; checks Release every `AUTO_UPDATE_INTERVAL` minutes (default 30, minimum 5) and reuses `Updater.Start()`; first check waits one full interval after startup, `busy` skips the round; switch is `.env`-only (no UI toggle); every trigger writes the `auto_update` audit (`admin_id=0`, `ip=system`). State is returned in `update/status.auto`: `{enabled,available,intervalMin,lastCheck?,lastTag?,upToDate,result?,lastError?,nextCheck?,triggeredTag?,skipReason?}` |
 | client_msg_id | UUID (≤36), unique index `(conversation_id, client_msg_id)` |
 | messages indexes | `conversation_id` (cursor pagination), `(conversation_id, client_msg_id)` unique, `sender_id` (admin stats by sender, migration `0021`); `content` is widened to `TEXT` in migration `0023`, supporting up to 5000 chars in the admin console |
-| friends | unique index `uk_friends_pair (user_id, friend_id)` (migration 0025); the same pair may hold two opposite-direction rows, but the same direction can't repeat. On accepting a friend the reverse row uses an upsert, so mutual applications don't collide on the index |
+| friends | unique index `uk_friends_pair (user_id, friend_id)` (migration 0025); the same pair may hold two opposite-direction rows, but the same direction can't repeat. On accepting a friend the reverse row uses an upsert, so mutual applications don't collide on the index. Also `idx_friends_friend_status (friend_id, status)` (migration 0031) serves reverse lookups by `friend_id` |
 | email_codes | unique index `uk_email_codes_email_purpose (email, purpose)` (migration 0025); sending a code locks the row inside a transaction and resets the single row in place, so the cooldown can't be bypassed |
 | plugin file | ≤1MB; manifest is the code's first `/* {...} */` JSON comment: name 1–30, version `^\d+\.\d+\.\d+$`, permissions ⊆ the ten in §SDK (`message:read/send/render`, `ui:panel/actions/host/theme`, `conv:read`, `storage`, `net`), allowedHosts each a valid domain (supports `*.suffix`), ≤20 entries. **TypeScript is supported**: with `?lang=ts` or a URL ending in `.ts` it is transpiled to ES2020 with esbuild before storing, **syntax errors return 400 with the line number**; the manifest is parsed from the source |
 | pagination | page≥1, pageSize 1–100 default 20; limit 1–50 default 30; beforeId/upToId positive integers |
@@ -380,7 +380,7 @@ server/
 │   ├── service/           # mailer / storage / push / backup / updater
 │   ├── logx/ metrics/     # log rotation / Prometheus
 │   └── router/            # all routes and middleware wiring
-├── migrations/            # 0001_init … 0022_message_fulltext (up/down SQL)
+├── migrations/            # 0001_init … 0031_friend_friend_index (up/down SQL)
 ├── test/                  # integration tests (//go:build integration)
 ├── Dockerfile             # multi-stage build (incl. migrations)
 ├── .env.example

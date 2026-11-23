@@ -145,7 +145,7 @@ modernchat-new/
 ├── docker-compose.yml      MySQL + 后端一键环境
 ├── server/
 │   ├── go.mod  .env.example  Dockerfile
-│   ├── migrations/                 版本化 SQL（0001…0022，生产用）
+│   ├── migrations/                 版本化 SQL（0001…0031，生产用）
 │   ├── test/                       集成测试（//go:build integration）
 │   ├── data/uploads/               上传的图片 / 语音 / 视频（本地存储时；已 gitignore）
 │   ├── cmd/server/main.go
@@ -230,7 +230,7 @@ modernchat-new/
 
 ### friends（好友关系）
 `id, user_id, friend_id, status(0=待申请 1=已通过 2=已拒绝), created_at`
-> 唯一索引 `uk_friends_pair (user_id, friend_id)`（迁移 0025），并发/重复申请不会再插出同方向重复行；同意时反向记录 upsert，避免互发申请撞索引。
+> 唯一索引 `uk_friends_pair (user_id, friend_id)`（迁移 0025），并发/重复申请不会再插出同方向重复行；同意时反向记录 upsert，避免互发申请撞索引。另建 `idx_friends_friend_status (friend_id, status)`（迁移 0031）：好友查询多按 `friend_id` 反查（WS 上下线 presence、好友列表），`uk_friends_pair` 以 `user_id` 为最左前缀无法命中。
 > 同意后双方各插一条 `status=1`；已存在 status=0/1 关系时拒绝重复申请（409）；拒绝后可重新申请（更新原记录状态）。
 > 删除好友：双向删除两条 status=1 记录；已存在的单聊会话与历史消息保留，仅解除好友关系。
 
@@ -684,7 +684,7 @@ cd web && npm install && npm run dev  # :5173，代理 /api 与 /ws 到 :8080
 
 ### 13.2 实施完成（2026-10-24）
 - **前端 `web/`**：认证（登录/注册/找回）、聊天四栏（图标栏 / 分组筛选栏 / 会话与联系人列表 / 聊天区 + 详情面板）、连续消息分组与已读/撤回收敛、添加好友弹窗（用户名/昵称搜索、就地同意）、群管理、插件沙箱宿主 + 描述式渲染器、插件管理抽屉、站长后台（用户 + 插件）、响应式（平板收详情 / 手机单面板）、设计规范打磨（对比度、tabular 数字、焦点可达性）。
-- **后端 `server/`**：§6 全部接口、§7 WS 协议（64 分片 Hub / 读写 pump / presence / kicked）、插件（manifest 校验 / SSRF / 升级覆盖 / 全局下架）、站长后台、限流三档、结构化日志、优雅停机、`migrations/0001…0022`。
+- **后端 `server/`**：§6 全部接口、§7 WS 协议（64 分片 Hub / 读写 pump / presence / kicked）、插件（manifest 校验 / SSRF / 升级覆盖 / 全局下架）、站长后台、限流三档、结构化日志、优雅停机、`migrations/0001…0031`。
 - **测试**：`go build` / `go vet` / `gofmt` / 单元测试 / 集成测试（真实 MySQL 全链路：认证→好友→单聊→WS 收发→幂等→已读→撤回→未读→群聊→封禁踢线→插件安装/升级/SSRF/下架）全绿；前端 `vue-tsc` / `oxlint+eslint` / `vite build` 全绿。
 - **安全补强**（代码审查后）：WS Origin 白名单、`JWT_SECRET` 生产强制、找回链接配置化 + 恒定耗时、证书类文件 gitignore。
 - **交付配套**：`docker-compose.yml`、`server/Dockerfile`、Nginx 双版配置、示例插件、`scripts/install.sh` / `package-release.sh` / `update.sh` / `uninstall.sh`、`/api/version` 版本核对。

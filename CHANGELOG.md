@@ -8,8 +8,9 @@
 
 ## [未发布]
 
-### 新增
+### 性能
 
+- **热路径查询与渲染开销削减（第三轮）**。**服务端**：① `friends (friend_id, status)` 新增复合索引（迁移 **0031**）——`FriendIDs()` / `PendingToUser()` 按 `friend_id` 反查，但原唯一索引以 `user_id` 为最左前缀无法命中，每次 WS 上下线（presence 广播）都会全表扫描；10 万用户 × 10 好友的关系表上，一次重连风暴可产生上亿行扫描，现在变索引查找；② `handleChat` / `handleEdit` 的重复成员查询合并——此前先 `requireMember()` 查一次 `MemberOf`，紧接着为禁言 / 角色判定再查一次，现在 `memberForFrame()` 一次取足；`handleEdit` 改用 `ByIDMeta()`（`ByIDMeta` 补 `msg_type` 列）不再拉取最多 5000 字的正文；③ `membersCache` 加定时淘汰——TTL 30s 原本只判定"过期重查"却永不删除条目，`Hub.Run()` 每 5 分钟清扫一次过期项，避免长运行站点成员 ID 切片无限累积。**前端**：① 撤回 deadline watcher 改用 `Date.now()`，消除到期回调触发自身反复重排定时器；② 日期分隔的 `toDateString()`（ICU 本地化）按 `createdAt` 缓存，2000 条历史不再每条消息重算 2000 次；③ 会话列表排序把 `localeCompare` 换成 ISO8601 字符串直接比较（字典序即时间序），去掉每次消息到达时的上万次 ICU 调用；④ `DynamicScrollerItem` 改为传插槽的 `active`，视口外条目不再强制激活尺寸观测。**存量影响**：无行为变化，升级需执行迁移 0031（只建索引，低峰执行即可，可安全回滚）。
 - **自动更新（发现新 Release tag 自动升级）**：发行版 + `install.sh` 的 systemd 部署下默认开启（`AUTO_UPDATE=true`），服务启动后每 `AUTO_UPDATE_INTERVAL` 分钟（默认 30、下限 5）查一次 GitHub Release，发现新 tag 自动触发升级——与后台「一键更新」走**同一条**链路（下载 → sha256 校验 → 解压路径校验 → 原子替换 → 优雅重启），不新开更新路径。每次自动触发写一条 `auto_update` 审计（`admin_id=0`、`ip=system`），后台「在线更新」页签展示开启状态、上次 / 下次检查时间、远端版本与最近结果。**边界**：源码 / Docker / 裸机不自动更新（tag 在源码模式无语义、自动编译风险高、无 systemd 无法自重启）；`WEB_UPDATE=false` 时一并关闭；只能在服务器 `.env` 配置开关（界面刻意不提供，避免管理员账号泄露后连开关一起被改）。启动后先等一个完整间隔才首查（给健康检查留启动时间），检查失败不阻塞下一轮，手动更新进行中则跳过本轮不排队。`/api/admin/update/status` 新增 `auto` 对象承载运行态。**存量影响**：已部署实例升级后即默认开启自动更新；不希望自动升级的实例须在 `.env` 设 `AUTO_UPDATE=false` 并重启。GitHub 匿名 API 限额 60 次/小时/IP，多实例同 IP 建议配 `GITHUB_TOKEN` 或把间隔调到 ≥30 分钟。
 
 ---

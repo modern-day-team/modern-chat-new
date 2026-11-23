@@ -100,7 +100,7 @@ modernchat-new/
 │   │   ├── service/            # mailer / storage(local+S3) / push / backup / updater
 │   │   ├── logx/ metrics/      # Log rotation / Prometheus metrics
 │   │   └── router/             # All routes & middleware wiring
-│   ├── migrations/             # 0001_init … 0022_message_fulltext (versioned SQL)
+│   ├── migrations/             # 0001_init … 0031_friend_friend_index (versioned SQL)
 │   ├── test/                   # Integration tests (-tags integration; needs MySQL, see server/README)
 │   └── Dockerfile
 ├── web/                        # Vue frontend

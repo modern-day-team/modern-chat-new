@@ -251,7 +251,7 @@ AdminPluginRow  { name, version, installCount, enabledCount, globalDisabled, cre
 | 自动更新 | `AUTO_UPDATE=true`（默认）+ 发行版 + systemd 才生效；每 `AUTO_UPDATE_INTERVAL` 分钟（默认 30、下限 5）查 Release，发现新 tag 复用 `Updater.Start()`；启动后等一个间隔才首查，`busy` 时跳过本轮；仅 `.env` 可关（界面不提供开关）；每次触发写审计 `auto_update`（`admin_id=0`，`ip=system`）。状态随 `update/status.auto` 返回：`{enabled,available,intervalMin,lastCheck?,lastTag?,upToDate,result?,lastError?,nextCheck?,triggeredTag?,skipReason?}` |
 | client_msg_id | UUID（≤36），索引 `(conversation_id, client_msg_id)` 唯一 |
 | messages 索引 | `conversation_id`（游标分页）、`(conversation_id, client_msg_id)` 唯一、`sender_id`（后台按发送者统计，迁移 `0021`）；`content` 在迁移 `0023` 扩为 `TEXT`，支持后台最高 5000 字符 |
-| friends | 唯一索引 `uk_friends_pair (user_id, friend_id)`（迁移 0025）；同对可存在两条方向相反记录，但同一方向不能重复。同意好友时反向记录使用 upsert，避免互发申请撞索引 |
+| friends | 唯一索引 `uk_friends_pair (user_id, friend_id)`（迁移 0025）；同对可存在两条方向相反记录，但同一方向不能重复。同意好友时反向记录使用 upsert，避免互发申请撞索引。另建 `idx_friends_friend_status (friend_id, status)`（迁移 0031）服务按 `friend_id` 的反查 |
 | email_codes | 唯一索引 `uk_email_codes_email_purpose (email, purpose)`（迁移 0025）；发码在事务内行锁并原地重置单行，冷却不可绕过 |
 | plugin 文件 | ≤1MB；manifest 为代码首个 `/* {...} */` JSON 注释：name 1–30、version `^\d+\.\d+\.\d+$`、permissions ⊆ §SDK 十项（`message:read/send/render`、`ui:panel/actions/host/theme`、`conv:read`、`storage`、`net`）、allowedHosts 每项合法域名（支持 `*.suffix`），≤20 项。**支持 TypeScript**：`?lang=ts` 或 URL 以 `.ts` 结尾时用 esbuild 转译为 ES2020 后入库，语**法错误返回 400 并带行号**；manifest 从源码解析 |
 | 分页 | page≥1，pageSize 1–100 默认 20；limit 1–50 默认 30；beforeId/upToId 正整数 |
@@ -376,7 +376,7 @@ server/
 │   ├── service/           # mailer / storage / push / backup / updater
 │   ├── logx/ metrics/     # 日志轮转 / Prometheus
 │   └── router/            # 全部路由与中间件装配
-├── migrations/            # 0001_init … 0022_message_fulltext（up/down SQL）
+├── migrations/            # 0001_init … 0031_friend_friend_index（up/down SQL）
 ├── test/                  # 集成测试（//go:build integration）
 ├── Dockerfile             # 多阶段构建（含 migrations）
 ├── .env.example
