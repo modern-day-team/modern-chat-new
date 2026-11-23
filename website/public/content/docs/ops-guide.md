@@ -80,7 +80,7 @@ https://chat.example.com/qiniu/<key> → 对象存储 CDN（私有空间，需�
 | 对象存储服务商 | 后台配置 | 否 | 后台「系统设置 → 对象存储」新建「服务商」下拉（AWS S3 / MinIO / OSS / COS / OBS / BOS / TOS / KS3 / UCloud / 自定义），选中后自动带出端点 / 区域模板并正确设置 path-style / 虚拟主机寻址。改完需重启才切换上传实现，保存后可点「测试连接」只读自检。详见 [对象存储服务商接入手册](storage-providers.md) |
 | `RELEASE_REPO_GITHUB` | `modern-day-team/modern-chat-new` | 否 | Release 托管仓库（`owner/repo`）：显式 URL 未配置时用它派生更新源，Release 放在 fork / 镜像仓库时配置 |
 | `GITHUB_TOKEN` | 空 | 否 | GitHub API 令牌（可选）：匿名 `api.github.com` 限流 60 次/小时/IP，配置后提升到 5000 次/小时，并支持私有仓库检查。仅随 GitHub 域更新请求发送，不落日志 |
-| `SSO_SITE_URL` / `SSO_APP_BASE` / `SSO_HUB_URL` / `SSO_CLIENT_ID` / `SSO_CLIENT_SECRET` | 空 / `/app` | 否 | 统一登录（聚合登录中心）：全部配置才启用，未启用时 `/api/auth/sso/*` 一律 404。`SSO_APP_BASE` 与前端挂载前缀一致（站点根部署设为空） |
+| `SSO_SITE_URL` / `SSO_APP_BASE` / `SSO_HUB_URL` / `SSO_CLIENT_ID` / `SSO_CLIENT_SECRET` | 空 / `/app` | 否 | 统一登录（聚合登录中心）：全部配置才启用，未启用时 `/api/auth/sso/*` 一律 404。`SSO_APP_BASE` 与前端挂载前缀一致（站点根部署设为空）。Provider 是 `Modernchat-Hub`（不是 SSO 服务）：`SSO_HUB_URL` 填 Hub 对外地址，`SSO_CLIENT_ID/SECRET` 在 Hub 概览页由管理员注册获取（secret 仅显示一次），详见 `docs/客户端接入指南.md` |
 | `METRICS_TOKEN` | 空 | 否 | 非空时 `GET /api/metrics` 需 `Authorization: Bearer <token>`；留空则同站可匿名抓取，公网部署建议设置 |
 | `LEGACY_API_SECRET` | 空 | 否 | 旧站迁移密钥（≥32 字节），必须与旧站 `chat/migrate_config.php` 的 `MC_MIGRATE_SECRET` 完全一致。留空则 `/api/migrate/*` 全部返回「迁移未启用」 |
 | `LEGACY_DB_DSN` | 空 | 否 | 旧站库（**只读账号**）连接串，迁移程序只读不写。生产示例：`legacy_ro:<密码>@tcp(127.0.0.1:3306)/chat?charset=utf8mb4&parseTime=True&loc=Local` |

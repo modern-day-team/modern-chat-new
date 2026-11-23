@@ -23,6 +23,12 @@ All clients use the same backend: REST prefix `/api`, WebSocket `/ws`, uploads `
   - **State machine**: `pending` / `confirmed` (with `token` + `user`) / `expired` (5 minutes or already consumed); on `expired` the desktop should call `start` again. `confirm` requires a valid mobile JWT; an invalid ticket returns 400.
   - **Implemented**: `Modernchat-desktop` `src/components/QrLogin.vue` (generate + poll + store token) and `Modernchat-mobile` `qr_confirm_page.dart` (`mobile_scanner` + ticket extraction + confirmation dialog). New clients can follow the same contract.
 - SSO flow: `GET /api/auth/sso/start?redirect=` → hub → `callback` → `POST /api/auth/sso/exchange {ticket}`.
+- **Hub is the OAuth Provider (landed 2026-11-23)**: the group's unified sign-in centre is `Modernchat-Hub`, not the SSO service itself. This site is an OAuth client with **zero code changes** — configure:
+  - `SSO_HUB_URL` = Hub public base URL (e.g. `https://hub.example.com`)
+  - `SSO_CLIENT_ID` / `SSO_CLIENT_SECRET` = credentials registered by an admin on Hub's dashboard (secret shown once)
+  - `SSO_SITE_URL` = this site's public URL; `SSO_APP_BASE` defaults to `/app`
+  - SSO is enabled only when all four `SSO_*` values plus `JWT_SECRET` are set; otherwise `GET /api/auth/sso/status` returns `enabled:false` and the login page hides SSO
+  - Hub endpoints: `GET /oauth/authorize` (requires Hub login), `POST /api/oauth/token` (JSON body, **no `grant_type`**), `GET /api/oauth/userinfo`; redirect_uri is exact-matched; codes are one-time/5 min, tokens 24 h. This site links or creates accounts by `username` + `email`.
 - Token storage:
   - **Always call REST with `Authorization: Bearer <token>`.** REST only accepts Bearer (not cookies, to avoid CSRF); the `mc_auth` cookie is only for browser media loading (`/uploads`) and WS fallback.
   - Web: `localStorage` (key `mc_token`). Desktop/mobile: platform secure storage (Tauri keychain plugin or encrypted file, Flutter `flutter_secure_storage`). **Never write tokens to logs, crash reports, or URLs.**

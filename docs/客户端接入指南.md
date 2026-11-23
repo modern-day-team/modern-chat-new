@@ -23,6 +23,12 @@
   - **状态机**：`pending`（待确认）/ `confirmed`（带 `token` 与 `user`）/ `expired`（5 分钟过期或已消费）；过期后桌面端应重新 `start`。`confirm` 需手机端有效 JWT，票据无效返回 400。
   - **已落地实现**：`Modernchat-desktop` 的 `src/components/QrLogin.vue`（生成 + 轮询 + 落 token）、`Modernchat-mobile` 的 `qr_confirm_page.dart`（`mobile_scanner` 扫描 + 解析票据 + 确认弹窗）。新端接入可照此口径。
 - SSO 场景：`GET /api/auth/sso/start?redirect=` 跳聚合中心 → `callback` 回跳 → `POST /api/auth/sso/exchange {ticket}` 换 token。
+- **Hub 作为 OAuth Provider（2026-11-23 已落地）**：项目组的统一登录中心是 Hub（`Modernchat-Hub`），不是 SSO 服务本身。本站作为 OAuth 客户端零代码改动，只需配置：
+  - `SSO_HUB_URL` = Hub 对外基址（如 `https://hub.example.com`）
+  - `SSO_CLIENT_ID` / `SSO_CLIENT_SECRET` = Hub 概览页管理员注册的客户端凭据（secret 仅显示一次）
+  - `SSO_SITE_URL` = 本站对外地址，`SSO_APP_BASE` 默认 `/app`
+  - 五项（`SSO_*` 四项 + `JWT_SECRET`）全非空才启用 SSO；未配齐时 `GET /api/auth/sso/status` 返回 `enabled:false`，登录页不展示 SSO 入口
+  - Hub 侧端点：`GET /oauth/authorize`（需 Hub 登录态）、`POST /api/oauth/token`（JSON body 无 `grant_type`）、`GET /api/oauth/userinfo`；回调地址须精确注册，授权码 5 分钟一次性、令牌 24 小时。本站按 `username`+`email` 关联或新建账号。
 - 令牌存储：
   - **必须用 `Authorization: Bearer <token>` 调 REST**。REST 中间件只认 Bearer，不认 cookie（避免 CSRF）；cookie `mc_auth` 仅用于浏览器加载 `/uploads` 图片/视频与 WS 握手回退。
   - Web 端存 `localStorage`（键 `mc_token`）；桌面/移动端存平台安全存储（Tauri 用 keychain 插件或本地加密文件，Flutter 用 `flutter_secure_storage`），**不要写进日志、崩溃报告或 URL**。
