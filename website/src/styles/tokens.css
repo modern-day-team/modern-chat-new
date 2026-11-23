@@ -27,7 +27,7 @@
   --brand-soft: #eaf1ff;
   --brand-line: #bcd0fb;
   /* 深色导航 / 代码块上的品牌色（对比度足够，不刺眼） */
-  --brand-on-dark: #7fadff;
+  --brand-on-dark: #7cb8ff;
 
   /* ---------- 表面 ---------- */
   --bg: #ffffff;
@@ -129,9 +129,10 @@
 :root[theme-mode='dark'] {
   color-scheme: dark;
 
-  --brand: #6fa8ff;
-  --brand-hover: #93beff;
-  --brand-press: #4d8bf0;
+  /* 与主仓库 / Hub / 移动端统一：暗色品牌文字色 #7CB8FF（见 UI设计方案 §3.0） */
+  --brand: #7cb8ff;
+  --brand-hover: #9ccaff;
+  --brand-press: #5aa0f0;
   --brand-solid: #2f6fd8;
   --brand-solid-hover: #3d7ce4;
   --brand-fg: #ffffff;

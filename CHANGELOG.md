@@ -16,6 +16,7 @@
 
 ### 变更
 
+- **跨端视觉风格统一（第一批）**：`docs/UI设计方案.md` §3.0 补齐跨端统一色板（品牌主色亮 `#0052D9`/暗 `#7CB8FF`、页面底色、容器、浮层、hairline、语义色），作为五端唯一色值真源；官网暗色品牌色由 `#6FA8FF` 对齐为 `#7CB8FF`（含插件市场）；桌面端建立 `src/assets/main.css` 令牌层，App/QrLogin 的硬编码色值/圆角/字号全部改用令牌。官网小部件（28px 图标、聊天气泡尖角）的尺度微调圆角保留，属有意设计。
 - **高内聚低耦合治理（第一批）**：CORS 与 WS Origin 的归一化/白名单统一到 `middleware.NormalizeOrigin` / `OriginAllowed`（同一安全边界单一实现，消除两套口径漂移）；前端 store 裸 `fetch('/api/auth/logout')` 收敛到 `core/network/http.ts` 的 `keepalivePost()` 专用出口。存量 handler 直连 store、WS 承担业务规则等历史耦合列为后续分项重构，本批不动以降低风险。
 - **安全加固：单设备撤销现在真正生效**：启用登录会话表后，无 `sid` 的存量老 JWT 一律 401（REST / WS / `/uploads` 三处同口径），规避"撤销只改 revoked_at 不改 tv、老 token 在 7 天 TTL 内仍能访问"的越权。同时 `UploadAuth` 补会话撤销校验，被踢设备的浏览器凭 `mc_auth` 也无法继续读附件。**升级影响**：升级后所有旧登录态需重新登录一次（旧 JWT 无 sid）；新签发的 token 均含 sid，无感。
 - **头像改存存储层（本地默认，接入对象存储后自动上云）**：此前用户头像是 data URL 直接写进 `users.avatar`（256KB MEDIUMTEXT），列表还要再存一份 64×64 缩略图 data URL。现在 `PATCH /me` 收到 data URL 后由服务端解码并转存到当前 `Storage` 实现——未配对象存储时落 `DATA_DIR/uploads`，配了对象存储就写对应桶 / CDN，数据库只留可访问 URL。已上传的本站 URL 可直接提交（`Owns` 校验，防外链换头像）；旧客户端继续传 data URL 也能用，存量 data URL 照常显示、用户下次换图后自动转为 URL。孤儿清理同时覆盖 `users.avatar_thumb`，换图不再泄漏旧缩略图。顺带修复上一轮 `ByIDNoAvatar` 引入的回归：Auth 恢复加载完整行，避免 2FA 的 `Save(me)` 把头像写成空值（头像改存 URL 后也消除了大字段读放大，无需再省略该列）。**存量影响**：老头像在用户下次换图前仍是 data URL；切换存储后历史头像 URL 不会自动搬迁，与消息附件口径一致。
