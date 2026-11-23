@@ -23,7 +23,7 @@
 
 ### 新增
 
-- **桌面端最小聊天闭环落地**（`Modernchat-desktop`）：扫码登录后进入会话列表 → 打开会话看最近 30 条历史 → 发文本消息 → WS `message` 帧实时入列；发送走 `chat` 帧 + `clientMsgId` 幂等替换 optimistic 消息，WS 补 8s pong 超时与指数退避重连（重连自动重拉会话）。图片/语音/引用/搜索等按后续分项接入，协议口径以 `web/src/types/proto.ts` 为准。
+- **桌面端聊天能力接入**（`Modernchat-desktop`）：扫码登录后进入会话列表 → 打开会话看最近 30 条历史 → 发文本消息 → WS `message` 帧实时入列；发送走 `chat` 帧 + `clientMsgId` 幂等替换 optimistic 消息，WS 补 8s pong 超时与指数退避重连（重连自动重拉会话）。第二批接入已读回执（`read` 帧 + REST 兜底、未读红点）、撤回/编辑（`recall`/`edit` 帧 + `message_update` 就地更新）、引用回复（`replyToId` + 引用摘要气泡）、输入状态（2s 节流/3s 过期）、服务端 `error` 帧中文原因提示。图片/语音/转发/@/搜索等按后续分项接入，协议口径以 `web/src/types/proto.ts` 为准。
 - **统一登录中心（OAuth Provider）对接就绪**：Hub（`Modernchat-Hub`）已作为项目组 OAuth Provider 落地，本站 SSO 客户端零代码改动即可用——把 `SSO_HUB_URL` 指向 Hub、`SSO_CLIENT_ID/SECRET` 设为 Hub 注册的客户端凭据（secret 仅显示一次），`SSO_SITE_URL`/`SSO_APP_BASE` 按部署填写；五项（`SSO_*` 四项 + `JWT_SECRET`）配齐后登录页出现 SSO 入口，`GET /api/auth/sso/status` 返回 `enabled:true`。详见 `docs/客户端接入指南.md`。
 - **扫码登录跨端闭环落地**：桌面端新增二维码登录页（`http://localhost:1420` 开发、`https://tauri.localhost` 生产），2.5s 轮询票据状态并将 confirmed 的 JWT 落本地；移动端新增扫码确认页（`mobile_scanner` 扫描 → 从 `https://<站点>/app/qr/<票据>` 提取票据 → 弹窗确认 → `POST /api/auth/qr/confirm`），入口在设置页。服务端票据本轮未改动（一次性消费与 5 分钟 TTL 沿用既有实现），两端按 `客户端接入指南.md` 的载荷与状态机约定接入。
 - **多端接入能力（面向 desktop / mobile / SSO / Hub）**：新增 CORS 中间件（按 `FRONTEND_URL` 白名单精确放行、预检 204）、登录会话管理（`GET /api/me/sessions` 列出各端设备、`DELETE /api/me/sessions/:id` 单设备下线并踢 WS）、客户端标识（`X-Client-Platform` / `X-Client-Type` / `X-Client-Version` 与 WS query 同名参数）与版本协商（`GET /api/client/version` + `MIN_CLIENT_VERSION`，只提示不阻断）。设置页账号卡片新增「登录设备」列表，支持退出指定设备。新增 `docs/客户端接入指南.md` 作为跨端接入总入口。
