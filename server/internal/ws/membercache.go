@@ -43,6 +43,15 @@ func (h *Hub) MemberUserIDsCached(convID uint) ([]uint, error) {
 }
 
 // InvalidateMembers 成员增减后失效缓存（Notifier 接口，REST 变更入口调用）。
+// 同时失效这些成员的相关受众缓存——会话成员变化会改变 presence / user_change
+// 的广播目标，不失效的话新成员最长 20 秒收不到在线状态。
 func (h *Hub) InvalidateMembers(convID uint) {
+	if v, ok := h.membersCache.Load(convID); ok {
+		if e, ok := v.(*membersEntry); ok {
+			for _, uid := range e.ids {
+				h.relatedCache.Delete(uid)
+			}
+		}
+	}
 	h.membersCache.Delete(convID)
 }

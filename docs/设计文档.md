@@ -576,7 +576,9 @@ type ServerFrame =
 - **消息搜索走 FULLTEXT**：`messages.content` 建 ngram 全文索引（迁移 `0022`；AutoMigrate 不建全文索引，启动时 `EnsureMessageFulltext` 按 information_schema 幂等补建）。≥2 字符关键词用 `MATCH...AGAINST` 短语模式近似 LIKE 的子串语义（引号内的短语保证连续性），单字符（ngram 最小 token 为 2）与索引异常回退 LIKE。
 - **只问布尔就别 COUNT**：`/api/site` 每 30 秒被每个在线客户端轮询，判断「是否已有账号」用 `SELECT 1 ... LIMIT 1`，避免 InnoDB 遍历最小索引全量条目。
 - **配置解析结果缓存**：`Ops()` 在每个请求至少被调用两次（维护中间件 + handler），解析结果用 `atomic.Pointer` 缓存，`Save/Invalidate` 时置空；否则每次都要深拷贝配置 map 并解析 ~20 个键。
-- **索引补齐**：`messages(sender_id)`（后台按发送者统计，迁移 `0021`）、`messages(conversation_id)`（游标分页，InnoDB 二级索引叶子含主键即等效 `(conversation_id, id)`）、`(conversation_id, client_msg_id)` 唯一（幂等）。
+- **鉴权不拉大字段**：REST Auth 走 `ByIDNoAvatar()`（省略 256KB 的 avatar MEDIUMTEXT，但保留 password_hash / 2FA 列以支持 `Save(me)` 与密码再认证），需要显示头像的 `GET /me`、`UpdateMe` 单独取完整行；`/uploads` 媒体鉴权与 WS 状态复核用更小的 `ByIDBasic()`。
+- **短 TTL 缓存与即时失效**：会话成员列表（30s，`ws/membercache.go`）与 presence / user_change 受众集合（20s，`ws/presence.go`）走短 TTL，REST 侧成员增减 / 好友增删经 `InvalidateMembers` / `InvalidateRelated` 即时失效，TTL 只兜未接线的直改库路径；两者都随 `Hub.Run` 每 5 分钟清扫过期条目，避免长运行站点内存单调增长。
+- **索引补齐**：`messages(sender_id)`（后台按发送者统计，迁移 `0021`）、`messages(conversation_id)`（游标分页，InnoDB 二级索引叶子含主键即等效 `(conversation_id, id)`）、`(conversation_id, client_msg_id)` 唯一（幂等）、`friends (friend_id, status)`（好友反查 / presence，迁移 `0031`）。
 - 每连接 send channel（256）+ 写超时，慢消费者踢出；读/写 pump 分离。
 - **群成员上限 200**（控制 fan-out 写放大与单分片热点）；超大群二期走"拉模型"（不做写扩散）。
 - 历史游标分页（`beforeId`），禁 OFFSET 深分页。

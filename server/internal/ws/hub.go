@@ -53,6 +53,9 @@ type Hub struct {
 	// membersCache 会话成员 id 列表短 TTL 缓存（见 membercache.go），
 	// REST 侧成员变更经 Notifier.InvalidateMembers 失效。
 	membersCache sync.Map // convID -> *membersEntry
+	// relatedCache 用户「相关受众」短 TTL 缓存（见 presence.go）：上下线广播
+	// 每次要取同会话全部成员 ∪ 好友，最热的高频查库路径之一。
+	relatedCache sync.Map // userID -> *relatedEntry
 	done         chan struct{}
 	closed       bool
 	mu           sync.RWMutex
@@ -122,6 +125,12 @@ func (h *Hub) evictExpiredMembers() {
 	h.membersCache.Range(func(key, value any) bool {
 		if e, ok := value.(*membersEntry); ok && now.Sub(e.at) >= membersCacheTTL {
 			h.membersCache.Delete(key)
+		}
+		return true
+	})
+	h.relatedCache.Range(func(key, value any) bool {
+		if e, ok := value.(*relatedEntry); ok && now.Sub(e.at) >= relatedCacheTTL {
+			h.relatedCache.Delete(key)
 		}
 		return true
 	})

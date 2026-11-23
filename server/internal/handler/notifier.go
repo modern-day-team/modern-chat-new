@@ -18,6 +18,9 @@ type Notifier interface {
 	// InvalidateMembers 会话成员增减后失效 Hub 侧成员列表缓存（WS 控制帧
 	// 每帧查成员列表走短 TTL 缓存，见 ws/membercache.go）。
 	InvalidateMembers(convID uint)
+	// InvalidateRelated 好友关系变化后失效该用户「相关受众」缓存
+	//（presence / user_change 广播目标，见 ws/presence.go）。参数为变化双方。
+	InvalidateRelated(userID, friendID uint)
 }
 
 // NoopNotifier 空实现（测试 / Hub 未就绪）。
@@ -34,6 +37,8 @@ func (NoopNotifier) OnlineCount() int { return 0 }
 func (NoopNotifier) Online(uint) bool { return false }
 
 func (NoopNotifier) InvalidateMembers(uint) {}
+
+func (NoopNotifier) InvalidateRelated(uint, uint) {}
 
 // notifyFor 从 gin 上下文取 Notifier。
 func notifyFor(c *gin.Context) Notifier {

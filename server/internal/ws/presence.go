@@ -1,6 +1,19 @@
 package ws
 
-import "github.com/modern-day-team/modern-chat-new/server/internal/model"
+import (
+	"time"
+
+	"github.com/modern-day-team/modern-chat-new/server/internal/model"
+)
+
+// relatedCacheTTL 相关受众缓存窗口：好友 / 成员变更均由 REST 侧即时失效，
+// 短 TTL 只兜未接线的直改库路径，20 秒足以限制脏广播窗口。
+const relatedCacheTTL = 20 * time.Second
+
+type relatedEntry struct {
+	ids []uint
+	at  time.Time
+}
 
 // notifyPresence 上下线广播：好友 + 所有同会话成员（含本人，便于多端同步）。
 //
@@ -44,7 +57,25 @@ func (h *Hub) NotifyUserChange(userID uint, nickname, avatar, avatarColor string
 }
 
 // relatedUsers 与该用户相关的在线受众：同会话成员 ∪ 好友 ∪ 自己。
+// 结果按 20 秒短 TTL 缓存：此前每次 WS 上下线都查「用户全部会话的全部成员」
+// （100 个 200 人群 ≈ 2 万行 + 去重 + 逐个 shard 锁做在线检查），重连风暴时
+// 成倍放大。好友接受/删除与会话成员增减都会即时失效相关用户的缓存，TTL 只
+// 兜底未接线的变更路径；返回的是共享只读切片，调用方不得修改。
 func (h *Hub) relatedUsers(uid uint) []uint {
+	now := time.Now()
+	if v, ok := h.relatedCache.Load(uid); ok {
+		e := v.(*relatedEntry)
+		if now.Sub(e.at) < relatedCacheTTL {
+			return e.ids
+		}
+	}
+	out := h.computeRelatedUsers(uid)
+	h.relatedCache.Store(uid, &relatedEntry{ids: out, at: now})
+	return out
+}
+
+// computeRelatedUsers 真正查库计算受众（缓存未命中时调用）。
+func (h *Hub) computeRelatedUsers(uid uint) []uint {
 	set := map[uint]bool{uid: true}
 	// nil 判空：NewHub(&Deps{}) 等未完整注入依赖的场景（含单测）不能 panic。
 	if h.deps.Convs != nil {
@@ -68,4 +99,12 @@ func (h *Hub) relatedUsers(uid uint) []uint {
 		out = append(out, id)
 	}
 	return out
+}
+
+// InvalidateRelated 好友关系变化后失效双方的相关受众缓存（Notifier 接口）。
+func (h *Hub) InvalidateRelated(userID, friendID uint) {
+	h.relatedCache.Delete(userID)
+	if friendID != 0 {
+		h.relatedCache.Delete(friendID)
+	}
 }

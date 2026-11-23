@@ -198,6 +198,8 @@ func (h *FriendHandler) Handle(c *gin.Context) {
 		slog.Warn("friend pending cleanup failed", "a", f.UserID, "b", me.ID, "err", err.Error())
 	}
 	slog.Info("friend request accepted", "from", f.UserID, "by", me.ID)
+	// 好友关系变化改变 presence / user_change 的广播受众，立即失效双方的缓存
+	notifyFor(c).InvalidateRelated(me.ID, f.UserID)
 
 	// 双方各自若无单聊则保持未创建（首次发消息/点开时由前端 createSingle 幂等创建）
 	c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -220,5 +222,6 @@ func (h *FriendHandler) Remove(c *gin.Context) {
 		return
 	}
 	slog.Info("friend removed", "user", me.ID, "friend", friendID)
+	notifyFor(c).InvalidateRelated(me.ID, uint(friendID))
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }

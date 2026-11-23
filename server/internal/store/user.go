@@ -123,12 +123,29 @@ func (s *UserStore) ByID(id uint) (*model.User, error) {
 	return &u, nil
 }
 
-// ByIDBasic 只取身份与状态列（不含 PasswordHash，也不含 Avatar 的 256KB
-// MEDIUMTEXT）。/uploads 媒体鉴权与 WS 连接状态复核这类高频路径只需要
-// id / 封禁态 / token_version，全行拉取等于把 DB 读放大固定在请求速率上
-// （一页历史消息 = N 个媒体请求 = N 次 256KB 读取）。返回值只可用于鉴权
-// 判定与按 ID/昵称取值；需要完整资料（GET /me、UpdateMe 的保存）仍用 ByID，
-// 因为半缺字段的结构体再 Save 会把落掉的列写回零值。
+// ByIDNoAvatar 取除 avatar 外的完整行。REST Auth 每个请求都要装载 user，
+// 而自定义头像的 MEDIUMTEXT 可达 256KB——100 RPS 就是 25MB/s 的无效读放大。
+// 这里**保留 password_hash**：2FA 关闭时的密码再认证、以及多处 Save(me) 都依赖它，
+//
+//	omission 会导致密码校验恒失败 / 保存时把 60 字节的哈希写成空串。
+//
+// 只有真正需要显示头像的端点（GET /me、UpdateMe）才按 ID 取完整行。
+func (s *UserStore) ByIDNoAvatar(id uint) (*model.User, error) {
+	var u model.User
+	err := s.db.Omit("avatar").First(&u, id).Error
+	if err == gorm.ErrRecordNotFound {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
+// ByIDBasic 只取身份与状态列（不含 PasswordHash 与 Avatar）。
+// /uploads 媒体鉴权与 WS 连接状态复核这类高频路径只需要 id / 封禁态 /
+// token_version，全行拉取等于把 DB 读放大固定在请求速率上。返回值不可用于
+// Save（半缺字段会写回零值）或密码校验；这类场景用 ByIDNoAvatar / ByID。
 func (s *UserStore) ByIDBasic(id uint) (*model.User, error) {
 	var u model.User
 	err := s.db.Omit("password_hash", "avatar").First(&u, id).Error

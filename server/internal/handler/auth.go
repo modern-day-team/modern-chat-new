@@ -593,9 +593,24 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-// Me 当前用户（Auth 后）。
+// Me 当前用户（Auth 后）。Auth 中间件只装载鉴权所需的最小行，
+// 这里需要 avatar 等完整资料，按 ID 单独取一次（低频端点，不影响热路径）。
 func (h *AuthHandler) Me(c *gin.Context) {
-	c.JSON(http.StatusOK, middleware.UserFrom(c))
+	me := middleware.UserFrom(c)
+	if me == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未登录"})
+		return
+	}
+	full, err := h.users.ByID(me.ID)
+	if err != nil {
+		internal(c, err)
+		return
+	}
+	if full == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户不存在"})
+		return
+	}
+	c.JSON(http.StatusOK, full)
 }
 
 // UpdateMe 改昵称 / 头像 / 邮箱。
@@ -613,7 +628,22 @@ func (h *AuthHandler) UpdateMe(c *gin.Context) {
 	if !bind(c, &req) {
 		return
 	}
-	u := middleware.UserFrom(c)
+	// Auth 只装载鉴权最小行；Save(u) 会写回所有列，必须取完整行再改，
+	// 否则半缺字段的 avatar / password_hash 会被零值覆盖。
+	me := middleware.UserFrom(c)
+	if me == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未登录"})
+		return
+	}
+	u, err := h.users.ByID(me.ID)
+	if err != nil {
+		internal(c, err)
+		return
+	}
+	if u == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户不存在"})
+		return
+	}
 
 	if req.Avatar != nil {
 		a := strings.TrimSpace(*req.Avatar)
