@@ -1208,11 +1208,13 @@ provide(messageRowKey, {
       <p>{{ t('message.emptyChat') }}</p>
     </div>
 
-    <div v-if="typingNames.length" class="mc-msgpane__typing text-placeholder">
-      {{ t('message.typingOnly', { names: typingNames.join(', ') }) }}
+    <!-- typing 提示浮在输入区上方，不占文档流：WS 推送/过期时不再把输入框上下推 22px -->
+    <div class="mc-msgpane__composer-slot">
+      <div v-if="typingNames.length" class="mc-msgpane__typing text-placeholder">
+        {{ t('message.typingOnly', { names: typingNames.join(', ') }) }}
+      </div>
+      <MessageComposer v-if="conv" />
     </div>
-
-    <MessageComposer v-if="conv" />
 
     <!-- 图片放大：挂在虚拟列表之外（放在列表插槽里会按可见项渲染多份） -->
     <Teleport to="body">
@@ -1784,10 +1786,23 @@ provide(messageRowKey, {
   line-height: 1.6;
 }
 
-.mc-msgpane__typing {
-  height: 22px;
+/* 输入区定位上下文：typing 浮层贴在其上方，不与消息流/输入框争高度 */
+.mc-msgpane__composer-slot {
+  position: relative;
   flex-shrink: 0;
-  padding: 0 20px;
+}
+
+.mc-msgpane__typing {
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  bottom: calc(100% + 2px);
+  z-index: 2;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--mc-radius-sm);
+  background: var(--td-bg-color-container);
   font-size: 12px;
+  line-height: 22px;
 }
 </style>

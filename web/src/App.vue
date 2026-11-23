@@ -78,13 +78,25 @@ const globalConfig = computed(
 
 <template>
   <TConfigProvider :global-config="globalConfig">
-    <MaintenanceView v-if="inMaintenance" />
-    <RouterView v-else v-slot="{ Component }">
+    <RouterView v-slot="{ Component }">
       <Transition name="mc-route" mode="out-in">
         <component :is="Component" />
       </Transition>
     </RouterView>
+    <!-- 维护页改为固定覆盖层：配置异步到达时不再把整棵 RouterView 换掉（整视口 CLS） -->
+    <div v-if="inMaintenance" class="mc-maintenance-layer">
+      <MaintenanceView />
+    </div>
     <UiMessageHost />
     <UiDialogHost />
   </TConfigProvider>
 </template>
+
+<style scoped>
+.mc-maintenance-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  overflow: auto;
+}
+</style>

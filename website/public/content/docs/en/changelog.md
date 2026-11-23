@@ -6,6 +6,14 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **Frontend layout stability (CLS)**: fixed the async-content shifts behind a measured CLS of 0.751 (FCP/LCP 0.5 s, TBT 240 ms). The marketing site now reserves a full first screen for the async route view and 60vh for Markdown bodies so the footer and pager no longer jump. The web login screen reserves the SSO button slot and only toggles visibility. Message images use a fixed 4:3 container with `object-fit: contain`, so decoding no longer expands the virtual list. The typing hint is an overlay above the composer, and the maintenance screen is a fixed overlay instead of replacing the whole RouterView. Message images still must not use `loading="lazy"` because virtual-list measurement depends on it.
+
+---
+
 ## [0.12.0] — 2026-11-23
 
 > **Upgrade notes (from 0.11.1)**

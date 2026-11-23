@@ -653,10 +653,11 @@ onBeforeUnmount(stopQrPolling)
         </UiButton>
       </TForm>
 
-      <!-- 统一登录：后端配置聚合登录中心后才出现（仅登录形态） -->
+      <!-- 统一登录：状态异步探测，先占住按钮位置（visibility 切换而非插入），避免推低下方链接 -->
       <UiButton
-        v-if="mode === 'login' && ssoEnabled"
+        v-if="mode === 'login'"
         class="auth-card__sso"
+        :class="{ 'is-placeholder': !ssoEnabled }"
         variant="outline"
         size="large"
         block
@@ -870,6 +871,12 @@ onBeforeUnmount(stopQrPolling)
 
 .auth-card__agree-text a {
   color: var(--mc-link);
+}
+
+/* SSO 探测是异步的：按钮始终占位，只切可见性；下方链接区不会在配置到达时下移 */
+.auth-card__sso.is-placeholder {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .auth-card__links {

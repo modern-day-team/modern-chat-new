@@ -388,16 +388,24 @@ const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉']
 
 /* ===== 图片 / 语音消息 ===== */
 .mc-msg__media {
-  max-width: 240px;
-  /* 加载完成前先占一块高度，避免图片到达时消息列表整体跳动 */
-  min-height: 80px;
+  width: min(240px, 62vw);
+  /* 固定 4:3 占位：图片是异步到达的，只留 min-height 会在加载完成后把虚拟列表整段撑高 */
+  aspect-ratio: 4 / 3;
   border-radius: var(--mc-radius-lg);
   overflow: hidden;
   background: var(--td-bg-color-container);
   line-height: 0;
 }
 
-.mc-msg__media img,
+.mc-msg__media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* contain 保留完整画面（截图/长图不被裁切），容器尺寸始终固定 */
+  object-fit: contain;
+  cursor: zoom-in;
+}
+
 .mc-msg__sticker img {
   display: block;
   width: 100%;

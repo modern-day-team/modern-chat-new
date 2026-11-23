@@ -398,3 +398,18 @@ Media travels as URLs over HTTP Range, never through WS (64 KB frames carry URLs
 Audio uses `preload="none"` and binds `src` only on first click — history voice messages issue zero metadata requests. Durations are cached per URL in localStorage (max 200 entries) so bubbles don't jump from 96 px, and the webm `Infinity` seek hack remains. Video uses a `LazyVideo` cover (click to load + autoplay) with a fixed 16:9 placeholder; merged-forward media also uses `preload="none"`. Images/stickers show a skeleton container then fade in on decode (opacity only, no reflow). The @-mention member warm-up runs in `requestIdleCallback` so it doesn't compete with first-screen media.
 
 Not done (poor benefit/risk): server-side video transcoding/multi-bitrate, image thumbnail tiers (the `_t.jpg` derivation was deliberately removed), and content-hash instant upload — all require storage/protocol changes and are separate work items.
+
+### 14.2 Layout stability (CLS)
+
+Lighthouse once reported CLS 0.751 (FCP/LCP 0.5 s, TBT 240 ms). The root cause was async content being inserted into — or replacing — already visible regions, not slow images. Current rules:
+
+| Location | Symptom | Fix |
+|---|---|---|
+| Website `App.vue` + `site.css` | Before the route chunk loads only the nav and footer exist; inserting content pushes the footer down | `.site-main { min-height: calc(100vh - var(--nav-h)) }` fills the first screen so the footer stays off-screen |
+| Website `DocsView.vue` + `docs.css` | A one-line loading message is replaced by a full Markdown document | `.md { min-height: 60vh }` reserves the body height so the pager/footer don't jump |
+| Web `AuthView.vue` | The SSO button appears after an async status probe and pushes the links down | Always render the button while on the login screen; hidden state uses `is-placeholder` (`visibility: hidden`) instead of inserting a node |
+| Web `MessageRow.vue` | Natural image height expands the message row | Fixed 4:3 container with `object-fit: contain`; height is identical before/after decode |
+| Web `MessagePane.vue` | The typing hint adds/removes 22 px and moves the composer | Render it as an absolutely positioned overlay above the composer |
+| Web `App.vue` | An async maintenance flag replaces the whole RouterView | Render the maintenance screen as a `position: fixed` overlay; the underlying view stays mounted and out of layout calculations |
+
+Register-form email/invite fields still appear with the site config, but switching to register mode is a user action (CLS ignores shifts within 500 ms of input), so no permanent blank space is reserved. `DynamicScroller`'s `min-item-size=88` stays unchanged — fixing media row heights removed most of the estimation error, and inflating it would overestimate ordinary text rows. **Message images must still avoid `loading="lazy"`**, otherwise the virtual list cannot measure their height.

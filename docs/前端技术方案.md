@@ -400,6 +400,7 @@ UiCheckbox  UiInputNumber  UiTooltip  UiPopup  UiDialog  UiDrawer
 - 自定义背景图片走 canvas WebP 压缩（不支持回退 JPEG），逐级缩小直到落入 600KB 上限（原 1.5MB）。降低上限是因为 localStorage 同步写入大字符串会产生主线程长任务；背景是柔化装饰层，1600px 足够。
 - 消息图片：前端上传前压缩到最大边 1600 / WebP q0.82（<300KB 的小图与 GIF 跳过）；服务端 `SaveStream` 再做一次兜底统一转 WebP，覆盖移动端/第三方来源。两端策略一致，任一端失败都回退原图，不阻断发送。
 - 首屏空态图写死 `width/height=32` 防 CLS；认证页不再探测不存在的 `login-bg.jpg`，复用设置页的 `appBgImage`。
+- 消息图片容器固定 4:3（`aspect-ratio: 4/3`，宽 `min(240px, 62vw)`），`object-fit: contain` 完整显示画面；**不再用 `min-height: 80px` 加自然高度**，否则图片到达时会把虚拟列表整段撑高。同理视频固定 16:9、贴纸固定 120×120。
 
 **代码分割 / Tree Shaking**：
 - 主 web：10 条路由全部 `() => import()`；框架核心固定 `vendor`，`tdesign-icons-vue-next` 独立 `icons` chunk 避免跨路由重复下载；TDesign 组件仍跟随引用它的路由分包（首屏登录页不下载后台 Table/Drawer）。
@@ -426,6 +427,21 @@ UiCheckbox  UiInputNumber  UiTooltip  UiPopup  UiDialog  UiDrawer
 **稳定渲染补充**：语音时长按 URL 缓存到 localStorage（最多 200 条），webm `Infinity` 时长仍用 seek hack 逼出真实值；全局播放权用 `mc-playing-voice` 键 + `timeupdate` 抢占，暂停范围扩到所有 `<audio>`（含合并转发），卸载时清理自己持有的键。
 
 **未做（收益/风险不划算）**：服务端视频转码/多码率、图片缩略图分层（历史上主动移除了 `_t.jpg` 派生）、内容 hash 秒传——均需改存储结构与消息协议，列为独立分项。
+
+### 14.2 布局稳定性（CLS）
+
+Lighthouse 曾测到 CLS 0.751（FCP/LCP 0.5s、TBT 240ms）。根因不是图片本身，而是**异步内容直接插入或替换已有可见区域**，修复口径如下：
+
+| 位置 | 症状 | 修复 |
+|---|---|---|
+| 官网 `App.vue` + `site.css` | 路由 chunk 未到达时只有导航和页脚，内容插入后页脚掉到页尾 | `.site-main { min-height: calc(100vh - var(--nav-h)) }` 先占满首屏；页脚始终在视口外 |
+| 官网 `DocsView.vue` + `docs.css` | 一行「加载中」被整篇 Markdown 替换 | `.md { min-height: 60vh }` 给正文区预留高度，翻页导航与页脚不跳 |
+| web `AuthView.vue` | SSO 状态异步返回后按钮插入，推低链接区 | 登录态下按钮始终渲染，未启用时加 `is-placeholder`（`visibility: hidden`），只切可见性不插 DOM |
+| web `MessageRow.vue` | 图片自然高度撑开消息行 | 固定 4:3 容器 + `object-fit: contain`，图片解码前后高度一致 |
+| web `MessagePane.vue` | typing 提示出现/消失把输入框推上推下 22px | 提示改为绝对定位浮在输入区上方，不参与 flex 布局 |
+| web `App.vue` | 维护配置异步到达时整棵 RouterView 换成维护页 | 维护页改为 `position: fixed` 覆盖层，底层视图不卸载、不参与布局位移 |
+
+**注意**：注册表单的邮箱/邀请码字段随站点配置出现，但进入注册模式本身是用户点击（CLS 规范忽略输入后 500ms 的位移），因此不为此留永久空白。`DynamicScroller` 的 `min-item-size=88` 保持不动——媒体行高度固定后估算误差已显著下降，盲目调大反而让普通文本行过估。**消息图片禁止 `loading="lazy"`** 的约定不变，否则虚拟列表测不到高度会死循环。
 
 
 

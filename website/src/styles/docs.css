@@ -114,6 +114,8 @@
 /* ---------------- Markdown 排版 ---------------- */
 .md {
   max-width: 780px;
+  /* Markdown 异步拉取 + 解析：正文区先占住高度，翻页导航与页脚不会跟着跳 */
+  min-height: 60vh;
   color: var(--ink-2);
 }
 

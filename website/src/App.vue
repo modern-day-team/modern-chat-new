@@ -17,6 +17,9 @@ watchEffect(() => {
 
 <template>
   <SiteNav />
-  <RouterView />
+  <!-- 路由组件是异步 chunk：先给主区占满一屏，避免页脚在内容到达前被顶上去（CLS） -->
+  <div class="site-main">
+    <RouterView />
+  </div>
   <SiteFooter />
 </template>
