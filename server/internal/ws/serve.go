@@ -3,7 +3,6 @@ package ws
 import (
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -50,13 +49,11 @@ func upgraderFor(allowed []string) websocket.Upgrader {
 		CheckOrigin: func(r *http.Request) bool {
 			origin := r.Header.Get("Origin")
 			if origin == "" {
-				return true
+				return true // 原生客户端无 Origin，仍受 token 鉴权保护
 			}
-			origin = strings.TrimSuffix(strings.ToLower(origin), "/")
-			for _, a := range allowed {
-				if origin == strings.ToLower(a) {
-					return true
-				}
+			// 与 REST CORS 共用同一 Origin 策略，口径一致（归一化 + 精确白名单）
+			if middleware.OriginAllowed(allowed, origin) {
+				return true
 			}
 			slog.Warn("ws origin rejected", "origin", origin, "remote", r.RemoteAddr)
 			return false

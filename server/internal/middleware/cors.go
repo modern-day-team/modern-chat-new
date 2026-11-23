@@ -54,7 +54,23 @@ func CORS(allowed []string) gin.HandlerFunc {
 	}
 }
 
-// normalizeOrigin 与 ws/serve.go 的 Origin 归一化保持一致：小写、去尾斜杠。
-func normalizeOrigin(s string) string {
+// NormalizeOrigin 归一化来源：小写、去首尾空格、去一个尾斜杠。
+// CORS 与 WS Origin 是同一安全边界，共用本函数避免两套实现漂移。
+func NormalizeOrigin(s string) string {
 	return strings.ToLower(strings.TrimSuffix(strings.TrimSpace(s), "/"))
+}
+
+// normalizeOrigin 包内简写（CORS 中间件自身使用）。
+func normalizeOrigin(s string) string { return NormalizeOrigin(s) }
+
+// OriginAllowed 判断来源是否在白名单（忽略大小写与尾斜杠）；
+// 空 Origin（原生客户端 / curl）由调用方自行决定，本函数只判非空来源。
+func OriginAllowed(allowed []string, origin string) bool {
+	o := NormalizeOrigin(origin)
+	for _, a := range allowed {
+		if o == NormalizeOrigin(a) {
+			return true
+		}
+	}
+	return false
 }

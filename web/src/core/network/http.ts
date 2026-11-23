@@ -249,6 +249,20 @@ export async function rawFetch(
   return withTimeout(run(), timeoutMs, '请求超时，请稍后重试', ctrl)
 }
 
+/**
+ * 页面卸载 / 刷新时仍需发出的 POST（退出登录下发过期 cookie）。
+ * keepalive 请求不能走 request() 的 AbortController 超时，单独封装为统一出口，
+ * 避免各 store 裸调 fetch 绕过鉴权头与错误归一。失败静默（本地登出照常完成）。
+ */
+export function keepalivePost(path: string): void {
+  const token = getToken()
+  void fetch(`/api${path}`, {
+    method: 'POST',
+    keepalive: true,
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  }).catch(() => undefined)
+}
+
 export const http = {
   get: <T>(path: string, query?: RequestOptions['query']) => request<T>(path, { query }),
   upload,

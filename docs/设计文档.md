@@ -714,3 +714,4 @@ cd web && npm install && npm run dev  # :5173，代理 /api 与 /ws 到 :8080
 - **客户端标识与版本协商**：`X-Client-Platform` / `X-Client-Type` / `X-Client-Version`（WS 为 query 参数）入库到会话；`GET /api/client/version` 按 `MIN_CLIENT_VERSION` 提示升级，不阻断旧端。
 - **契约同步**：`docs/后端需求规格.md` §3.2/§3.3/§6/§9、`web/src/types/proto.ts`、设置页中英文案同提交更新。
 - **安全加固（同批）**：启用会话表后 REST / WS / `/uploads` 三处统一校验 `sid`——无 sid 的存量老 JWT 一律 401（否则单设备撤销只改 `revoked_at`、不改 `tv`，老 token 7 天内可绕过）；`UploadAuth` 补 `ActiveBySID` 校验，被踢设备凭 cookie 也无法读附件。升级后需重新登录一次。
+- **高内聚低耦合治理（2026-11-23）**：CORS 与 WS Origin 原各写一套归一化/白名单，现统一为 `middleware.NormalizeOrigin` / `OriginAllowed`（同一安全边界单一实现）；前端 store 裸 `fetch('/api/auth/logout')` 收敛到 `core/network/http.ts` 的 `keepalivePost` 专用出口（插件代理的 `credentials:'omit'` 与图片 blob 下载为有意设计，保留裸 fetch 并注明）。存量 handler 直连 store 的重构列为后续分项，不在本批改动。

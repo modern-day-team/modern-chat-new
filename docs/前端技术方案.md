@@ -352,6 +352,7 @@ UiCheckbox  UiInputNumber  UiTooltip  UiPopup  UiDialog  UiDrawer
 - **错误**：后端返回 `{ error, code? }`，前端 `api/client.ts` 归一化成 `ApiError`；中文错误在 `i18n/errors.ts` 中映射为英文。`fetch` 的网络层异常统一包装成「网络连接失败」，非 401 的失败**不会**清登录态（只有 401 才清 token 并跳登录，且带 `?redirect=` 回到原页面）
 - **客户端标识**：`core/network/http.ts` 统一在 REST 请求头与 WS 握手 query 里带 `X-Client-Platform` / `X-Client-Type` / `X-Client-Version`（Web 固定 `web` / `browser` / 包版本）；服务端据此在会话列表里区分设备。桌面 / 移动构建改为自己的标识即可，无需改后端
 - **会话管理**：`authApi.sessions()` / `authApi.revokeSession(id)` 对应 `GET` / `DELETE /api/me/sessions`；撤销当前设备时前端自行清 token 并断 WS
+- **网络出口**：所有业务请求走 `core/network/http.ts`；页面卸载时仍需发出的请求（退出登录下发过期 cookie）用 `keepalivePost()`，带 Bearer 但不设超时。插件 SDK 代理请求（`credentials:'omit'`）与消息图片 blob 下载是有意保留的裸 fetch，各自已有注释；除此之外禁止 core 外直接 `fetch`
 - **改接口的流程**：先改 [后端需求规格.md](后端需求规格.md) → 再改后端与 `proto.ts` → 最后改前端
 
 ## 12. 信息架构（新增入口该放哪一层）
