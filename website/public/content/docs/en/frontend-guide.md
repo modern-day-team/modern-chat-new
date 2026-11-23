@@ -390,3 +390,11 @@ The three zones of the chat page (group pane / conversation list / detail panel)
 **Critical render path**: both `index.html` files inline the anti-flash theme script in `<head>` (module scripts are deferred), with no font blocking (system font stack). Vite automatically injects `modulepreload` and CSS `<link>` tags — no manual preload needed.
 
 **Long tasks / forced reflow**: `MessagePane`'s scroll callback is rAF-throttled (one `scrollTop/clientHeight/scrollHeight` read per frame, cancelled on unmount). Large Markdown parses yield via `requestIdleCallback` before `marked.parse` + three regex passes. Existing good practices stay: virtual scrolling, background-tab skip in scroll/heartbeat/QR polling, no `deep: true` watchers.
+
+### 14.1 Media streaming
+
+Media travels as URLs over HTTP Range, never through WS (64 KB frames carry URLs only). `/uploads` uses the stdlib `FileServer` for Range/206, with `private, max-age=31536000, immutable` caching and an ETag derived from mtime+size. Uploads are already streaming (`MultipartReader` → `SaveStream` → atomic rename), with no whole-file `io.ReadAll`.
+
+Audio uses `preload="none"` and binds `src` only on first click — history voice messages issue zero metadata requests. Durations are cached per URL in localStorage (max 200 entries) so bubbles don't jump from 96 px, and the webm `Infinity` seek hack remains. Video uses a `LazyVideo` cover (click to load + autoplay) with a fixed 16:9 placeholder; merged-forward media also uses `preload="none"`. Images/stickers show a skeleton container then fade in on decode (opacity only, no reflow). The @-mention member warm-up runs in `requestIdleCallback` so it doesn't compete with first-screen media.
+
+Not done (poor benefit/risk): server-side video transcoding/multi-bitrate, image thumbnail tiers (the `_t.jpg` derivation was deliberately removed), and content-hash instant upload — all require storage/protocol changes and are separate work items.

@@ -5,6 +5,9 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/gin-contrib/gzip"
 	"gorm.io/gorm"
@@ -161,11 +164,23 @@ func New(d Deps) *gin.Engine {
 			middleware.Maintenance(settings),
 		)
 		serveUpload := func(c *gin.Context) {
-			// 不再使用一年期 public 缓存：未鉴权时公开缓存会把私人图片留在代理/浏览器；
-			// 现在受 cookie 保护，短私有缓存足够（文件名随机不可变，命中即可复用）。
-			c.Header("Cache-Control", "private, max-age=3600")
+			// 文件名随机且内容不可变（上传后从不覆盖），可安全长期缓存；
+			// 仍用 private：资源受 cookie 保护，禁止代理/CDN 共享缓存。
+			// immutable 让浏览器命中缓存时不再发条件请求，减少往返。
+			c.Header("Cache-Control", "private, max-age=31536000, immutable")
 			c.Header("X-Content-Type-Options", "nosniff")
-			fs := onlyFilesFS{http.Dir(service.UploadsDir(d.Cfg.DataDir))}
+
+			// 强 ETag（mtime+size）：http.FileServer 自己不生成 ETag，
+			// 若不做条件请求，浏览器每次 stale 都要重新下载整文件。
+			// 这里先 stat 出 ETag，再交给 FileServer 处理 Range/206 与 304。
+			rel := strings.TrimPrefix(c.Param("filepath"), "/")
+			base := service.UploadsDir(d.Cfg.DataDir)
+			if st, err := os.Stat(filepath.Join(base, filepath.FromSlash(rel))); err == nil && !st.IsDir() {
+				etag := `"` + strconv.FormatInt(st.ModTime().UnixNano(), 36) + `-` + strconv.FormatInt(st.Size(), 36) + `"`
+				c.Header("ETag", etag)
+			}
+
+			fs := onlyFilesFS{http.Dir(base)}
 			http.StripPrefix("/uploads", http.FileServer(fs)).ServeHTTP(c.Writer, c.Request)
 		}
 		uploads.GET("/*filepath", serveUpload)

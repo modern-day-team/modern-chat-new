@@ -9,16 +9,48 @@ import { computed, onBeforeUnmount, ref } from 'vue'
  *   - 气泡宽度随时长变化（微信那种），需要读到 duration；
  *   - 同时只允许一条语音在播。
  *
- * 时长不落库：浏览器加载元数据后自己算，省掉改消息结构和后端校验。
+ * 性能优化：
+ *   - preload="none"：历史语音不预加载元数据，点击播放才发请求（减少请求）；
+ *   - 时长按 src 缓存到 localStorage：首次加载后气泡宽度不再从 96px 跳变（稳定渲染）。
  */
 
-withDefaults(defineProps<{ src: string; mine?: boolean }>(), { mine: false })
+const props = withDefaults(defineProps<{ src: string; mine?: boolean }>(), { mine: false })
 
 const audioEl = ref<HTMLAudioElement | null>(null)
 const playing = ref(false)
+/** 实际播放源：点击前为空，避免浏览器 prefetch；点击后才赋值。 */
+const audioSrc = ref('')
 const duration = ref(0)
 const current = ref(0)
 const failed = ref(false)
+
+/** 按 URL 缓存时长：同一条语音重进会话不再跳宽 */
+function cachedDuration(): number {
+  try {
+    const raw = localStorage.getItem('mc_voice_duration')
+    if (!raw) return 0
+    const map = JSON.parse(raw) as Record<string, number>
+    const cached = map[props.src]
+    return cached !== undefined && Number.isFinite(cached) ? cached : 0
+  } catch {
+    return 0
+  }
+}
+function rememberDuration(sec: number) {
+  if (!Number.isFinite(sec) || sec <= 0) return
+  try {
+    const raw = localStorage.getItem('mc_voice_duration')
+    const map = raw ? (JSON.parse(raw) as Record<string, number>) : {}
+    map[props.src] = sec
+    // 只保留最近 200 条，避免 localStorage 无限增长
+    const keys = Object.keys(map)
+    if (keys.length > 200 && keys[0]) delete map[keys[0]]
+    localStorage.setItem('mc_voice_duration', JSON.stringify(map))
+  } catch {
+    /* 隐私模式忽略 */
+  }
+}
+duration.value = cachedDuration()
 
 /** 气泡宽度随时长增长：1s → 96px，60s 封顶 220px */
 const bubbleWidth = computed(() => {
@@ -55,6 +87,7 @@ function onMeta() {
     return
   }
   duration.value = el.duration
+  rememberDuration(el.duration)
   current.value = 0
 }
 
@@ -77,11 +110,14 @@ function toggle() {
     playing.value = false
     return
   }
-  // 停掉其它正在播的语音
-  document.querySelectorAll('audio[data-voice]').forEach((a) => {
+  // 按需加载：首次点击才绑定 src，浏览器此时才发请求
+  if (!audioSrc.value) audioSrc.value = props.src
+  // 停掉正在播的语音（含合并转发里的原生 audio）
+  document.querySelectorAll('audio').forEach((a) => {
     if (a !== el) (a as HTMLAudioElement).pause()
   })
   claimPlayback()
+  // src 刚赋值时 readyState 可能还是 HAVE_NOTHING，play() 会等待加载而非立即失败
   void el.play().catch(() => {
     failed.value = true
   })
@@ -112,6 +148,9 @@ function onPause() {
 
 onBeforeUnmount(() => {
   audioEl.value?.pause()
+  if (isCurrent(myId)) {
+    delete (window as unknown as Record<string, string>)[CURRENT_KEY]
+  }
 })
 </script>
 
@@ -143,8 +182,8 @@ onBeforeUnmount(() => {
     <audio
       ref="audioEl"
       data-voice
-      :src="src"
-      preload="metadata"
+      :src="audioSrc || undefined"
+      preload="none"
       @loadedmetadata="onMeta"
       @timeupdate="onTime"
       @play="onPlay"

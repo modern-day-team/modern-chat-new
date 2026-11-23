@@ -93,8 +93,8 @@ function mediaClass(item: MergeCardItem): string {
           decoding="async"
           :class="mediaClass(item)"
         />
-        <audio v-else-if="item.m === 'audio'" :src="item.c" controls preload="metadata" />
-        <video v-else-if="item.m === 'video'" :src="item.c" controls playsinline preload="metadata" />
+        <audio v-else-if="item.m === 'audio'" :src="item.c" controls preload="none" />
+        <video v-else-if="item.m === 'video'" :src="item.c" controls playsinline preload="none" />
         <div v-else class="mc-card__entry-text text-placeholder">{{ bodyText(item) }}</div>
       </div>
     </div>

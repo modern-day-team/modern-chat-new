@@ -122,8 +122,13 @@ function cancelEdit() {
 
 onMounted(() => {
   resize()
-  // @ 选人需要成员列表；进会话时预热一次，输入 @ 就不用等接口
-  if (convStore.currentConvId) void convStore.loadMembers(convStore.currentConvId)
+  // @ 选人需要成员列表；放到空闲时段预热，既保留"输入 @ 不用等"的体验，
+  // 又不与首屏消息/图片请求争带宽（在慢网上尤其明显）。
+  const warm = () => {
+    if (convStore.currentConvId) void convStore.loadMembers(convStore.currentConvId)
+  }
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(warm, { timeout: 1500 })
+  else setTimeout(warm, 300)
 })
 
 // ===== 图片上传 =====

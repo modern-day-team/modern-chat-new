@@ -10,9 +10,10 @@
  * 宿主的成员昵称缓存 / 已读回执等经 inject 的稳定函数读取（见
  * messageRowContext.ts，依赖跟踪发生在本组件作用域）。
  */
-import { computed, inject } from 'vue'
+import { computed, inject, reactive } from 'vue'
 
 import AvatarBadge from './AvatarBadge.vue'
+import LazyVideo from './LazyVideo.vue'
 import VoiceMessage from './VoiceMessage.vue'
 import MergeForwardCard from './MergeForwardCard.vue'
 import DeclarativeNodes from '@/components/declarative'
@@ -42,6 +43,9 @@ const props = defineProps<{
 
 const ctx = inject(messageRowKey)
 if (!ctx) throw new Error('MessageRow 必须在 MessagePane 内使用（缺 messageRowCtx）')
+
+/** 图片加载淡入：骨架底色 → 原图，避免白块闪烁（稳定渲染） */
+const loadedImages = reactive(new Set<number>())
 
 const convStore = useConversationsStore()
 const auth = useAuthStore()
@@ -187,6 +191,8 @@ const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉']
           :src="msg.content"
           alt=""
           decoding="async"
+          :class="{ 'is-loaded': loadedImages.has(msg.id) }"
+          @load="loadedImages.add(msg.id)"
           @click="ctx!.onMediaClick(msg, $event)"
           @contextmenu.prevent.stop="ctx!.openImageMenu($event, msg)"
         />
@@ -199,17 +205,9 @@ const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉']
         :mine="mine"
       />
 
-      <!-- 视频：原生控件（播放/进度/全屏交给浏览器）。
-           固定 16:9 占位：DynamicScroller 依赖测量高度，
-           元数据到达前高度为 0 会让列表跳动。 -->
-      <div v-else-if="msg.msgType === 'video'" class="mc-msg__video">
-        <video
-          :src="msg.content"
-          controls
-          playsinline
-          preload="metadata"
-          @contextmenu.prevent.stop="ctx!.openMenu($event, msg)"
-        />
+      <!-- 视频：按需加载（点击才发请求），固定 16:9 占位避免列表跳动 -->
+      <div v-else-if="msg.msgType === 'video'" class="mc-msg__video" @contextmenu.prevent.stop="ctx!.openMenu($event, msg)">
+        <LazyVideo :src="msg.content" />
       </div>
 
       <!-- 表情：透明底、无气泡（和图片区分：表情是"贴"在对话里的） -->
@@ -218,6 +216,8 @@ const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉']
           :src="msg.content"
           alt=""
           decoding="async"
+          :class="{ 'is-loaded': loadedImages.has(msg.id) }"
+          @load="loadedImages.add(msg.id)"
           @click="ctx!.onMediaClick(msg, $event)"
           @contextmenu.prevent.stop="ctx!.openImageMenu($event, msg)"
         />
@@ -397,12 +397,25 @@ const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉']
   line-height: 0;
 }
 
-.mc-msg__media img {
+.mc-msg__media img,
+.mc-msg__sticker img {
   display: block;
   width: 100%;
   max-height: 280px;
   object-fit: cover;
   cursor: zoom-in;
+}
+
+/* 分层渲染：先显示容器骨架底色，图片解码完成后淡入（只改 opacity，不触发布局） */
+.mc-msg__media img,
+.mc-msg__sticker img {
+  opacity: 0;
+  transition: opacity var(--mc-dur-base) var(--mc-ease-out);
+}
+
+.mc-msg__media img.is-loaded,
+.mc-msg__sticker img.is-loaded {
+  opacity: 1;
 }
 
 /* 视频：固定 16:9 占位，竖屏视频以黑边居中（object-fit: contain） */

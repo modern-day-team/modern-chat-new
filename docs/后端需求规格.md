@@ -147,7 +147,7 @@ AdminPluginRow  { name, version, installCount, enabledCount, globalDisabled, cre
 | POST `/api/conversations/:id/mute-all` | `{muted:boolean}` | `{ok:true}`；群主 / 管理员；全员禁言后群主与管理员仍可发言 |
 | POST `/api/conversations/:id/transfer` | `{userId}`（须为成员） | `{ok:true}`；双方 role 互换 |
 | POST `/api/upload?kind=image\|audio\|sticker\|file\|video` | multipart `file`（图片 ≤8 MB / 语音 ≤5 MB / 表情 ≤2 MB / 群文件 ≤20 MB / **视频 ≤30 MB，均后台可配**） | `{kind, size, url}`；**按文件头判定真实类型**（伪装扩展名 → 400）；**流式处理**（multipart 分段直接交给存储层，文件不整块进内存）；每用户 10 次/分限流。**每张图只存一份**：服务端不再生成缩略图（前端上传前已压到最大边 1600 / webp），气泡与灯箱同源 |
-| GET `/uploads/<年>/<月>/<文件名>` | — | 静态文件（始终挂载，兼容历史 URL）。**必须登录**：`Authorization: Bearer` 或同源 `mc_auth` cookie（`UploadAuth`）；未登录 401，封禁 403；目录列举 404；`Cache-Control: private, max-age=3600`、`X-Content-Type-Options: nosniff`；维护模式下非管理员不可访问。S3 模式的新文件由桶/CDN 提供，不经过此鉴权 |
+| GET `/uploads/<年>/<月>/<文件名>` | — | 静态文件（始终挂载，兼容历史 URL）。**必须登录**：`Authorization: Bearer` 或同源 `mc_auth` cookie（`UploadAuth`）；未登录 401，封禁 403；目录列举 404；`Cache-Control: private, max-age=31536000, immutable`（文件名随机不可变，仅浏览器私有缓存，禁止代理共享）、`ETag`（mtime+size，条件请求 304）、`X-Content-Type-Options: nosniff`；标准库 `FileServer` 提供 Range/206 与 `If-Modified-Since`，支撑视频拖动播放与流式传输；gzip 排除该路径避免二次压缩。维护模式下非管理员不可访问。S3 模式的新文件由桶/CDN 提供，不经过此鉴权 |
 | GET `/api/favorites` | `?limit=1..200`（默认 100） | `FavoriteItem[]`（按收藏时间倒序）；**空时返回 `[]` 而非 `null`** |
 | POST `/api/messages/:messageId/favorite` | — | `{ok:true}`；须为该消息所在会话的成员；幂等 |
 | DELETE `/api/messages/:messageId/favorite` | — | `{ok:true}` |

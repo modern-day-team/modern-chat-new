@@ -414,5 +414,17 @@ UiCheckbox  UiInputNumber  UiTooltip  UiPopup  UiDialog  UiDrawer
 - 文档页大 Markdown（changelog ~98KB）解析前 `await requestIdleCallback`，`marked.parse` + 三次正则替换不再阻塞用户输入。
 - 已有良好实践保持：聊天区 DynamicScroller 虚拟滚动、`onScroll` 在后台跳过、ws 心跳与二维码轮询都有清理、无 `deep: true` 监听。
 
+### 14.1 音视频流传（减少请求 / 减小体积 / 加快响应 / 稳定渲染）
+
+**流式与传输**：媒体只走 URL + HTTP Range，不经 WS（上行帧上限 64KB，只够发 URL）。`/uploads/*` 由标准库 `FileServer` 提供 Range/206 与 `If-Modified-Since`；文件名随机不可变，缓存升级为 `private, max-age=31536000, immutable` 并补 ETag（mtime+size）。上传链路本身已是流式（multipart `MultipartReader` → `SaveStream` → 临时文件原子改名），无整文件 `io.ReadAll`。
+
+**延迟 / 按需加载**：语音 `preload="none"` + 首次点击才绑定 src，历史语音不预取元数据；视频用 `LazyVideo` 覆盖层，点击才加载并自动播放；合并转发的 audio/video 同样 `preload="none"`。@ 成员列表预热放 `requestIdleCallback`，不与首屏媒体争带宽。
+
+**分层加载**：图片/表情先显示容器骨架底色，解码完成后只改 `opacity` 淡入（不触发重排）。视频固定 16:9 占位、语音气泡宽度用缓存时长预先确定，避免虚拟列表高度跳变。
+
+**稳定渲染补充**：语音时长按 URL 缓存到 localStorage（最多 200 条），webm `Infinity` 时长仍用 seek hack 逼出真实值；全局播放权用 `mc-playing-voice` 键 + `timeupdate` 抢占，暂停范围扩到所有 `<audio>`（含合并转发），卸载时清理自己持有的键。
+
+**未做（收益/风险不划算）**：服务端视频转码/多码率、图片缩略图分层（历史上主动移除了 `_t.jpg` 派生）、内容 hash 秒传——均需改存储结构与消息协议，列为独立分项。
+
 
 
