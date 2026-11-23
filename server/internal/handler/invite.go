@@ -1,32 +1,37 @@
 package handler
 
 import (
-	"crypto/rand"
-	"encoding/hex"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/modern-day-team/modern-chat-new/server/internal/middleware"
 	"github.com/modern-day-team/modern-chat-new/server/internal/model"
-	"github.com/modern-day-team/modern-chat-new/server/internal/store"
+	"github.com/modern-day-team/modern-chat-new/server/internal/service"
 )
 
-// InviteHandler 注册邀请码管理（仅站长）。
-type InviteHandler struct {
-	invites *store.InviteStore
+// InviteManager 消费方定义的窄接口（由 service.InviteService 实现）。
+type InviteManager interface {
+	List() ([]model.InviteCode, error)
+	Create(maxUses, expiresDays, count int, createdBy uint, creatorNickname string) ([]model.InviteCode, error)
+	Disable(id uint, disabled bool) error
 }
 
-func NewInviteHandler(invites *store.InviteStore) *InviteHandler {
+// InviteHandler 注册邀请码管理（仅站长）：业务规则在 service，本层只做传输。
+type InviteHandler struct {
+	invites InviteManager
+}
+
+func NewInviteHandler(invites InviteManager) *InviteHandler {
 	return &InviteHandler{invites: invites}
 }
 
 // List 列出邀请码（新→旧）。
 func (h *InviteHandler) List(c *gin.Context) {
-	rows, err := h.invites.List(100)
+	rows, err := h.invites.List()
 	if err != nil {
 		internal(c, err)
 		return
@@ -44,44 +49,16 @@ func (h *InviteHandler) Create(c *gin.Context) {
 	if !bind(c, &req) {
 		return
 	}
-	if req.MaxUses < 1 || req.MaxUses > 1000 {
-		fail(c, http.StatusBadRequest, "可用次数需为 1-1000")
-		return
-	}
-	if req.ExpiresDays < 0 || req.ExpiresDays > 365 {
-		fail(c, http.StatusBadRequest, "有效期需为 0（永久）-365 天")
-		return
-	}
-	if req.Count < 1 || req.Count > 20 {
-		fail(c, http.StatusBadRequest, "一次最多生成 20 个")
-		return
-	}
-
-	var expiresAt *time.Time
-	if req.ExpiresDays > 0 {
-		t := time.Now().AddDate(0, 0, req.ExpiresDays)
-		expiresAt = &t
-	}
 	me := middleware.UserFrom(c)
-	out := make([]model.InviteCode, 0, req.Count)
-	for i := 0; i < req.Count; i++ {
-		code, err := randomInviteCode()
-		if err != nil {
-			internal(c, err)
-			return
-		}
-		row := &model.InviteCode{
-			Code:      code,
-			CreatedBy: me.ID,
-			MaxUses:   req.MaxUses,
-			ExpiresAt: expiresAt,
-		}
-		row.Creator = me.Nickname
-		if err := h.invites.Create(row); err != nil {
-			internal(c, err)
-			return
-		}
-		out = append(out, *row)
+	out, err := h.invites.Create(req.MaxUses, req.ExpiresDays, req.Count, me.ID, me.Nickname)
+	switch {
+	case errors.Is(err, service.ErrInviteMaxUses), errors.Is(err, service.ErrInviteExpires),
+		errors.Is(err, service.ErrInviteCount):
+		fail(c, http.StatusBadRequest, err.Error())
+		return
+	case err != nil:
+		internal(c, err)
+		return
 	}
 	slog.Info("invite codes created", "by", me.ID, "count", len(out))
 	c.JSON(http.StatusOK, out)
@@ -100,24 +77,13 @@ func (h *InviteHandler) SetDisabled(c *gin.Context) {
 	if !bind(c, &req) {
 		return
 	}
-	ok, err := h.invites.Disable(uint(id), req.Disabled)
-	if err != nil {
+	if err := h.invites.Disable(uint(id), req.Disabled); err != nil {
+		if errors.Is(err, service.ErrInviteNotFound) {
+			fail(c, http.StatusNotFound, err.Error())
+			return
+		}
 		internal(c, err)
 		return
 	}
-	if !ok {
-		fail(c, http.StatusNotFound, "邀请码不存在")
-		return
-	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
-}
-
-// randomInviteCode 12 字节随机数（96 bit），hex 后 24 位。
-// 不用 math/rand：邀请码是凭据，必须不可预测。
-func randomInviteCode() (string, error) {
-	buf := make([]byte, 12)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(buf), nil
 }

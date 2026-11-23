@@ -715,3 +715,10 @@ cd web && npm install && npm run dev  # :5173，代理 /api 与 /ws 到 :8080
 - **契约同步**：`docs/后端需求规格.md` §3.2/§3.3/§6/§9、`web/src/types/proto.ts`、设置页中英文案同提交更新。
 - **安全加固（同批）**：启用会话表后 REST / WS / `/uploads` 三处统一校验 `sid`——无 sid 的存量老 JWT 一律 401（否则单设备撤销只改 `revoked_at`、不改 `tv`，老 token 7 天内可绕过）；`UploadAuth` 补 `ActiveBySID` 校验，被踢设备凭 cookie 也无法读附件。升级后需重新登录一次。
 - **高内聚低耦合治理（2026-11-23）**：CORS 与 WS Origin 原各写一套归一化/白名单，现统一为 `middleware.NormalizeOrigin` / `OriginAllowed`（同一安全边界单一实现）；前端 store 裸 `fetch('/api/auth/logout')` 收敛到 `core/network/http.ts` 的 `keepalivePost` 专用出口（插件代理的 `credentials:'omit'` 与图片 blob 下载为有意设计，保留裸 fetch 并注明）。存量 handler 直连 store 的重构列为后续分项，不在本批改动。
+
+### 13.6 业务规则归位内核（2026-11-23）
+第一批按「消费方定义窄接口 + 组合根单点装配 + stub 单测」范式收敛三个子系统，handler 只做参数解析与状态码映射：
+- **会话管理**：新增 `service/session.go`（`sessionRepo` 窄接口），把列表的「当前设备」标记、单设备撤销的「查 sid → 原子撤销 → 返回 sid 供踢线」合为内核操作；`handler/session.go` 删除 `store` 直连，改依赖 `SessionManager` 窄接口 + **显式注入** `Notifier`（原来 `_ Notifier` 丢弃参数、从 gin context 用 `notifyFor(c)` 旁路取，类型不符还会 panic）——与 `user.go` 的 `SetSessions` 旁路一并治理。
+- **邀请码**：新增 `service/invite.go`，范围校验、有效期计算、12 字节 CSPRNG 生成与批量创建归内核；`handler/invite.go` 只映射哨兵错误到 400/404。
+- **退出所有设备**：`SessionService.RevokeAll` 承担会话全量撤销，`UserHandler` 不再直连 `SessionStore`。
+- **验证**：新增 `service/session_test.go`（当前标记 + 撤销三分支），`go build` / `go test ./internal/...` 全绿；REST 响应形状与状态码不变。剩余直连 store 的大户（`conversation.go` ~80 处、`auth.go` ~41、`admin.go` ~28）依赖面广，按后续分项逐步收敛。
