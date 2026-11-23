@@ -154,7 +154,7 @@ func New(d Deps) *gin.Engine {
 		uploads := r.Group("/uploads",
 			// 必须登录才能读取：历史消息里的 URL 不带签名，浏览器 <img>/<video>
 			// 依靠同源 HttpOnly cookie 通过校验，旧数据无需迁移。
-			middleware.UploadAuth(users, d.Cfg.JWTSecret),
+			middleware.UploadAuth(users, d.Cfg.JWTSecret, sessions),
 			// 维护模式下与 API 一致的受控行为（管理员仍可访问）
 			middleware.Maintenance(settings),
 		)

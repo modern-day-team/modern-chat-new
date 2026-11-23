@@ -113,7 +113,13 @@ func Serve(
 	// 二维码登录常见的顺序是「先拿到 token、再带 platform 参数握手」，
 	// 因此客户端标识同时接受 query 与请求头。
 	sid := cl.SID
-	if sessionStore != nil && sid != "" {
+	// 与 REST Auth 同口径：启用会话表后无 sid 的老 token 一律拒绝，
+	// 否则单设备撤销（只改 revoked_at）踢不到该连接。
+	if sessionStore != nil && sid == "" {
+		http.Error(w, `{"error":"登录态需要更新，请重新登录"}`, http.StatusUnauthorized)
+		return
+	}
+	if sessionStore != nil {
 		sess, err := sessionStore.ActiveBySID(sid)
 		if err != nil {
 			slog.Error("ws load session", "err", err.Error())

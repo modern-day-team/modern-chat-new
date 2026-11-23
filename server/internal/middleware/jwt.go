@@ -128,8 +128,14 @@ func Auth(users *store.UserStore, secret string, sessions ...*store.SessionStore
 			return
 		}
 		// 会话校验：sid 已撤销 → 401（单设备下线立即生效）。
-		// 老 token 无 sid 时跳过（兼容存量登录态，只能靠 tv 全局失效）。
-		if sessionStore != nil && cl.SID != "" {
+		// 安全收紧：启用会话表后，无 sid 的存量老 token 一律拒绝——
+		// 否则单设备撤销只改 revoked_at、不改 tv，老 token 在 7 天 TTL 内
+		// 仍可绕过撤销。升级后需重新登录一次（文档已说明）。
+		if sessionStore != nil && cl.SID == "" {
+			abort401With(c, "登录态需要更新，请重新登录")
+			return
+		}
+		if sessionStore != nil {
 			sess, err := sessionStore.ActiveBySID(cl.SID)
 			if err != nil {
 				slog.Error("auth load session", "err", err.Error())
@@ -166,7 +172,11 @@ func Auth(users *store.UserStore, secret string, sessions ...*store.SessionStore
 // 与 Auth 的区别：额外接受 HttpOnly cookie（浏览器加载 <img>/<video> 时无法带
 // Authorization 头）。历史消息里的 /uploads/... 不含签名，登录用户打开旧消息时
 // 同源请求会自动带上 cookie，因此不需要迁移数据；未登录访问一律 401。
-func UploadAuth(users *store.UserStore, secret string) gin.HandlerFunc {
+func UploadAuth(users *store.UserStore, secret string, sessions ...*store.SessionStore) gin.HandlerFunc {
+	var sessionStore *store.SessionStore
+	if len(sessions) > 0 {
+		sessionStore = sessions[0]
+	}
 	return func(c *gin.Context) {
 		token := ""
 		if h := c.GetHeader("Authorization"); strings.HasPrefix(h, "Bearer ") {
@@ -199,6 +209,19 @@ func UploadAuth(users *store.UserStore, secret string) gin.HandlerFunc {
 		if u.IsBanned() {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "账号已被封禁"})
 			return
+		}
+		// 安全收紧：会话已撤销（单设备下线）时，即使 cookie 仍在也不允许读附件。
+		// 与 Auth / WS 同一口径，避免被撤设备的浏览器凭 mc_auth 继续读 /uploads。
+		if sessionStore != nil {
+			if cl.SID == "" {
+				abort401With(c, "登录态需要更新，请重新登录")
+				return
+			}
+			sess, err := sessionStore.ActiveBySID(cl.SID)
+			if err != nil || sess == nil {
+				abort401With(c, "该设备已退出登录，请重新登录")
+				return
+			}
 		}
 		// 用 Authorization 头访问文件的客户端（下载器 / 旧前端）也补发 cookie，
 		// 下次 <img>/<video> 直接加载同源地址时即可带上。

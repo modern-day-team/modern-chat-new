@@ -713,3 +713,4 @@ cd web && npm install && npm run dev  # :5173，代理 /api 与 /ws 到 :8080
 - **单设备下线**：`GET /api/me/sessions` 列出各端会话，`DELETE /api/me/sessions/:id` 撤销该 sid 并踢对应 WS（`Hub.KickSession`），不影响其他设备；设置页账号卡片新增会话列表（L3，低频、仅本人）。
 - **客户端标识与版本协商**：`X-Client-Platform` / `X-Client-Type` / `X-Client-Version`（WS 为 query 参数）入库到会话；`GET /api/client/version` 按 `MIN_CLIENT_VERSION` 提示升级，不阻断旧端。
 - **契约同步**：`docs/后端需求规格.md` §3.2/§3.3/§6/§9、`web/src/types/proto.ts`、设置页中英文案同提交更新。
+- **安全加固（同批）**：启用会话表后 REST / WS / `/uploads` 三处统一校验 `sid`——无 sid 的存量老 JWT 一律 401（否则单设备撤销只改 `revoked_at`、不改 `tv`，老 token 7 天内可绕过）；`UploadAuth` 补 `ActiveBySID` 校验，被踢设备凭 cookie 也无法读附件。升级后需重新登录一次。
