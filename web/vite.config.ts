@@ -45,12 +45,11 @@ export default defineConfig(({ mode }) => ({
   build: {
     rollupOptions: {
       output: {
-        // 框架核心固定为 vendor；图标库单独成 chunk（跨路由复用，避免每个页面各打一份）；
-        // TDesign 组件仍跟随引用它的路由分包——首屏（登录页）不下载后台才用的 Table/Drawer。
+        // 只固定框架核心：图标不再强制合成单一 chunk，让 Vite 按实际引用关系分包。
+        // 旧规则把全部图标塞进一个首屏 modulepreload，登录页也要下载后台才用的图标（gzip ~34KB）。
         manualChunks(id: string) {
           if (!id.includes('node_modules')) return
           if (/node_modules\/(vue|vue-router|pinia|vue-i18n|@vue)\//.test(id)) return 'vendor'
-          if (id.includes('tdesign-icons-vue-next')) return 'icons'
         },
       },
     },

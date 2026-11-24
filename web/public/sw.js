@@ -5,7 +5,7 @@
  * 注册时的 scope 也默认落在这个目录，不会拦截根路径的官网。
  */
 const ROOT = new URL('./', self.location).pathname // '/app/'
-const CACHE = 'mc-pwa-v2'
+const CACHE = 'mc-pwa-v3'
 const SHELL = [ROOT, `${ROOT}manifest.webmanifest`, `${ROOT}icon-192.png`]
 
 /** 站内路径补上 base 前缀；已经是绝对地址 / 已带 base 的保持原样 */
@@ -95,7 +95,23 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(fetch(req).catch(() => caches.match(ROOT)))
     return
   }
-  // 静态资源：缓存优先 + 后台更新
+  // 带内容指纹的构建资源：命中即返回，不再发网络请求。
+  // 文件名变化意味着 URL 变化，陈旧内容永远不会被用在新版本页面上；
+  // 旧版 SW 每次命中仍发一遍请求，3Mbps 下重复访问会浪费大量带宽。
+  if (url.pathname.startsWith(`${ROOT}assets/`)) {
+    event.respondWith(
+      caches.match(req).then((cached) => {
+        if (cached) return cached
+        return fetch(req).then((res) => {
+          if (res.ok) caches.open(CACHE).then((cache) => cache.put(req, res.clone()))
+          return res
+        })
+      }),
+    )
+    return
+  }
+
+  // 其余同源静态资源：缓存优先 + 后台更新。
   event.respondWith(
     caches.match(req).then((cached) => {
       const fresh = fetch(req)

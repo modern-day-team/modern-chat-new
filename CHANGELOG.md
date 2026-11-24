@@ -18,6 +18,13 @@
 - **错误信息不外泄**：SSO 回调 / 存储连通性测试 / SMTP 测试的失败详情不再直接回显给客户端。
 - 依赖升级：`gorilla/websocket`、`golang.org/x/crypto/net`、`klauspost/compress` 等；WebP 编码改用 `golang.org/x/image`（移除 `gen2brain/webp`）。
 
+### 性能（3Mbps 目标）
+
+- **web 首屏减重**：i18n 改为按当前语言懒加载（首屏少下载一整套 ≈14 KB gzip 词条），语言切换先加载目标语言再切换，避免闪出 key；取消图标库强制合成单一首屏 chunk，路由专属图标回到各自分包；公告对话框改为异步组件 + `v-if`，聊天首屏不再加载 TDesign Dialog/表单样式（≈47 KB gzip）
+- **SW 缓存策略优化**：带内容指纹的 `/assets/` 命中缓存后不再发网络请求（文件名即版本，避免重复访问白跑流量）；升级 `mc-pwa-v3` 清理旧缓存
+- **预压缩产物**：官网与 SSO 构建后生成 `.gz` / `.br`（核心 web 与 Hub 已有），配合 nginx `gzip_static on` 直接发送压缩文件，省去运行时 CPU
+- 实测：3Mbps + 80ms RTT 的 Chrome 生产预览首屏 FCP ≈ 1.34s，静态资源传输 ≈178 KB；语言切换往返正常
+
 ### 修复
 
 - **修复 lint 报错**：官网补齐 `oxlint` / `eslint` 配置与依赖（与主仓库 web 同体系，新增 `npm run lint`），CI 官网 job 增加 lint 门禁；两个示例插件（weather / word-count）的未使用 `catch (e)` 改为可选 catch binding，官网副本与 `plugins/examples/` 真源同步；移除一条无用的 `.vue` 模块声明（保留 Vite 客户端类型引用）

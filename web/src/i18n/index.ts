@@ -1,8 +1,5 @@
 import { createI18n } from 'vue-i18n'
 
-import enUS from './en-US'
-import zhCN from './zh-CN'
-
 export type Lang = 'zh-CN' | 'en-US'
 
 const LANG_KEY = 'mc_lang'
@@ -14,18 +11,34 @@ export function detectLang(): Lang {
   return navigator.language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en-US'
 }
 
+const loaders = {
+  'zh-CN': () => import('./zh-CN'),
+  'en-US': () => import('./en-US'),
+} as const
+
+const initialLang = detectLang()
+const loaded = new Set<Lang>()
+
 const i18n = createI18n({
   legacy: false,
-  locale: detectLang(),
-  fallbackLocale: 'zh-CN',
-  messages: {
-    'zh-CN': zhCN,
-    'en-US': enUS,
-  },
+  locale: initialLang,
+  fallbackLocale: initialLang,
+  messages: {},
 })
 
-/** 切换语言：更新 i18n、持久化、同步 <html lang> 与页面标题。 */
-export function setLang(lang: Lang) {
+/** 只加载当前语言；切换时先加载目标语言再切换，避免界面闪出 key。 */
+async function ensureLocale(lang: Lang) {
+  if (loaded.has(lang)) return
+  const mod = await loaders[lang]()
+  i18n.global.setLocaleMessage(lang, mod.default)
+  loaded.add(lang)
+}
+
+await ensureLocale(initialLang)
+
+/** 切换语言：加载词条 → 更新 i18n、持久化、同步 <html lang> 与页面标题。 */
+export async function setLang(lang: Lang) {
+  await ensureLocale(lang)
   i18n.global.locale.value = lang
   localStorage.setItem(LANG_KEY, lang)
   document.documentElement.setAttribute('lang', lang === 'zh-CN' ? 'zh-CN' : 'en')

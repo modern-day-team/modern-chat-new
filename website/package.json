@@ -6,7 +6,8 @@
   "description": "ModernChat 官网：落地页 / 文档站 / 插件市场",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/precompress.mjs",
+    "compress": "node scripts/precompress.mjs",
     "preview": "vite preview",
     "type-check": "vue-tsc --noEmit",
     "lint": "oxlint . && eslint ."

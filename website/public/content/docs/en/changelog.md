@@ -18,6 +18,13 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 - **No internal error leakage**: failure details from the SSO callback, storage probe and SMTP test are no longer returned verbatim to clients.
 - Dependency updates: `gorilla/websocket`, `golang.org/x/crypto/net`, `klauspost/compress`, etc.; WebP encoding moved to `golang.org/x/image` (`gen2brain/webp` removed).
 
+### Performance (3 Mbps target)
+
+- **Smaller first-load payload for the web app**: i18n messages are lazy-loaded per active language (one ~14 KB gzip dictionary less on first load), language switching loads the target locale before flipping so no raw keys flash; the icon library is no longer forced into a single first-screen chunk; the announcement dialog is async and only loads when an announcement is shown (~47 KB gzip removed from the chat entry path).
+- **Smarter Service Worker caching**: content-hashed `/assets/` responses are returned from cache without a redundant network request on repeat visits; cache version bumped to `mc-pwa-v3`.
+- **Precompressed artifacts**: the marketing site and SSO build now emit `.gz` / `.br` files (the chat web app and Hub already did) for `gzip_static` delivery without runtime compression.
+- Measured in Chrome at 3 Mbps + 80 ms RTT: first contentful paint ≈1.34 s, ≈178 KB of static resources transferred; language switching verified.
+
 ### Fixed
 
 - **Lint errors fixed**: the marketing site now has `oxlint` / `eslint` config and dependencies (same setup as the main web app), a `npm run lint` script and a CI lint gate. Two example plugins (weather / word-count) replaced unused `catch (e)` with optional catch bindings, keeping the website copies in sync with `plugins/examples/`. An obsolete `.vue` module declaration was removed while retaining the Vite client type reference.

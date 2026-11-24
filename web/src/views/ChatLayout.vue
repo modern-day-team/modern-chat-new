@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import UiButton from '@/components/ui/UiButton.vue'
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { MessagePlugin } from '@/components/ui/feedback'
 import { UsergroupIcon } from 'tdesign-icons-vue-next'
 
 import AddFriendDialog from '@/components/chat/AddFriendDialog.vue'
-import AnnouncementDialog from '@/components/chat/AnnouncementDialog.vue'
 import AppRail from '@/components/chat/AppRail.vue'
 import ConvSidebar from '@/components/chat/ConvSidebar.vue'
 import DetailPanel from '@/components/chat/DetailPanel.vue'
@@ -28,6 +27,9 @@ import { useFavoritesStore } from '@/stores/favorites'
 import { useFriendsStore } from '@/stores/friends'
 import { PANE_LIMITS, useLayoutStore, type PaneKey } from '@/stores/layout'
 import { usePluginsStore } from '@/stores/plugins'
+
+// 公告弹窗只在收到公告时显示：拆成异步 chunk，聊天首屏少下载 TDesign Dialog/表单样式（gzip ~48KB）
+const AnnouncementDialog = defineAsyncComponent(() => import('@/components/chat/AnnouncementDialog.vue'))
 import { useWsStore } from '@/stores/ws'
 import type { ServerFrame } from '@/types/proto'
 
@@ -361,7 +363,11 @@ onUnmounted(() => {
     <FavoriteDrawer v-model="favoriteDrawerVisible" />
     <NotificationDrawer v-model="notificationDrawerVisible" />
     <AddFriendDialog v-model:visible="addFriendVisible" />
-    <AnnouncementDialog v-model:visible="announcementVisible" :content="announcementContent" />
+    <AnnouncementDialog
+      v-if="announcementVisible"
+      v-model:visible="announcementVisible"
+      :content="announcementContent"
+    />
 
     <!-- 抽屉遮罩：点击空白处收起 -->
     <div v-if="hasOpenDrawer" class="mc-layout__scrim" @click="layout.closeAll()" />

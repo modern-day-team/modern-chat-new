@@ -212,13 +212,13 @@ export const usePrefsStore = defineStore('prefs', () => {
     root.style.setProperty('--mc-scene-bg-attachment', scene.attachment)
   }
 
-  function setLang(l: Lang) {
+  async function setLang(l: Lang) {
     lang.value = l
-    applyLang(l)
+    await applyLang(l)
   }
 
-  function toggleLang() {
-    setLang(lang.value === 'zh-CN' ? 'en-US' : 'zh-CN')
+  async function toggleLang() {
+    await setLang(lang.value === 'zh-CN' ? 'en-US' : 'zh-CN')
   }
 
   function setTheme(t: Theme) {
