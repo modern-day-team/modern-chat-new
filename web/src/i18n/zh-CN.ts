@@ -990,6 +990,8 @@ export default {
     sessions: '登录设备',
     sessionsHint: '查看当前账号在哪些设备登录；退出后该设备的登录态立即失效。',
     sessionsEmpty: '暂无会话记录',
+    sessionsExpand: '展开全部 {n} 台设备',
+    sessionsCollapse: '收起设备列表',
     sessionCurrent: '（当前设备）',
     sessionRevoke: '退出此设备',
     sessionRevokeConfirm: '确定让该设备退出登录吗？该设备会立即掉线并需要重新登录。',

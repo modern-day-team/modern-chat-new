@@ -388,7 +388,7 @@ func (h *AuthHandler) TwofaVerify(c *gin.Context) {
 	}
 
 	twofaDropTicket(ticket)
-	token, err := middleware.IssueToken(u.ID, u.TokenVersion, h.cfg.JWTSecret)
+	token, err := h.issueLoginToken(c, u)
 	if err != nil {
 		internal(c, err)
 		return

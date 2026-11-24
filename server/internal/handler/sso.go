@@ -19,7 +19,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/modern-day-team/modern-chat-new/server/internal/middleware"
 	"github.com/modern-day-team/modern-chat-new/server/internal/model"
 )
 
@@ -330,7 +329,7 @@ func (h *AuthHandler) SSOExchange(c *gin.Context) {
 		fail(c, http.StatusForbidden, "账号已被封禁")
 		return
 	}
-	token, err := middleware.IssueToken(u.ID, u.TokenVersion, h.cfg.JWTSecret)
+	token, err := h.issueLoginToken(c, u)
 	if err != nil {
 		internal(c, err)
 		return

@@ -18,6 +18,7 @@ import {
   DesktopIcon,
   ExtensionIcon,
   InfoCircleIcon,
+  LaptopIcon,
   LockOnIcon,
   MobileIcon,
   NotificationIcon,
@@ -283,7 +284,8 @@ function sessionIcon(s: UserSession) {
   if (s.platform === 'mobile') return MobileIcon
   if (s.platform === 'tablet') return TabletIcon
   if (s.platform === 'desktop') return DesktopIcon
-  return PaletteIcon
+  // web / other 用笔记本图标；调色板只属于外观分区，不能复用为设备图标。
+  return LaptopIcon
 }
 
 function sessionIp(s: UserSession): string {
@@ -668,6 +670,7 @@ function confirmLogoutOthers() {
     header: t('settings.logoutOthers'),
     body: t('settings.logoutOthersConfirm'),
     theme: 'warning',
+    confirmBtn: { content: t('settings.logoutOthers'), theme: 'danger' },
     onConfirm: async () => {
       try {
         await authApi.logoutOthers()
@@ -686,6 +689,11 @@ function confirmLogoutOthers() {
 }
 
 // ===== 关于 =====
+
+const sessionsExpanded = ref(false)
+const visibleSessions = computed(() =>
+  sessionsExpanded.value ? sessions.value : sessions.value.slice(0, 3),
+)
 
 const build = ref<VersionInfo | null>(null)
 const webVersion = `${__WEB_VERSION__} · ${__WEB_COMMIT__}`
@@ -899,6 +907,7 @@ function goBack() {
             size="small"
             shape="square"
             :aria-label="t('common.refresh')"
+            :title="t('common.refresh')"
             :loading="sessionsLoading"
             @click="loadSessions"
           >
@@ -907,8 +916,8 @@ function goBack() {
         </div>
         <p class="settings-card__hint">{{ t('settings.sessionsHint') }}</p>
 
-        <div v-if="sessions.length" class="session-list">
-          <div v-for="s in sessions" :key="s.id" class="session-item">
+        <div v-if="visibleSessions.length" class="session-list">
+          <div v-for="s in visibleSessions" :key="s.id" class="session-item">
             <component :is="sessionIcon(s)" class="session-item__icon" />
             <div class="session-item__text">
               <span class="session-item__title">
@@ -931,6 +940,15 @@ function goBack() {
               {{ t('settings.sessionRevoke') }}
             </UiButton>
           </div>
+        </div>
+        <div v-if="sessions.length > 3" class="session-more">
+          <UiButton variant="text" size="small" @click="sessionsExpanded = !sessionsExpanded">
+            {{
+              sessionsExpanded
+                ? t('settings.sessionsCollapse')
+                : t('settings.sessionsExpand', { n: sessions.length })
+            }}
+          </UiButton>
         </div>
         <p v-else-if="!sessionsLoading" class="settings-card__hint">{{ t('settings.sessionsEmpty') }}</p>
       </section>
@@ -1091,6 +1109,13 @@ function goBack() {
           <div class="settings-layout__head">
             <span class="settings-layout__name">{{ p.label }}</span>
             <div class="settings-layout__tools">
+              <SettingsSegmented
+                class="settings-layout__seg"
+                :model-value="layout.panes[p.key].drawer ? 'drawer' : 'docked'"
+                :options="dockOptions"
+                :aria-label="p.label"
+                @update:model-value="layout.setDrawer(p.key, $event === 'drawer')"
+              />
               <span class="settings-layout__value num">{{ layout.panes[p.key].width }}px</span>
               <UiButton
                 variant="text"
@@ -1109,13 +1134,6 @@ function goBack() {
             :min="PANE_LIMITS[p.key].min"
             :max="PANE_LIMITS[p.key].max"
             @change="onWidthChange(p.key, $event)"
-          />
-          <SettingsSegmented
-            class="settings-layout__seg"
-            :model-value="layout.panes[p.key].drawer ? 'drawer' : 'docked'"
-            :options="dockOptions"
-            :aria-label="p.label"
-            @update:model-value="layout.setDrawer(p.key, $event === 'drawer')"
           />
         </div>
       </section>
@@ -1595,7 +1613,9 @@ function goBack() {
 .settings-layout__tools {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .settings-layout__value {
@@ -1606,9 +1626,13 @@ function goBack() {
 }
 
 .settings-layout__seg {
+  margin: 0;
+}
+
+.session-more {
   display: flex;
-  justify-content: flex-end;
-  margin-top: 10px;
+  justify-content: center;
+  padding-top: 4px;
 }
 
 @media (max-width: 1199px) {

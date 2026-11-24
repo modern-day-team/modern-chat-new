@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { CloseIcon } from 'tdesign-icons-vue-next'
 
 /**
  * 基础输入框（UnoCSS 实现，替代 TDesign Input）。
@@ -101,7 +102,7 @@ function clear() {
       aria-label="clear"
       @click="clear"
     >
-      <span class="text-[13px] leading-none">×</span>
+      <CloseIcon class="text-[13px]" />
     </button>
   </div>
 </template>

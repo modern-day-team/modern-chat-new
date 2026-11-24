@@ -2,6 +2,25 @@
 
 const BASE = '/api'
 const TOKEN_KEY = 'mc_token'
+const DEVICE_ID_KEY = 'mc_device_id'
+
+/** 浏览器profile 内持久设备 ID：让「Chrome · Windows」相同的两台设备不再合并成一个会话。 */
+function getDeviceId(): string {
+  try {
+    let id = localStorage.getItem(DEVICE_ID_KEY) ?? ''
+    if (!id) {
+      id =
+        typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+      localStorage.setItem(DEVICE_ID_KEY, id)
+    }
+    return id
+  } catch {
+    // 隐私模式禁用 localStorage 时退回空串，后端按平台 + UA 生成稳定指纹
+    return ''
+  }
+}
 
 import { version as appVersion } from '../../../package.json'
 
@@ -48,6 +67,7 @@ const CLIENT_HEADERS: Record<string, string> = {
   'X-Client-Platform': CLIENT_IDENTITY.platform,
   'X-Client-Type': CLIENT_IDENTITY.clientType,
   'X-Client-Version': CLIENT_IDENTITY.appVersion,
+  'X-Client-Device-ID': getDeviceId(),
 }
 
 /**

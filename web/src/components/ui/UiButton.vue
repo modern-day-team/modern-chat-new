@@ -80,7 +80,11 @@ const cls = computed(() => [
   sizeCls.value,
   themeCls.value,
   props.block ? 'w-full' : '',
-  props.disabled || props.loading ? 'opacity-50 cursor-not-allowed pointer-events-none' : 'cursor-pointer',
+  props.disabled
+    ? 'opacity-60 grayscale cursor-not-allowed pointer-events-none border-line bg-active text-ink-3'
+    : props.loading
+      ? 'opacity-70 cursor-wait pointer-events-none'
+      : 'cursor-pointer',
 ])
 
 function onClick(e: MouseEvent) {
@@ -107,6 +111,12 @@ function onClick(e: MouseEvent) {
     border-color var(--mc-dur-instant) var(--mc-ease-out),
     color var(--mc-dur-instant) var(--mc-ease-out),
     transform 100ms var(--mc-ease-out);
+}
+
+.ui-btn:disabled {
+  background: var(--td-bg-color-component-disabled, var(--td-bg-color-container-hover));
+  border-color: transparent;
+  color: var(--td-text-color-disabled, var(--td-text-color-placeholder));
 }
 
 .ui-btn:active:not(:disabled) {

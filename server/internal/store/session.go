@@ -47,6 +47,46 @@ func (s *SessionStore) Touch(uid uint, sid, platform, clientType, appVersion, ip
 	return row, nil
 }
 
+// Activate 登录时按 sid 复用/新建会话行并清除撤销标记。
+// 与 Touch 的区别：Touch 只更新已登录请求，不能复活被撤销的会话；
+// Activate 只在登录成功、重新签发 JWT 前调用。
+func (s *SessionStore) Activate(uid uint, sid, platform, clientType, appVersion, ip string) (*model.UserSession, error) {
+	if sid == "" {
+		return nil, nil
+	}
+	now := time.Now()
+	row := &model.UserSession{
+		UserID: uid, SID: sid, Platform: platform, ClientType: clientType,
+		AppVersion: appVersion, IP: ip, CreatedAt: now, LastSeenAt: now,
+	}
+	err := s.db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "sid"}},
+		DoUpdates: clause.Assignments(map[string]any{
+			"platform":     platform,
+			"client_type":  clientType,
+			"app_version":  appVersion,
+			"ip":           ip,
+			"last_seen_at": now,
+			"revoked_at":   nil,
+		}),
+	}).Create(row).Error
+	if err != nil {
+		return nil, err
+	}
+	if row.ID == 0 {
+		if err := s.db.Where("sid = ?", sid).First(row).Error; err != nil {
+			return nil, err
+		}
+	}
+	// 清理升级前随机 sid 造成的同设备重复行；只删同一用户/平台/客户端类型，
+	// 不影响其他浏览器或设备，也不会误伤已撤销行以外的跨端会话。
+	if err := s.db.Where("user_id = ? AND platform = ? AND client_type = ? AND sid <> ?", uid, platform, clientType, sid).
+		Delete(&model.UserSession{}).Error; err != nil {
+		return nil, err
+	}
+	return row, nil
+}
+
 // ActiveBySID 取未撤销的会话；不存在返回 (nil, nil)。
 func (s *SessionStore) ActiveBySID(sid string) (*model.UserSession, error) {
 	if sid == "" {

@@ -990,6 +990,8 @@ export default {
     sessions: 'Signed-in devices',
     sessionsHint: 'See where this account is signed in; revoking a session signs that device out immediately.',
     sessionsEmpty: 'No sessions yet',
+    sessionsExpand: 'Show all {n} devices',
+    sessionsCollapse: 'Show fewer devices',
     sessionCurrent: ' (this device)',
     sessionRevoke: 'Sign out device',
     sessionRevokeConfirm: 'Sign out this device? It will be disconnected and need to sign in again.',

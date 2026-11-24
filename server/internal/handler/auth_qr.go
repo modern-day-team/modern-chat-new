@@ -139,7 +139,7 @@ func (h *AuthHandler) QRStatus(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"status": "expired"})
 			return
 		}
-		jwtToken, err := middleware.IssueToken(u.ID, u.TokenVersion, h.cfg.JWTSecret)
+		jwtToken, err := h.issueLoginToken(c, u)
 		if err != nil {
 			internal(c, err)
 			return

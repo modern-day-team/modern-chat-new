@@ -1,8 +1,11 @@
 package middleware
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -47,11 +50,29 @@ type Claims struct {
 // sid 在签发时生成，但会话行由 Auth / WS 握手首次见到时 lazy 落库——
 // 这样登录链路（密码 / 2FA / 扫码 / SSO / 迁移）7 处签发点不用逐个改。
 func IssueToken(uid uint, tv int64, secret string) (string, error) {
+	return IssueTokenWithSID(uid, tv, secret, newSessionID())
+}
+
+// DeviceSID 按设备指纹生成稳定 sid（HMAC-SHA256，64 hex）。
+// 指纹只取用户 + 平台 + 客户端类型：应用版本与 IP 是元数据，变化后只更新同一行，
+// 不会因为升级客户端或切换网络就多出一条“设备”。用 JWT_SECRET 做 HMAC 密钥，
+// 避免外部猜测设备指纹。
+func DeviceSID(uid uint, secret, platform, clientType, deviceID string) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	fmt.Fprintf(mac, "%d|%s|%s|%s", uid, platform, clientType, deviceID)
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// IssueTokenWithSID 签发带指定 sid 的 JWT；登录链路用它复用设备会话行。
+func IssueTokenWithSID(uid uint, tv int64, secret, sid string) (string, error) {
+	if sid == "" {
+		sid = newSessionID()
+	}
 	now := time.Now()
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"uid": uid,
 		"tv":  tv,
-		"sid": newSessionID(),
+		"sid": sid,
 		"iat": now.Unix(),
 		"exp": now.Add(TokenTTL).Unix(),
 	})

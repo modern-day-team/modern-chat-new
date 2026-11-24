@@ -126,6 +126,8 @@ func New(d Deps) *gin.Engine {
 	migrateSvc := service.NewMigrateService(d.Cfg, d.DB, users, convs, msgs)
 	twofaCodes := store.NewTwofaRecoveryStore(d.DB)
 	authH := handler.NewAuthHandler(d.Cfg, users, resets, d.Mailer, convs, msgs, settings, invites, loginAttempts, emailCodes, twofaCodes, migrateSvc)
+	// 登录签发按设备指纹激活会话，避免重复登录刷出多条相同设备。
+	authH.SetSessions(sessions)
 	// 头像转存：跟随当前存储实现（本地磁盘 / 对象存储），与上传接口共用一套。
 	authH.SetStorage(d.Storage)
 	inviteSvc := service.NewInviteService(invites)

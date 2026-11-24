@@ -57,3 +57,42 @@ func TestSessionStoreRoundTrip(t *testing.T) {
 	}
 	_ = db.Exec("DELETE FROM user_sessions WHERE sid = ?", sid)
 }
+
+// TestSessionActivateReusesDevice 同设备重复登录应复用同一行，并在被撤销后重新激活。
+func TestSessionActivateReusesDevice(t *testing.T) {
+	dsn := os.Getenv("DB_DSN")
+	if dsn == "" {
+		t.Skip("DB_DSN 未设置，跳过真实存储往返")
+	}
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{TranslateError: true})
+	if err != nil {
+		t.Skipf("数据库连接失败: %v", err)
+	}
+	if err := db.AutoMigrate(&model.UserSession{}); err != nil {
+		t.Fatalf("AutoMigrate: %v", err)
+	}
+	s := NewSessionStore(db)
+	sid := "test-device-" + time.Now().Format("20060102150405.000")
+	cleanup := func() { _ = db.Exec("DELETE FROM user_sessions WHERE sid = ?", sid) }
+	cleanup()
+	t.Cleanup(cleanup)
+
+	first, err := s.Activate(1, sid, "web", "Chrome · Windows", "0.12.0", "127.0.0.1")
+	if err != nil || first == nil {
+		t.Fatalf("first Activate: row=%v err=%v", first, err)
+	}
+	if _, err := s.Revoke(1, first.ID); err != nil {
+		t.Fatalf("Revoke: %v", err)
+	}
+	second, err := s.Activate(1, sid, "web", "Chrome · Windows", "0.12.0", "127.0.0.1")
+	if err != nil || second == nil {
+		t.Fatalf("second Activate: row=%v err=%v", second, err)
+	}
+	if second.ID != first.ID {
+		t.Fatalf("同设备应复用会话行: first=%d second=%d", first.ID, second.ID)
+	}
+	active, err := s.ActiveBySID(sid)
+	if err != nil || active == nil {
+		t.Fatalf("重新激活失败: row=%v err=%v", active, err)
+	}
+}

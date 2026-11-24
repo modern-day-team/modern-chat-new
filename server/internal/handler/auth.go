@@ -44,6 +44,8 @@ type AuthHandler struct {
 	twofaCodes *store.TwofaRecoveryCodeStore
 	// migrate 旧站迁移服务（迁移功能关闭时也可为 nil，MigrateLogin 返回 503）
 	migrate *service.MigrateService
+	// sessions 登录会话存储：登录时按设备指纹激活会话行，nil 时退化为随机 sid（测试）
+	sessions *store.SessionStore
 }
 
 func NewAuthHandler(
@@ -70,6 +72,36 @@ func NewAuthHandler(
 
 // SetStorage 注入头像存储实现（router 装配时调用；nil 时头像上传返回明确错误）。
 func (h *AuthHandler) SetStorage(s service.Storage) { h.storage = s }
+
+// SetSessions 注入会话存储（router 装配时调用）。
+func (h *AuthHandler) SetSessions(s *store.SessionStore) { h.sessions = s }
+
+// issueLoginToken 登录签发统一入口：按设备指纹生成稳定 sid，并在签发前激活会话行。
+// 所有登录/注册/2FA/扫码/SSO/迁移路径都必须走这里，否则仍会刷出重复设备。
+func (h *AuthHandler) issueLoginToken(c *gin.Context, u *model.User) (string, error) {
+	platform := middleware.ClientPlatform(firstNonEmpty(c.GetHeader("X-Client-Platform"), "web"))
+	clientType := middleware.SanitizeHeader(c.GetHeader("X-Client-Type"))
+	appVersion := middleware.SanitizeHeader(c.GetHeader("X-Client-Version"))
+	// 旧客户端没有设备 ID 时为空串，指纹退化为平台 + UA，行为保持兼容。
+	deviceID := middleware.SanitizeHeader(c.GetHeader("X-Client-Device-ID"))
+	if h.sessions != nil {
+		sid := middleware.DeviceSID(u.ID, h.cfg.JWTSecret, platform, clientType, deviceID)
+		if _, err := h.sessions.Activate(u.ID, sid, platform, clientType, appVersion, c.ClientIP()); err != nil {
+			return "", err
+		}
+		return middleware.IssueTokenWithSID(u.ID, u.TokenVersion, h.cfg.JWTSecret, sid)
+	}
+	return h.issueLoginToken(c, u)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
 
 type credentials struct {
 	Username string `json:"username"`
@@ -256,7 +288,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	// 新用户自动加入初始公开群；失败只记日志，不阻断注册
 	h.joinDefaultGroup(u.ID)
 
-	token, err := middleware.IssueToken(u.ID, u.TokenVersion, h.cfg.JWTSecret)
+	token, err := h.issueLoginToken(c, u)
 	if err != nil {
 		internal(c, err)
 		return
@@ -368,7 +400,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"twofa": true, "ticket": ticket, "method": u.TwofaMethod})
 		return
 	}
-	token, err := middleware.IssueToken(u.ID, u.TokenVersion, h.cfg.JWTSecret)
+	token, err := h.issueLoginToken(c, u)
 	if err != nil {
 		internal(c, err)
 		return
@@ -411,7 +443,7 @@ func (h *AuthHandler) MigrateLogin(c *gin.Context) {
 		fail(c, http.StatusForbidden, "账号已被封禁")
 		return
 	}
-	token, err := middleware.IssueToken(u.ID, u.TokenVersion, h.cfg.JWTSecret)
+	token, err := h.issueLoginToken(c, u)
 	if err != nil {
 		internal(c, err)
 		return

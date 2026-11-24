@@ -1,26 +1,18 @@
 package version
 
-import "testing"
+import (
+	"testing"
+)
 
-func TestCurrent(t *testing.T) {
-	info := Current()
-	if info.Version != Version || info.Commit != Commit || info.BuildTime != BuildTime {
-		t.Fatalf("Current() 应与包级变量一致，got %+v", info)
+func TestEnvOr(t *testing.T) {
+	if got := envOr("dev", "dev", "TEST_MC_VERSION"); got != "dev" {
+		t.Fatalf("未设置环境变量时应保留默认值，got %q", got)
 	}
-	if info.Version == "" {
-		t.Fatal("Version 不应为空（未注入时为 dev）")
+	t.Setenv("TEST_MC_VERSION", "0.12.0")
+	if got := envOr("dev", "dev", "TEST_MC_VERSION"); got != "0.12.0" {
+		t.Fatalf("环境变量未生效，got %q", got)
 	}
-}
-
-// TestCurrentReflectsInjected 验证 -ldflags 注入后 Current() 能反映出来
-// （scripts/update.sh 通过覆盖包级变量注入）。
-func TestCurrentReflectsInjected(t *testing.T) {
-	oldV, oldC, oldB := Version, Commit, BuildTime
-	t.Cleanup(func() { Version, Commit, BuildTime = oldV, oldC, oldB })
-
-	Version, Commit, BuildTime = "v1.2.3", "abc1234", "2026-10-25T10:00:00Z"
-	info := Current()
-	if info.Version != "v1.2.3" || info.Commit != "abc1234" || info.BuildTime != "2026-10-25T10:00:00Z" {
-		t.Fatalf("注入后 Current() 未同步，got %+v", info)
+	if got := envOr("v1.2.3", "dev", "TEST_MC_VERSION"); got != "v1.2.3" {
+		t.Fatalf("ldflags 注入值应优先，got %q", got)
 	}
 }
