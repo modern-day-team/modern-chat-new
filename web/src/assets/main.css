@@ -40,6 +40,7 @@ a {
   --mc-selection: rgba(0, 82, 217, 0.16);
   /* 卡片/分组的细描边：比组件边框更淡，暗色下不会形成"重框" */
   --mc-hairline: rgba(0, 0, 0, 0.08);
+  --mc-hairline-strong: rgba(0, 0, 0, 0.16);
   /* 全站背景纹理的线/点颜色（普通页面 / 深色认证场景） */
   --mc-app-pattern: rgba(15, 23, 42, 0.07);
   --mc-app-pattern-scene: rgba(255, 255, 255, 0.09);
@@ -108,6 +109,7 @@ a {
   --mc-link: #7cb8ff;
   --mc-selection: rgba(110, 168, 255, 0.28);
   --mc-hairline: rgba(255, 255, 255, 0.08);
+  --mc-hairline-strong: rgba(255, 255, 255, 0.16);
   --mc-app-pattern: rgba(255, 255, 255, 0.09);
   --mc-app-image-scrim: rgba(17, 17, 17, 0.72);
   --mc-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.24), 0 2px 8px -2px rgba(0, 0, 0, 0.28);
@@ -342,6 +344,34 @@ a {
     opacity: 1;
     transform: none;
   }
+}
+
+/* Vue DevTools 仅开发构建注入（见 vite.config.ts）。
+   默认浮在底部中央会挡住设置页滑杆与输入框，这里移到右下角并降低常态透明度。 */
+.vue-devtools__anchor {
+  left: auto !important;
+  right: 16px !important;
+  bottom: 16px !important;
+  transform: none !important;
+  opacity: 0.72;
+}
+
+.vue-devtools__anchor:hover,
+.vue-devtools__anchor:focus-within {
+  opacity: 1;
+}
+
+/* 设置页底部有滑杆与危险操作，进一步缩小并靠右下角，悬浮/聚焦时恢复原尺寸 */
+body:has(.settings-page) .vue-devtools__anchor {
+  transform: scale(0.72) !important;
+  transform-origin: bottom right;
+  opacity: 0.45;
+}
+
+body:has(.settings-page) .vue-devtools__anchor:hover,
+body:has(.settings-page) .vue-devtools__anchor:focus-within {
+  transform: none !important;
+  opacity: 1;
 }
 
 /* 系统开启「减少动态效果」时统一收敛，避免各组件逐处漏配 */

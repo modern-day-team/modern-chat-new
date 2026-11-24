@@ -3,10 +3,30 @@ import UiSlider from '@/components/ui/UiSlider.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiInput from '@/components/ui/UiInput.vue'
 import UiSwitch from '@/components/ui/UiSwitch.vue'
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import UiTag from '@/components/ui/UiTag.vue'
+import SettingsRow from '@/components/ui/SettingsRow.vue'
+import SettingsSegmented from '@/components/ui/SettingsSegmented.vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { DialogPlugin, MessagePlugin } from '@/components/ui/feedback'
-import { ArrowLeftIcon } from 'tdesign-icons-vue-next'
+import {
+  ArrowLeftIcon,
+  CheckIcon,
+  ChevronRightIcon,
+  CopyIcon,
+  DataIcon,
+  DesktopIcon,
+  ExtensionIcon,
+  InfoCircleIcon,
+  LockOnIcon,
+  MobileIcon,
+  NotificationIcon,
+  PaletteIcon,
+  RefreshIcon,
+  SettingIcon,
+  TabletIcon,
+  UserIcon,
+} from 'tdesign-icons-vue-next'
 
 import AppBackgroundPicker from '@/components/common/AppBackgroundPicker.vue'
 import { useAppI18n } from '@/composables/useAppI18n'
@@ -31,7 +51,7 @@ import type { UserSession } from '@/types/proto'
 import { useAuthStore } from '@/stores/auth'
 import { useConversationsStore } from '@/stores/conversations'
 import { useFriendsStore } from '@/stores/friends'
-import { PANE_LIMITS, useLayoutStore, type PaneKey } from '@/stores/layout'
+import { PANE_DEFAULTS, PANE_LIMITS, useLayoutStore, type PaneKey } from '@/stores/layout'
 import { usePrefsStore, type Theme } from '@/stores/prefs'
 import { useWsStore } from '@/stores/ws'
 
@@ -43,6 +63,89 @@ const friendsStore = useFriendsStore()
 const layout = useLayoutStore()
 const ws = useWsStore()
 const { t, te } = useAppI18n()
+
+// ===== 锚点导航（≥1200px 双栏，窄屏隐藏）=====
+const settingsSections = [
+  'appearance',
+  'notifications',
+  'account-profile',
+  'sessions',
+  'twofa',
+  'layout',
+  'cache',
+  'extensions',
+  'about',
+  'danger',
+] as const
+type SettingsSectionId = (typeof settingsSections)[number]
+const activeSection = ref<SettingsSectionId>('appearance')
+let scrollFrame = 0
+
+/** 顶部阈值以下最后一个区块即当前区块；比 IntersectionObserver 更稳定。 */
+function syncActiveSection() {
+  // 最后一节在页面底部可能无法滚到顶部阈值，触底时直接选中它
+  if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 8) {
+    activeSection.value = settingsSections.at(-1) ?? settingsSections[0]
+    return
+  }
+  let current: SettingsSectionId = settingsSections[0]
+  for (const id of settingsSections) {
+    const el = document.getElementById(id)
+    if (el && el.getBoundingClientRect().top <= 96) current = id
+    else break
+  }
+  activeSection.value = current
+}
+
+function onSettingsScroll() {
+  if (scrollFrame) return
+  scrollFrame = window.requestAnimationFrame(() => {
+    syncActiveSection()
+    scrollFrame = 0
+  })
+}
+
+function observeSections() {
+  window.addEventListener('scroll', onSettingsScroll, { passive: true })
+  syncActiveSection()
+}
+
+function goToSection(id: SettingsSectionId) {
+  activeSection.value = id
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+type SettingsNavItem = { id: SettingsSectionId; label: string }
+const navGroups = computed<Array<{ title: string; items: SettingsNavItem[] }>>(() => [
+  {
+    title: t('settings.navPersonalization'),
+    items: [
+      { id: 'appearance', label: t('settings.navAppearance') },
+      { id: 'notifications', label: t('settings.navNotifications') },
+      { id: 'layout', label: t('settings.navLayout') },
+    ],
+  },
+  {
+    title: t('settings.navAccountSecurity'),
+    items: [
+      { id: 'account-profile', label: t('settings.navProfile') },
+      { id: 'sessions', label: t('settings.navSessions') },
+      { id: 'twofa', label: t('settings.navTwofa') },
+      { id: 'danger', label: t('settings.navDanger') },
+    ],
+  },
+  {
+    title: t('settings.navDataExtensions'),
+    items: [
+      { id: 'cache', label: t('settings.navCache') },
+      { id: 'extensions', label: t('settings.navPlugins') },
+    ],
+  },
+  {
+    title: t('settings.navAbout'),
+    items: [{ id: 'about', label: t('settings.navAbout') }],
+  },
+])
 
 // ===== 桌面通知 =====
 const notifyOn = ref(notificationsEnabled())
@@ -132,6 +235,8 @@ onMounted(async () => {
   void refreshCacheUsage()
   void loadTwofa()
   void loadSessions()
+  await nextTick()
+  observeSections()
   if (!auth.token || auth.user) return
   try {
     await auth.fetchMe()
@@ -158,11 +263,57 @@ async function loadSessions() {
   }
 }
 
+const sessionPlatformLabel: Record<UserSession['platform'], string> = {
+  web: '网页',
+  desktop: '桌面端',
+  mobile: '手机',
+  tablet: '平板',
+  other: '其他',
+}
+
 function sessionLabel(s: UserSession): string {
-  const part = { web: '网页', desktop: '桌面端', mobile: '手机', tablet: '平板', other: '其他' }[
-    s.platform
-  ] ?? '其他'
-  return s.clientType ? `${part} · ${s.clientType}` : part
+  const part = sessionPlatformLabel[s.platform] ?? '其他'
+  const client = s.clientType?.replace(/\s*[·•]\s*/g, ' · ').trim() ?? ''
+  // 旧会话可能存成 "Chrome Windows"，补回分隔符但保持原始值可读
+  const normalized = /^[A-Za-z]+\s+[A-Za-z]+$/.test(client) ? client.replace(' ', ' · ') : client
+  return normalized && normalized !== 'browser' ? `${part} · ${normalized}` : part
+}
+
+function sessionIcon(s: UserSession) {
+  if (s.platform === 'mobile') return MobileIcon
+  if (s.platform === 'tablet') return TabletIcon
+  if (s.platform === 'desktop') return DesktopIcon
+  return PaletteIcon
+}
+
+function sessionIp(s: UserSession): string {
+  if (!s.ip || s.ip === '::1' || s.ip === '127.0.0.1') return t('settings.localMachine')
+  return s.ip
+}
+
+/** 会话时间：今天/昨天显示相对日期，更早显示本地日期，原始 ISO 放 title。 */
+function sessionTime(iso: string): string {
+  if (!iso) return '-'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  const now = new Date()
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const start = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  const dayDiff = Math.round((startOfToday - start) / 86_400_000)
+  const time = d.toLocaleTimeString(prefs.lang === 'zh-CN' ? 'zh-CN' : 'en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+  if (dayDiff === 0) return t('settings.timeToday', { time })
+  if (dayDiff === 1) return t('settings.timeYesterday', { time })
+  return d.toLocaleString(prefs.lang === 'zh-CN' ? 'zh-CN' : 'en-US', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
 }
 
 function confirmRevokeSession(s: UserSession) {
@@ -219,7 +370,11 @@ function stopTwofaCd() {
     twofaCdTimer = null
   }
 }
-onBeforeUnmount(stopTwofaCd)
+onBeforeUnmount(() => {
+  stopTwofaCd()
+  window.removeEventListener('scroll', onSettingsScroll)
+  if (scrollFrame) window.cancelAnimationFrame(scrollFrame)
+})
 
 async function startTwofaSetup(kind: 'app' | 'email') {
   twofaSetup.value = kind
@@ -330,6 +485,11 @@ function onWidthChange(key: PaneKey, v: unknown) {
   if (Number.isFinite(n)) layout.setWidth(key, n)
 }
 
+function resetPane(key: PaneKey) {
+  layout.setWidth(key, PANE_DEFAULTS[key].width)
+  layout.setDrawer(key, PANE_DEFAULTS[key].drawer)
+}
+
 // ===== 插件 / 站长（低频入口，按信息架构 L3 收在这里）=====
 
 /** 插件面板属于聊天页，带参数回去由 ChatLayout 自动展开 */
@@ -343,16 +503,44 @@ function openAdmin() {
 
 // ===== 外观 =====
 
-const themeOptions: Array<{ value: Theme; label: string }> = [
-  { value: 'auto', label: 'prefs.themeAuto' },
-  { value: 'light', label: 'prefs.themeLight' },
-  { value: 'dark', label: 'prefs.themeDark' },
-]
+const themeSegments = computed(() => [
+  { value: 'auto', label: t('prefs.themeAuto') },
+  { value: 'light', label: t('prefs.themeLight') },
+  { value: 'dark', label: t('prefs.themeDark') },
+])
+const languageOptions = computed(() => [
+  { value: 'zh-CN', label: t('settings.languageZh') },
+  { value: 'en-US', label: t('settings.languageEn') },
+])
+const dockOptions = computed(() => [
+  { value: 'docked', label: t('settings.docked') },
+  { value: 'drawer', label: t('settings.drawer') },
+])
+
+function onThemeChange(v: string) {
+  prefs.setTheme(v as Theme)
+}
+
+function onLangChange(v: string) {
+  void prefs.setLang(v === 'zh-CN' ? 'zh-CN' : 'en-US')
+}
+
+const backgroundPicker = ref<InstanceType<typeof AppBackgroundPicker> | null>(null)
+function openBackgroundPicker() {
+  backgroundPicker.value?.open()
+}
 
 // ===== 账号 =====
 
 const profile = reactive({ nickname: '', email: '', emailCode: '' })
 const saving = ref(false)
+const profileError = ref('')
+const profileState = computed(() => {
+  if (profileError.value) return { text: profileError.value, tone: 'danger' as const }
+  return profileDirty.value
+    ? { text: t('settings.unsavedChanges'), tone: 'warning' as const }
+    : { text: t('settings.allChangesSaved'), tone: 'muted' as const }
+})
 
 watch(
   () => auth.user,
@@ -360,6 +548,7 @@ watch(
     profile.nickname = u?.nickname ?? ''
     profile.email = u?.email ?? ''
     profile.emailCode = ''
+    profileError.value = ''
   },
   { immediate: true },
 )
@@ -447,9 +636,11 @@ async function saveProfile() {
   try {
     await auth.updateMe(patch)
     profile.emailCode = ''
+    profileError.value = ''
     void MessagePlugin.success(t('settings.savedOk'))
   } catch (e) {
-    void MessagePlugin.error(te(e) || t('common.saveFailed'))
+    profileError.value = te(e) || t('settings.profileSaveFailed')
+    void MessagePlugin.error(profileError.value)
   } finally {
     saving.value = false
   }
@@ -497,6 +688,11 @@ function confirmLogoutOthers() {
 // ===== 关于 =====
 
 const build = ref<VersionInfo | null>(null)
+const webVersion = `${__WEB_VERSION__} · ${__WEB_COMMIT__}`
+const versionText = computed(() => {
+  const server = build.value ? `${build.value.version} · ${build.value.commit}` : '—'
+  return `${t('settings.webVersion')}: ${webVersion}\n${t('settings.serverVersion')}: ${server}`
+})
 
 systemApi
   .version()
@@ -504,6 +700,23 @@ systemApi
     build.value = v
   })
   .catch(() => undefined)
+
+async function copyVersion() {
+  try {
+    await navigator.clipboard.writeText(versionText.value)
+    void MessagePlugin.success(t('settings.versionCopied'))
+  } catch {
+    void MessagePlugin.error(t('settings.versionCopyFailed'))
+  }
+}
+
+function openChangelog() {
+  window.open('https://github.com/modern-day-team/modern-chat-new/blob/main/CHANGELOG.md', '_blank', 'noopener')
+}
+
+function openLegal(path: '/terms' | '/privacy') {
+  void router.push(path)
+}
 
 function goBack() {
   if (window.history.length > 1) router.back()
@@ -522,240 +735,255 @@ function goBack() {
       <span class="settings-top__spacer" />
     </header>
 
-    <div class="settings-body">
-      <!-- 外观 -->
-      <section class="settings-card">
-        <h2 class="settings-card__title">{{ t('settings.appearance') }}</h2>
-
-        <div class="settings-row">
-          <span class="settings-row__label">{{ t('prefs.language') }}</span>
-          <div class="settings-seg" role="group" :aria-label="t('prefs.language')">
-            <button
-              type="button"
-              :class="{ 'is-active': prefs.lang === 'zh-CN' }"
-              @click="prefs.setLang('zh-CN')"
-            >
-              {{ t('settings.languageZh') }}
-            </button>
-            <button
-              type="button"
-              :class="{ 'is-active': prefs.lang === 'en-US' }"
-              @click="prefs.setLang('en-US')"
-            >
-              {{ t('settings.languageEn') }}
-            </button>
-          </div>
+    <div class="settings-layout">
+      <aside class="settings-anchors" aria-label="Settings sections">
+        <div v-for="group in navGroups" :key="group.title" class="settings-anchors__group">
+          <div class="settings-anchors__title">{{ group.title }}</div>
+          <button
+            v-for="item in group.items"
+            :key="item.id"
+            type="button"
+            class="settings-anchors__link"
+            :class="{ 'is-active': activeSection === item.id }"
+            @click="goToSection(item.id)"
+          >
+            {{ item.label }}
+          </button>
         </div>
+      </aside>
 
-        <div class="settings-row">
-          <span class="settings-row__label">{{ t('prefs.theme') }}</span>
-          <div class="settings-seg" role="group" :aria-label="t('prefs.theme')">
-            <button
-              v-for="opt in themeOptions"
-              :key="opt.value"
-              type="button"
-              :class="{ 'is-active': prefs.theme === opt.value }"
-              @click="prefs.setTheme(opt.value)"
-            >
-              {{ t(opt.label) }}
-            </button>
-          </div>
-        </div>
+      <div class="settings-body">
+        <!-- 外观 -->
+        <section id="appearance" class="settings-card settings-section">
+          <h2 class="settings-card__title">
+            <PaletteIcon class="settings-card__icon" />
+            {{ t('settings.appearance') }}
+          </h2>
 
-        <div class="settings-row">
-          <div class="settings-row__text">
-            <span class="settings-row__label">{{ t('settings.appBackground') }}</span>
-            <span class="settings-row__hint text-placeholder">{{ t('settings.appBackgroundHint') }}</span>
-          </div>
-          <AppBackgroundPicker />
-        </div>
-      </section>
+          <SettingsRow :title="t('prefs.language')">
+            <SettingsSegmented
+              :model-value="prefs.lang"
+              :options="languageOptions"
+              :aria-label="t('prefs.language')"
+              @update:model-value="onLangChange"
+            />
+          </SettingsRow>
 
-      <!-- 桌面通知 -->
-      <section class="settings-card">
-        <h2 class="settings-card__title">{{ t('settings.notify') }}</h2>
-        <div class="settings-row">
-          <div class="settings-row__text">
-            <span class="settings-row__label">{{ t('settings.notifyLabel') }}</span>
-            <span class="settings-row__hint text-placeholder">{{ t('settings.notifyHint') }}</span>
-          </div>
-          <UiSwitch :value="notifyOn" @change="onNotifyToggle" />
-        </div>
-        <!-- 离线推送：应用完全关闭时也能收到消息提醒（需 HTTPS 与浏览器授权） -->
-        <div v-if="auth.token" class="settings-row settings-row--last">
-          <div class="settings-row__text">
-            <span class="settings-row__label">{{ t('settings.pushLabel') }}</span>
-            <span class="settings-row__hint text-placeholder">{{ t('settings.pushHint') }}</span>
-          </div>
-          <UiSwitch :value="pushOn" @change="onPushToggle" />
-        </div>
-      </section>
+          <SettingsRow :title="t('prefs.theme')">
+            <SettingsSegmented
+              :model-value="prefs.theme"
+              :options="themeSegments"
+              :aria-label="t('prefs.theme')"
+              @update:model-value="onThemeChange"
+            />
+          </SettingsRow>
 
-      <!-- 账号 -->
-      <section class="settings-card">
-        <h2 class="settings-card__title">{{ t('settings.account') }}</h2>
+          <SettingsRow
+            :title="t('settings.appBackground')"
+            :description="t('settings.appBackgroundHint')"
+            link
+            last
+            @click="openBackgroundPicker"
+          >
+            <span class="settings-link-hint" @click.stop>
+              <AppBackgroundPicker ref="backgroundPicker" />
+              <ChevronRightIcon class="settings-link-chevron" />
+            </span>
+          </SettingsRow>
+        </section>
+
+        <!-- 桌面通知 -->
+        <section id="notifications" class="settings-card settings-section">
+          <h2 class="settings-card__title">
+            <NotificationIcon class="settings-card__icon" />
+            {{ t('settings.notify') }}
+          </h2>
+          <SettingsRow
+            :title="t('settings.notifyLabel')"
+            :description="t('settings.notifyHint')"
+          >
+            <UiSwitch :value="notifyOn" @change="onNotifyToggle" />
+          </SettingsRow>
+          <!-- 离线推送：应用完全关闭时也能收到消息提醒（需 HTTPS 与浏览器授权） -->
+          <SettingsRow
+            v-if="auth.token"
+            :title="t('settings.pushLabel')"
+            :description="t('settings.pushHint')"
+            last
+          >
+            <UiSwitch :value="pushOn" @change="onPushToggle" />
+          </SettingsRow>
+        </section>
+
+      <!-- 账号资料 -->
+      <section id="account-profile" class="settings-card settings-section">
+        <h2 class="settings-card__title">
+          <UserIcon class="settings-card__icon" />
+          {{ t('settings.profileTitle') }}
+        </h2>
+        <p class="settings-card__hint">{{ t('settings.profileHint') }}</p>
 
         <template v-if="auth.user">
-          <div class="settings-field">
-            <label class="settings-field__label" for="st-nickname">{{ t('settings.nickname') }}</label>
+          <SettingsRow :title="t('settings.nickname')">
             <UiInput
               id="st-nickname"
               v-model="profile.nickname"
+              class="settings-input"
               :placeholder="t('settings.nicknamePlaceholder')"
               :maxlength="20"
               clearable
             />
-          </div>
+          </SettingsRow>
 
-          <div class="settings-field">
-            <label class="settings-field__label" for="st-email">{{ t('settings.email') }}</label>
+          <SettingsRow :title="t('settings.email')" :description="t('settings.emailHint')">
             <UiInput
               id="st-email"
               v-model="profile.email"
+              class="settings-input"
               :placeholder="t('settings.email')"
               clearable
             />
-            <p class="settings-field__hint text-placeholder">{{ t('settings.emailHint') }}</p>
-
-            <!-- 换绑邮箱：必须验证新邮箱归属 -->
-            <template v-if="emailChanged">
-              <div class="settings-code-row">
-                <UiInput
-                  v-model="profile.emailCode"
-                  :maxlength="6"
-                  :placeholder="t('auth.emailCode')"
-                />
+            <template #footer>
+              <!-- 换绑邮箱：必须验证新邮箱归属 -->
+              <template v-if="emailChanged">
+                <div class="settings-code-row">
+                  <UiInput
+                    v-model="profile.emailCode"
+                    :maxlength="6"
+                    :placeholder="t('auth.emailCode')"
+                  />
+                  <UiButton
+                    variant="outline"
+                    :loading="codeSending"
+                    :disabled="codeCooldown > 0"
+                    @click="sendChangeCode"
+                  >
+                    {{ codeCooldown > 0 ? t('auth.resendIn', { n: codeCooldown }) : t('auth.sendCode') }}
+                  </UiButton>
+                </div>
+                <p class="settings-field__hint">{{ t('settings.emailChangeHint') }}</p>
+              </template>
+              <div class="settings-actions">
+                <span class="settings-save-state" :class="`is-${profileState.tone}`">
+                  <CheckIcon v-if="profileState.tone === 'muted'" class="settings-save-state__icon" />
+                  {{ profileState.text }}
+                </span>
                 <UiButton
-                  variant="outline"
-                  :loading="codeSending"
-                  :disabled="codeCooldown > 0"
-                  @click="sendChangeCode"
+                  theme="primary"
+                  :loading="saving"
+                  :disabled="!profileDirty"
+                  @click="saveProfile"
                 >
-                  {{ codeCooldown > 0 ? t('auth.resendIn', { n: codeCooldown }) : t('auth.sendCode') }}
+                  {{ t('settings.save') }}
                 </UiButton>
               </div>
-              <p class="settings-field__hint text-placeholder">
-                {{ t('settings.emailChangeHint') }}
-              </p>
             </template>
-          </div>
-
-          <div class="settings-actions">
-            <UiButton
-              theme="primary"
-              :loading="saving"
-              :disabled="!profileDirty"
-              @click="saveProfile"
-            >
-              {{ t('settings.save') }}
-            </UiButton>
-          </div>
-
-          <div class="settings-subhead">
-            <span class="settings-row__label">{{ t('settings.sessions') }}</span>
-            <UiButton variant="text" size="small" :loading="sessionsLoading" @click="loadSessions">
-              {{ t('common.refresh') }}
-            </UiButton>
-          </div>
-          <p class="settings-card__hint text-placeholder">{{ t('settings.sessionsHint') }}</p>
-          <div v-if="sessions.length" class="session-list">
-            <div v-for="s in sessions" :key="s.id" class="session-item">
-              <div class="settings-row__text">
-                <span class="settings-row__label">
-                  {{ sessionLabel(s) }}
-                  <span v-if="s.current" class="session-current">{{ t('settings.sessionCurrent') }}</span>
-                </span>
-                <span class="settings-row__hint text-placeholder">
-                  {{ s.appVersion || '-' }} · {{ s.ip || '-' }} · {{ s.lastSeenAt }}
-                </span>
-              </div>
-              <UiButton
-                variant="outline"
-                theme="danger"
-                size="small"
-                :disabled="s.current"
-                @click="confirmRevokeSession(s)"
-              >
-                {{ t('settings.sessionRevoke') }}
-              </UiButton>
-            </div>
-          </div>
-          <p v-else-if="!sessionsLoading" class="settings-card__hint text-placeholder">
-            {{ t('settings.sessionsEmpty') }}
-          </p>
-
-          <div class="settings-row">
-            <div class="settings-row__text">
-              <span class="settings-row__label">{{ t('settings.logoutOthers') }}</span>
-              <span class="settings-row__hint text-placeholder">
-                {{ t('settings.logoutOthersHint') }}
-              </span>
-            </div>
-            <UiButton variant="outline" size="small" @click="confirmLogoutOthers">
-              {{ t('settings.logoutOthers') }}
-            </UiButton>
-          </div>
-
-          <div class="settings-row settings-row--last">
-            <span class="settings-row__label">{{ t('settings.logout') }}</span>
-            <UiButton variant="outline" theme="danger" size="small" @click="confirmLogout">
-              {{ t('settings.logout') }}
-            </UiButton>
-          </div>
+          </SettingsRow>
         </template>
 
-        <p v-else class="settings-placeholder text-placeholder">
+        <p v-else class="settings-placeholder">
           {{ t('settings.loginRequired') }}
           <RouterLink to="/login">{{ t('auth.actionLogin') }}</RouterLink>
         </p>
       </section>
 
-      <!-- 两步验证（默认关闭，可开可关） -->
-      <section class="settings-card">
-        <h2 class="settings-card__title">{{ t('settings.twofaTitle') }}</h2>
-        <p class="settings-card__hint text-placeholder">{{ t('settings.twofaHint') }}</p>
+      <!-- 登录设备 -->
+      <section id="sessions" class="settings-card settings-section">
+        <div class="settings-card__head">
+          <h2 class="settings-card__title">
+            <DesktopIcon class="settings-card__icon" />
+            {{ t('settings.sessions') }}
+          </h2>
+          <UiButton
+            variant="text"
+            size="small"
+            shape="square"
+            :aria-label="t('common.refresh')"
+            :loading="sessionsLoading"
+            @click="loadSessions"
+          >
+            <template #icon><RefreshIcon /></template>
+          </UiButton>
+        </div>
+        <p class="settings-card__hint">{{ t('settings.sessionsHint') }}</p>
 
-        <template v-if="auth.user">
-          <!-- 状态行 -->
-          <div class="settings-row">
-            <div class="settings-row__text">
-              <span class="settings-row__label">{{ t('settings.twofaStatus') }}</span>
-              <span class="settings-row__hint text-placeholder">
-                {{
-                  twofa.enabled
-                    ? t('settings.twofaOn', {
-                        method: twofa.method === 'app' ? t('settings.twofaMethodApp') : t('settings.twofaMethodEmail'),
-                      })
-                    : t('settings.twofaOff')
-                }}
+        <div v-if="sessions.length" class="session-list">
+          <div v-for="s in sessions" :key="s.id" class="session-item">
+            <component :is="sessionIcon(s)" class="session-item__icon" />
+            <div class="session-item__text">
+              <span class="session-item__title">
+                {{ sessionLabel(s) }}
+                <UiTag v-if="s.current" theme="primary" variant="light">
+                  {{ t('settings.currentDeviceTag') }}
+                </UiTag>
+              </span>
+              <span class="session-item__meta" :title="`${s.appVersion || '-'} · ${s.ip || '-'} · ${s.lastSeenAt}`">
+                {{ s.appVersion || '-' }} · {{ sessionIp(s) }} · {{ sessionTime(s.lastSeenAt) }}
               </span>
             </div>
             <UiButton
+              variant="text"
+              theme="danger"
+              size="small"
+              :disabled="s.current"
+              @click="confirmRevokeSession(s)"
+            >
+              {{ t('settings.sessionRevoke') }}
+            </UiButton>
+          </div>
+        </div>
+        <p v-else-if="!sessionsLoading" class="settings-card__hint">{{ t('settings.sessionsEmpty') }}</p>
+      </section>
+
+      <!-- 两步验证（默认关闭，可开可关） -->
+      <section id="twofa" class="settings-card settings-section">
+        <h2 class="settings-card__title">
+          <LockOnIcon class="settings-card__icon" />
+          {{ t('settings.twofaTitle') }}
+        </h2>
+        <p class="settings-card__hint">{{ t('settings.twofaHint') }}</p>
+
+        <template v-if="auth.user">
+          <!-- 状态行：卡片标题已说明模块，这里只展示状态 -->
+          <SettingsRow :title="t('settings.status')">
+            <UiTag :theme="twofa.enabled ? 'success' : 'default'" variant="light">
+              {{ twofa.enabled ? t('settings.twofaEnabledShort') : t('settings.twofaOff') }}
+            </UiTag>
+            <span class="settings-row__value">
+              {{
+                twofa.enabled
+                  ? t('settings.twofaOn', {
+                      method: twofa.method === 'app' ? t('settings.twofaMethodApp') : t('settings.twofaMethodEmail'),
+                    })
+                  : ''
+              }}
+            </span>
+            <UiButton
               v-if="!twofa.enabled && twofaSetup === ''"
               variant="outline"
+              theme="primary"
               size="small"
               @click="twofaSetup = 'choose'"
             >
               {{ t('settings.twofaEnable') }}
             </UiButton>
-          </div>
+          </SettingsRow>
 
           <!-- 开启：选方式 -->
           <template v-if="!twofa.enabled && twofaSetup === 'choose'">
-            <div class="settings-row">
-              <div class="settings-row__text">
-                <span class="settings-row__label">{{ t('auth.twofaMethodApp') }}</span>
-                <span class="settings-row__hint text-placeholder">{{ t('auth.twofaMethodAppHint') }}</span>
-              </div>
+            <SettingsRow
+              :title="t('auth.twofaMethodApp')"
+              :description="t('auth.twofaMethodAppHint')"
+            >
               <UiButton variant="outline" size="small" @click="startTwofaSetup('app')">
                 {{ t('settings.twofaChoose') }}
               </UiButton>
-            </div>
-            <div class="settings-row settings-row--last">
-              <div class="settings-row__text">
-                <span class="settings-row__label">{{ t('auth.twofaMethodEmail') }}</span>
-                <span class="settings-row__hint text-placeholder">{{ t('auth.twofaMethodEmailHint') }}</span>
-              </div>
+            </SettingsRow>
+            <SettingsRow
+              :title="t('auth.twofaMethodEmail')"
+              :description="t('auth.twofaMethodEmailHint')"
+              last
+            >
               <UiButton
                 variant="outline"
                 size="small"
@@ -764,17 +992,17 @@ function goBack() {
               >
                 {{ t('settings.twofaChoose') }}
               </UiButton>
-            </div>
-            <p v-if="!twofa.email" class="settings-field__hint text-placeholder">
-              {{ t('settings.twofaNeedEmail') }}
-            </p>
+              <template #footer>
+                <p v-if="!twofa.email" class="settings-field__hint">{{ t('settings.twofaNeedEmail') }}</p>
+              </template>
+            </SettingsRow>
           </template>
 
           <!-- 开启：验证器应用（扫码 / 手动录入 + 6 位码） -->
           <template v-if="!twofa.enabled && twofaSetup === 'app'">
             <p class="settings-field__hint">{{ t('auth.scanDesc', { issuer: 'ModernChat' }) }}</p>
             <img v-if="twofaOtpauthImg" :src="twofaOtpauthImg" alt="" width="180" height="180" />
-            <p class="settings-field__hint text-placeholder">
+            <p class="settings-field__hint">
               {{ t('auth.manualCode') }}：<span class="num">{{ twofaSecret }}</span>
             </p>
             <div class="settings-field">
@@ -808,7 +1036,7 @@ function goBack() {
           <!-- 启用成功：一次性展示恢复码 -->
           <template v-if="twofaSetup === 'recovery'">
             <p class="settings-field__hint">{{ t('auth.setupDoneDesc') }}</p>
-            <p class="settings-field__hint text-placeholder">{{ t('auth.recoveryWarn') }}</p>
+            <p class="settings-field__hint">{{ t('auth.recoveryWarn') }}</p>
             <pre class="settings-twofa-codes num">{{ twofaRecovery.join('\\n') }}</pre>
             <div class="settings-actions">
               <UiButton variant="outline" size="small" @click="downloadRecovery">
@@ -822,12 +1050,13 @@ function goBack() {
 
           <!-- 关闭：密码再认证 -->
           <template v-if="twofa.enabled && twofaSetup !== 'recovery'">
-            <div class="settings-row">
-              <div class="settings-row__text">
-                <span class="settings-row__label">{{ t('settings.twofaDisableLabel') }}</span>
-                <span class="settings-row__hint text-placeholder">{{ t('settings.twofaDisableHint') }}</span>
-              </div>
-            </div>
+            <SettingsRow
+              :title="t('settings.twofaDisableLabel')"
+              :description="t('settings.twofaDisableHint')"
+              last
+            >
+              <span />
+            </SettingsRow>
             <div class="settings-code-row">
               <UiInput v-model="twofaOffPassword" type="password" :placeholder="t('auth.password')" clearable />
               <UiButton
@@ -846,13 +1075,34 @@ function goBack() {
       </section>
 
       <!-- 布局 -->
-      <section class="settings-card">
-        <h2 class="settings-card__title">{{ t('settings.layout') }}</h2>
-        <p class="settings-card__hint text-placeholder">{{ t('settings.layoutHint') }}</p>
+      <section id="layout" class="settings-card settings-section">
+        <div class="settings-card__head">
+          <h2 class="settings-card__title">
+            <SettingIcon class="settings-card__icon" />
+            {{ t('settings.layout') }}
+          </h2>
+          <UiButton variant="outline" size="small" @click="layout.reset()">
+            <template #icon><RefreshIcon /></template>
+            {{ t('settings.resetLayout') }}
+          </UiButton>
+        </div>
+        <p class="settings-card__hint">{{ t('settings.layoutHint') }}</p>
         <div v-for="p in layoutPanes" :key="p.key" class="settings-layout">
           <div class="settings-layout__head">
-            <span class="settings-row__label">{{ p.label }}</span>
-            <span class="settings-row__value num">{{ layout.panes[p.key].width }}px</span>
+            <span class="settings-layout__name">{{ p.label }}</span>
+            <div class="settings-layout__tools">
+              <span class="settings-layout__value num">{{ layout.panes[p.key].width }}px</span>
+              <UiButton
+                variant="text"
+                size="small"
+                shape="square"
+                :aria-label="t('settings.resetPane', { name: p.label })"
+                :title="t('settings.resetPane', { name: p.label })"
+                @click="resetPane(p.key)"
+              >
+                <template #icon><RefreshIcon /></template>
+              </UiButton>
+            </div>
           </div>
           <UiSlider
             :model-value="layout.panes[p.key].width"
@@ -860,102 +1110,126 @@ function goBack() {
             :max="PANE_LIMITS[p.key].max"
             @change="onWidthChange(p.key, $event)"
           />
-          <div class="settings-seg settings-layout__seg" role="group" :aria-label="p.label">
-            <button
-              type="button"
-              :class="{ 'is-active': !layout.panes[p.key].drawer }"
-              @click="layout.setDrawer(p.key, false)"
-            >
-              {{ t('settings.docked') }}
-            </button>
-            <button
-              type="button"
-              :class="{ 'is-active': layout.panes[p.key].drawer }"
-              @click="layout.setDrawer(p.key, true)"
-            >
-              {{ t('settings.drawer') }}
-            </button>
-          </div>
+          <SettingsSegmented
+            class="settings-layout__seg"
+            :model-value="layout.panes[p.key].drawer ? 'drawer' : 'docked'"
+            :options="dockOptions"
+            :aria-label="p.label"
+            @update:model-value="layout.setDrawer(p.key, $event === 'drawer')"
+          />
         </div>
-        <UiButton class="settings-layout__reset" variant="outline" size="small" @click="layout.reset()">
-          {{ t('settings.resetLayout') }}
-        </UiButton>
       </section>
 
       <!-- 本地缓存 -->
-      <section class="settings-card">
-        <h2 class="settings-card__title">{{ t('settings.cache') }}</h2>
-        <p class="settings-card__hint text-placeholder">{{ t('settings.cacheHint') }}</p>
-
-        <div class="settings-row">
-          <div class="settings-row__text">
-            <span class="settings-row__label">{{ t('settings.cacheUsage') }}</span>
-            <span class="settings-row__hint text-placeholder">{{ t('settings.cacheUsageHint') }}</span>
-          </div>
+      <section id="cache" class="settings-card settings-section">
+        <h2 class="settings-card__title">
+          <DataIcon class="settings-card__icon" />
+          {{ t('settings.cache') }}
+        </h2>
+        <p class="settings-card__hint">{{ t('settings.cacheHint') }}</p>
+        <SettingsRow
+          :title="t('settings.cacheUsage')"
+          :description="t('settings.cacheUsageHint')"
+        >
           <span class="settings-row__value num">
             {{ cacheUsage ? formatBytes(cacheUsage.cacheBytes) : '—' }}
           </span>
-        </div>
-
-        <div class="settings-row">
-          <div class="settings-row__text">
-            <span class="settings-row__label">{{ t('settings.cachePrefs') }}</span>
-            <span class="settings-row__hint text-placeholder">{{ t('settings.cachePrefsHint') }}</span>
-          </div>
+        </SettingsRow>
+        <SettingsRow
+          :title="t('settings.cachePrefs')"
+          :description="t('settings.cachePrefsHint')"
+        >
           <span class="settings-row__value num">
             {{ cacheUsage ? formatBytes(cacheUsage.localStorageBytes) : '—' }}
           </span>
-        </div>
-
-        <div class="settings-row settings-row--last">
-          <div class="settings-row__text">
-            <span class="settings-row__label">{{ t('settings.cacheClear') }}</span>
-            <span class="settings-row__hint text-placeholder">{{ t('settings.cacheClearHint') }}</span>
-          </div>
+        </SettingsRow>
+        <SettingsRow
+          :title="t('settings.cacheClear')"
+          :description="t('settings.cacheClearHint')"
+          last
+        >
           <UiButton variant="outline" size="small" :loading="cacheBusy" @click="confirmClearCache">
             {{ t('settings.cacheClear') }}
           </UiButton>
-        </div>
+        </SettingsRow>
       </section>
 
-      <!-- 插件 -->
-      <section class="settings-card">
-        <h2 class="settings-card__title">{{ t('settings.plugins') }}</h2>
-        <div class="settings-row">
-          <div class="settings-row__text">
-            <span class="settings-row__label">{{ t('settings.pluginsLabel') }}</span>
-            <span class="settings-row__hint text-placeholder">{{ t('settings.pluginsHint') }}</span>
-          </div>
-          <UiButton variant="outline" size="small" @click="openPlugins">
-            {{ t('settings.openPlugins') }}
-          </UiButton>
-        </div>
-      </section>
-
-      <!-- 站长后台（仅站长可见） -->
-      <section v-if="auth.isAdmin" class="settings-card">
-        <h2 class="settings-card__title">{{ t('settings.admin') }}</h2>
-        <div class="settings-row">
-          <div class="settings-row__text">
-            <span class="settings-row__label">{{ t('settings.adminLabel') }}</span>
-            <span class="settings-row__hint text-placeholder">{{ t('settings.adminHint') }}</span>
-          </div>
-          <UiButton variant="outline" size="small" @click="openAdmin">
-            {{ t('settings.openAdmin') }}
-          </UiButton>
-        </div>
+      <!-- 数据与扩展 -->
+      <section id="extensions" class="settings-card settings-section">
+        <h2 class="settings-card__title">
+          <ExtensionIcon class="settings-card__icon" />
+          {{ t('settings.navDataExtensions') }}
+        </h2>
+        <SettingsRow
+          :title="t('settings.pluginsLabel')"
+          :description="t('settings.pluginsHint')"
+          link
+          @click="openPlugins"
+        >
+          <ChevronRightIcon class="settings-link-chevron" />
+        </SettingsRow>
+        <SettingsRow
+          v-if="auth.isAdmin"
+          :title="t('settings.adminLabel')"
+          :description="t('settings.adminHint')"
+          link
+          last
+          @click="openAdmin"
+        >
+          <ChevronRightIcon class="settings-link-chevron" />
+        </SettingsRow>
       </section>
 
       <!-- 关于 -->
-      <section class="settings-card">
-        <h2 class="settings-card__title">{{ t('settings.about') }}</h2>
-        <div class="settings-row settings-row--last">
-          <span class="settings-row__label">{{ t('settings.version') }}</span>
-          <span class="settings-row__value text-placeholder num">
+      <section id="about" class="settings-card settings-section">
+        <h2 class="settings-card__title">
+          <InfoCircleIcon class="settings-card__icon" />
+          {{ t('settings.about') }}
+        </h2>
+        <SettingsRow :title="t('settings.webVersion')">
+          <span class="settings-row__value num">{{ webVersion }}</span>
+        </SettingsRow>
+        <SettingsRow :title="t('settings.serverVersion')">
+          <span class="settings-row__value num">
             {{ build ? `${build.version} · ${build.commit}` : '—' }}
           </span>
-        </div>
+        </SettingsRow>
+        <SettingsRow :title="t('settings.copyVersion')" link @click="copyVersion">
+          <CopyIcon class="settings-link-chevron" />
+        </SettingsRow>
+        <SettingsRow :title="t('settings.changelog')" link @click="openChangelog">
+          <ChevronRightIcon class="settings-link-chevron" />
+        </SettingsRow>
+        <SettingsRow :title="t('settings.terms')" link @click="openLegal('/terms')">
+          <ChevronRightIcon class="settings-link-chevron" />
+        </SettingsRow>
+        <SettingsRow :title="t('settings.privacy')" link last @click="openLegal('/privacy')">
+          <ChevronRightIcon class="settings-link-chevron" />
+        </SettingsRow>
       </section>
+
+      <!-- 危险操作区：账号安全分组的页尾 -->
+      <section id="danger" class="settings-card settings-card--danger settings-section">
+        <h2 class="settings-card__title">
+          <LockOnIcon class="settings-card__icon" />
+          {{ t('settings.dangerZone') }}
+        </h2>
+        <p class="settings-card__hint">{{ t('settings.dangerZoneHint') }}</p>
+        <SettingsRow
+          :title="t('settings.logoutOthers')"
+          :description="t('settings.logoutOthersHint')"
+        >
+          <UiButton variant="outline" theme="danger" size="small" @click="confirmLogoutOthers">
+            {{ t('settings.logoutOthers') }}
+          </UiButton>
+        </SettingsRow>
+        <SettingsRow :title="t('settings.logout')" last>
+          <UiButton theme="danger" size="small" @click="confirmLogout">
+            {{ t('settings.logout') }}
+          </UiButton>
+        </SettingsRow>
+      </section>
+      </div>
     </div>
   </div>
 </template>
@@ -963,7 +1237,6 @@ function goBack() {
 <style scoped>
 .settings-page {
   min-height: 100%;
-  /* 透出 body 上的全站背景 */
   background: transparent;
   padding-bottom: 48px;
 }
@@ -990,81 +1263,194 @@ function goBack() {
   flex: 1;
 }
 
-.settings-body {
-  max-width: 880px;
+/* ≥1200px：左侧锚点 + 右侧内容；窄屏自动回到单列 */
+.settings-layout {
+  max-width: 1240px;
   margin: 0 auto;
-  padding: 32px 20px 0;
+  padding: 28px 20px 0;
+  display: grid;
+  grid-template-columns: 184px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.settings-anchors {
+  position: sticky;
+  top: 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.settings-anchors__group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-anchors__title {
+  padding: 0 10px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--td-text-color-secondary);
+  text-transform: uppercase;
+}
+
+.settings-anchors__link {
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: var(--mc-radius-sm);
+  background: transparent;
+  color: var(--td-text-color-secondary);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--mc-dur-instant) var(--mc-ease-out),
+    color var(--mc-dur-instant) var(--mc-ease-out);
+}
+
+.settings-anchors__link:hover {
+  background: var(--td-bg-color-container-hover);
+  color: var(--td-text-color-primary);
+}
+
+.settings-anchors__link.is-active {
+  background: var(--td-brand-color-light);
+  color: var(--td-brand-color);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--td-brand-color);
+}
+
+.settings-anchors__link:focus-visible {
+  outline: 2px solid var(--td-brand-color);
+  outline-offset: -2px;
+}
+
+.settings-body {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 18px;
 }
 
+.settings-section {
+  scroll-margin-top: 72px;
+}
+
 .settings-card {
   background: var(--td-bg-color-container);
-  border: 1px solid var(--mc-hairline);
+  border: 1px solid var(--td-component-border);
   border-radius: var(--mc-radius-lg);
   padding: 20px 20px 10px;
   box-shadow: var(--mc-shadow-1);
+  transition: border-color var(--mc-dur-instant) var(--mc-ease-out);
+}
+
+.settings-card:hover {
+  border-color: var(--td-brand-color-light);
+}
+
+:root[theme-mode='dark'] .settings-card {
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.settings-card--danger {
+  border-color: var(--danger-line);
+}
+
+.settings-card--danger .settings-card__title {
+  color: var(--td-error-color);
+}
+
+.settings-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
 }
 
 .settings-card__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0 0 4px;
   font-size: 16px;
   font-weight: 600;
   letter-spacing: -0.01em;
 }
 
-/* 行：左标签右控件，底部细分隔线 */
-.settings-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 16px 0;
-  border-bottom: 1px solid var(--mc-hairline);
+.settings-card__icon {
+  width: 16px;
+  height: 16px;
+  color: var(--td-brand-color);
+  flex-shrink: 0;
 }
 
-.settings-row--last {
-  border-bottom: none;
-}
-
-/* 卡片内最后一行不再保留分隔线，避免底部悬挂一条断线 */
-.settings-card > :last-child {
-  border-bottom: none;
-}
-
-.settings-row__label {
-  font-size: 14px;
+.settings-card__hint {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--td-text-color-secondary);
 }
 
 .settings-row__value {
   font-size: 13px;
+  color: var(--td-text-color-secondary);
 }
 
-/* 左侧「标题 + 说明」两行结构（插件 / 站长分区用） */
-.settings-row__text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
+.settings-input {
+  width: 280px;
+  max-width: 100%;
 }
 
-.settings-row__hint {
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-/* ===== 登录会话（各端设备） ===== */
-.settings-subhead {
-  display: flex;
+.settings-link-hint {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--mc-hairline);
+  gap: 4px;
+  color: var(--td-text-color-secondary);
+  font-size: 13px;
 }
 
+.settings-link-chevron {
+  width: 16px;
+  height: 16px;
+  color: var(--td-text-color-placeholder);
+}
+
+.settings-save-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: auto;
+  font-size: 12px;
+}
+
+.settings-save-state.is-muted {
+  color: var(--td-success-color);
+}
+
+.settings-save-state.is-warning {
+  color: var(--td-warning-color);
+}
+
+.settings-save-state.is-danger {
+  color: var(--td-error-color);
+}
+
+.settings-save-state__icon {
+  width: 14px;
+  height: 14px;
+}
+
+/* ===== 登录设备 ===== */
 .session-list {
   display: flex;
   flex-direction: column;
@@ -1073,22 +1459,53 @@ function goBack() {
 .session-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 10px 0;
+  gap: 12px;
+  padding: 12px 8px;
   border-bottom: 1px solid var(--mc-hairline);
+  border-radius: var(--mc-radius-sm);
+  transition: background-color var(--mc-dur-instant) var(--mc-ease-out);
+}
+
+.session-item:hover {
+  background: var(--td-bg-color-container-hover);
 }
 
 .session-item:last-child {
   border-bottom: none;
 }
 
-.session-current {
-  font-size: 12px;
-  color: var(--mc-link);
+.session-item__icon {
+  width: 18px;
+  height: 18px;
+  color: var(--td-text-color-secondary);
+  flex-shrink: 0;
 }
 
-/* ===== 两步验证恢复码 ===== */
+.session-item__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.session-item__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.session-item__meta {
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ===== 两步验证恢复码 / 表单 ===== */
 .settings-twofa-codes {
   margin: 0;
   padding: 12px 14px;
@@ -1099,72 +1516,6 @@ function goBack() {
   white-space: pre-wrap;
 }
 
-/* ===== 布局分区 ===== */
-.settings-card__hint {
-  margin: 0 0 6px;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.settings-layout {
-  padding: 12px 0;
-  border-bottom: 1px solid var(--mc-hairline);
-}
-
-.settings-layout__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 2px;
-}
-
-.settings-layout__seg {
-  margin-top: 10px;
-}
-
-.settings-layout__reset {
-  margin-top: 14px;
-}
-
-/* 分段控件 */
-.settings-seg {
-  display: inline-flex;
-  padding: 4px;
-  border-radius: var(--mc-radius-md);
-  background: var(--td-bg-color-secondarycontainer);
-  flex-wrap: wrap;
-  gap: 2px;
-}
-
-.settings-seg button {
-  padding: 5px 12px;
-  border: none;
-  border-radius: var(--mc-radius-sm);
-  background: transparent;
-  font: inherit;
-  font-size: 13px;
-  color: var(--td-text-color-secondary);
-  cursor: pointer;
-  white-space: nowrap;
-  transition:
-    background-color var(--mc-dur-fast) var(--mc-ease-out),
-    color var(--mc-dur-fast) var(--mc-ease-out),
-    box-shadow var(--mc-dur-fast) var(--mc-ease-out);
-}
-
-.settings-seg button.is-active {
-  background: var(--td-bg-color-container);
-  color: var(--td-text-color-primary);
-  font-weight: 500;
-  box-shadow: var(--mc-shadow-1);
-}
-
-.settings-seg button:focus-visible {
-  outline: 2px solid var(--td-brand-color);
-  outline-offset: 1px;
-}
-
-/* 换绑邮箱的验证码行 */
 .settings-code-row {
   display: flex;
   align-items: center;
@@ -1182,62 +1533,124 @@ function goBack() {
   white-space: nowrap;
 }
 
-/* 表单字段 */
 .settings-field {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 16px 0;
-  border-bottom: 1px solid var(--mc-hairline);
+  margin-top: 10px;
 }
 
-/* UiInput 根元素带本组件的 scope id，可直接命中。
-   输入框的 bg-surface 与卡片同色、8% 白的边框在暗色下几乎不可见，
-   改成「凹下去」的底色 + 明显一点的描边，输入边界才可辨认。 */
 .settings-field > div {
   background: var(--td-bg-color-page);
   border-color: var(--td-component-border);
 }
 
-.settings-field__label {
-  font-size: 14px;
-}
-
 .settings-field__hint {
   margin: 0;
   font-size: 12px;
+  color: var(--td-text-color-secondary);
 }
 
 .settings-actions {
-  padding: 16px 0;
   display: flex;
+  align-items: center;
   justify-content: flex-end;
-  border-bottom: 1px solid var(--mc-hairline);
+  gap: 10px;
+  padding: 12px 0 0;
 }
 
 .settings-placeholder {
   padding: 16px 0 20px;
   font-size: 13px;
+  color: var(--td-text-color-secondary);
 }
 
 .settings-placeholder a {
   margin-left: 8px;
 }
 
+/* ===== 布局 ===== */
+.settings-layout {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--mc-hairline);
+}
+
+.settings-layout:last-child {
+  border-bottom: none;
+}
+
+.settings-layout__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.settings-layout__name {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.settings-layout__tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.settings-layout__value {
+  min-width: 48px;
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  text-align: right;
+}
+
+.settings-layout__seg {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+@media (max-width: 1199px) {
+  .settings-layout {
+    max-width: 880px;
+    display: block;
+  }
+
+  .settings-anchors {
+    display: none;
+  }
+}
+
 @media (max-width: 560px) {
-  .settings-body {
+  .settings-layout {
     padding: 16px 12px 0;
   }
 
   .settings-card {
-    padding: 4px 16px 6px;
+    padding: 4px 16px 8px;
   }
 
-  /* 窄屏：标签与控件上下排列，避免右侧被挤压 */
-  .settings-row {
-    flex-direction: column;
+  .settings-card__head {
+    flex-wrap: wrap;
+  }
+
+  .settings-input {
+    width: 100%;
+  }
+
+  .session-item {
     align-items: flex-start;
-    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .session-item > :last-child {
+    margin-left: auto;
+  }
+
+  .settings-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 }
 </style>

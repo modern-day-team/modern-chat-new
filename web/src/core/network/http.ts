@@ -5,13 +5,42 @@ const TOKEN_KEY = 'mc_token'
 
 import { version as appVersion } from '../../../package.json'
 
+/** 从 UA 解析简洁客户端标签，供设置页「登录设备」直接展示。 */
+function detectClientType(): string {
+  if (typeof navigator === 'undefined' || !navigator.userAgent) return 'browser'
+  const ua = navigator.userAgent
+  const browser = /Edg\//.test(ua)
+    ? 'Edge'
+    : /OPR\//.test(ua)
+      ? 'Opera'
+      : /Firefox\//.test(ua)
+        ? 'Firefox'
+        : /Chrome\//.test(ua)
+          ? 'Chrome'
+          : /Version\/.*Safari\//.test(ua)
+            ? 'Safari'
+            : 'Browser'
+  const os = /Windows NT/.test(ua)
+    ? 'Windows'
+    : /Android/.test(ua)
+      ? 'Android'
+      : /iPhone|iPad|iPod/.test(ua)
+        ? 'iOS'
+        : /Mac OS X/.test(ua)
+          ? 'macOS'
+          : /Linux/.test(ua)
+            ? 'Linux'
+            : ''
+  return [browser, os].filter(Boolean).join(' · ')
+}
+
 /**
  * 客户端标识：服务端据此在会话列表里区分 Web / 桌面 / 移动端。
- * Web 端固定为 web/browser；桌面与移动端的构建可覆盖这些值。
+ * Web 端上报解析后的浏览器 + 系统，旧会话中的 browser 仍按「网页」展示。
  */
 export const CLIENT_IDENTITY = {
   platform: 'web',
-  clientType: 'browser',
+  clientType: detectClientType(),
   appVersion,
 } as const
 

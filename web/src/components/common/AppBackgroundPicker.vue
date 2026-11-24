@@ -23,6 +23,9 @@ const { t } = useAppI18n()
 const visible = ref(false)
 const imageBusy = ref(false)
 
+// 设置页把整行做成入口，需要能从父组件打开浮层
+defineExpose({ open: () => (visible.value = true) })
+
 const patternOptions: Array<{ value: AppBgPattern; label: string }> = [
   { value: 'none', label: 'settings.appBgPatternNone' },
   { value: 'grid', label: 'settings.appBgPatternGrid' },

@@ -1,3 +1,5 @@
+import { execSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
 
 import { defineConfig } from 'vite'
@@ -5,12 +7,29 @@ import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 import UnoCSS from 'unocss/vite'
 
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as {
+  version: string
+}
+let gitCommit = 'unknown'
+try {
+  gitCommit = execSync('git rev-parse --short HEAD', { cwd: fileURLToPath(new URL('.', import.meta.url)) })
+    .toString()
+    .trim()
+} catch {
+  /* 无 git 元数据时保留 unknown */
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => ({
   // 部署在 https://<站点>/app/ 下（根路径留给官网），dev / preview / build 统一走同一 base，
   // 避免「开发时正常、上线后资源 404」。站内跳转统一用 import.meta.env.BASE_URL 前缀；
   // /api、/ws、/uploads、/_dl 是服务端同源根路径，保持绝对路径不变。
   base: '/app/',
+  // 前端版本写进 bundle：设置页不再显示后端的 dev/unknown
+  define: {
+    __WEB_VERSION__: JSON.stringify(pkg.version),
+    __WEB_COMMIT__: JSON.stringify(gitCommit),
+  },
   // devtools 仅开发启用：生产构建不应包含它（体积与运行时开销）
   plugins: [vue(), UnoCSS(), ...(mode === 'development' ? [vueDevTools()] : [])],
   resolve: {

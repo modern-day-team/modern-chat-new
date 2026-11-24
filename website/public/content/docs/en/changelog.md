@@ -25,6 +25,13 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 - **Precompressed artifacts**: the marketing site and SSO build now emit `.gz` / `.br` files (the chat web app and Hub already did) for `gzip_static` delivery without runtime compression.
 - Measured in Chrome at 3 Mbps + 80 ms RTT: first contentful paint ≈1.34 s, ≈178 KB of static resources transferred; language switching verified.
 
+### Settings UX improvements
+
+- **Information architecture**: added a left anchor navigation with scroll highlighting at ≥1200px, grouped into Personalization / Account & security / Data & extensions / About; narrow screens remain single-column. The account area is now split into Profile, Signed-in devices and Danger zone cards.
+- **Controls and status**: added `SettingsRow` / `SettingsSegmented` and unified every row to “title + description on the left, control on the right”. Segmented controls use a solid brand selection with dimmed inactive options; current-device and 2FA states use tags; plugin/admin/background/version rows are clickable with chevrons; danger buttons are tiered as text / outline / solid.
+- **Content details**: sessions show relative time with the full ISO in a tooltip, loopback IPs show as “Local machine”, and UA strings are shown as e.g. “Chrome · Windows” with a device icon. The web version comes from Vite (`package.json` version + git hash); About can copy version info and links to the changelog and legal pages. Profile edits show dirty state and inline save errors.
+- **Visual and accessibility polish**: brighter dark-mode card borders, hover and focus-visible feedback, per-pane layout reset with aligned numeric values, “Reset layout” moved into the card header, and the dev-only Vue DevTools bubble moved to the bottom-right and shrunk on the settings page.
+
 ### Fixed
 
 - **Auth-page background picker fixed**: `UiPopup` used `props.visible === undefined` to detect uncontrolled mode, but Vue casts an omitted Boolean prop to `false`, so clicking the background button in `auth-top` never opened the panel. The prop now defaults to `undefined` explicitly, with regression tests for both uncontrolled and controlled modes.
