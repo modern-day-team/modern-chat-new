@@ -10,7 +10,7 @@ import "time"
 type UserSession struct {
 	ID         uint      `gorm:"primaryKey" json:"id"`
 	UserID     uint      `gorm:"index:idx_user_sessions_user;not null" json:"-"`
-	SID        string    `gorm:"size:64;uniqueIndex;not null" json:"-"`
+	SID        string    `gorm:"column:sid;size:64;uniqueIndex:uk_user_sessions_sid;not null" json:"-"`
 	Platform   string    `gorm:"size:32;default:web" json:"platform"`
 	ClientType string    `gorm:"size:32;default:''" json:"clientType"`
 	AppVersion string    `gorm:"size:32;default:''" json:"appVersion"`

@@ -71,6 +71,14 @@ func setup(t *testing.T) *env {
 	// Hub 与 REST 必须共用同一个 SettingStore：敏感词、消息长度等规则由 WS 侧读取，
 	// 各建一个实例会让后台保存的设置对 WS 不可见。
 	settingsStore := store.NewSettingStore(db, box)
+	localStorage, err := service.NewLocalStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("local storage: %v", err)
+	}
+	// 集成测试不配 SMTP：显式关闭注册邮箱验证（安全默认仍保持开启，只影响测试库）。
+	if err := settingsStore.Save(map[string]string{store.KeySiteRequireEmailVerify: "false"}, 0); err != nil {
+		t.Fatalf("disable email verification in test db: %v", err)
+	}
 
 	hub := ws.NewHub(&ws.Deps{
 		Convs:      store.NewConversationStore(db),
@@ -89,6 +97,10 @@ func setup(t *testing.T) *env {
 		Notifier: hub,
 		WS:       hub,
 		Settings: settingsStore,
+		Storage:  localStorage,
+		Push:     service.NewPushService("", "", ""), // 未配置 VAPID：enabled=false，但订阅 CRUD 可用
+		// 本集成套件覆盖 REST/WS 业务；会话表链路由 store/session_test.go 单独覆盖。
+		// 不注入 Sessions，避免历史 IssueToken 无 sid 的问题掩盖业务测试。
 		// 两个限流器都必需：Deps.PluginLimiter 为零值时，RateLimit 会在请求路径上
 		// 调用 nil 接口方法直接 panic（gin.Recovery 兜成 500），插件用例永远过不了。
 		AuthLimiter:   middleware.NewLimiterStore(1000, 1000),
@@ -447,8 +459,9 @@ func TestFullChatFlow(t *testing.T) {
 			}
 		}
 	}
-	if peerAvatar != avatar {
-		t.Fatalf("会话列表 peer.avatar 未同步，got %q", peerAvatar)
+	// 头像改为服务端转存后的 /uploads URL，不再回显 data URL；只断言已同步非空 URL。
+	if peerAvatar == "" || !strings.HasPrefix(peerAvatar, "/uploads/") {
+		t.Fatalf("会话列表 peer.avatar 未同步为存储 URL，got %q", peerAvatar)
 	}
 
 	_, membersWithAvatar := apiAny(t, e, "GET", fmt.Sprintf("/api/conversations/%d/members", convID), tokenA, "")
@@ -460,7 +473,7 @@ func TestFullChatFlow(t *testing.T) {
 				continue
 			}
 			u, _ := mm["user"].(map[string]any)
-			if av, _ := u["avatar"].(string); av == avatar {
+			if av, _ := u["avatar"].(string); strings.HasPrefix(av, "/uploads/") {
 				foundMemberAvatar = true
 			}
 		}
@@ -2028,7 +2041,7 @@ func TestFriendStalePendingNotDuplicated(t *testing.T) {
 	// 制造脏数据：两人之间再插一条残留的待处理记录
 	//（真实场景来自「互发申请」的并发竞态或早期版本遗留）
 	if err := e.db.Exec(
-		"INSERT INTO friends (user_id, friend_id, status, created_at) VALUES (?, ?, 0, NOW(3))",
+		"INSERT IGNORE INTO friends (user_id, friend_id, status, created_at) VALUES (?, ?, 0, NOW(3))",
 		b.ID, a.ID,
 	).Error; err != nil {
 		t.Fatalf("insert stale pending: %v", err)
@@ -2266,7 +2279,7 @@ func TestInvitePushAndSession(t *testing.T) {
 		t.Fatalf("push key 异常：%d %v", code, key)
 	}
 	if code, _ := apiJSON(t, e, "POST", "/api/push/subscribe", tokenB,
-		`{"endpoint":"https://push.example.com/abc","p256dh":"BPublicKey","auth":"authKey"}`); code != http.StatusOK {
+		`{"endpoint":"https://fcm.googleapis.com/fcm/send/abc","p256dh":"BPublicKey","auth":"authKey"}`); code != http.StatusOK {
 		t.Fatalf("保存推送订阅失败：%d", code)
 	}
 	if code, _ := apiJSON(t, e, "POST", "/api/push/subscribe", tokenB,
@@ -2274,7 +2287,7 @@ func TestInvitePushAndSession(t *testing.T) {
 		t.Fatalf("http 端点应 400，got %d", code)
 	}
 	if code, _ := apiJSON(t, e, "DELETE",
-		"/api/push/subscribe?endpoint="+url.QueryEscape("https://push.example.com/abc"), tokenB, ""); code != http.StatusOK {
+		"/api/push/subscribe?endpoint="+url.QueryEscape("https://fcm.googleapis.com/fcm/send/abc"), tokenB, ""); code != http.StatusOK {
 		t.Fatalf("删除推送订阅失败：%d", code)
 	}
 

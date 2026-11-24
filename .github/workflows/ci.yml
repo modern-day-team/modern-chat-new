@@ -3,7 +3,7 @@
 #
 # 与 release.yml 的分工：CI 管"每次提交都绿"，release.yml 管"发版产物"。
 # 注意：前端 lint 只做检查不改写（npm run lint 带 --fix，禁止在 CI 使用）。
-# 集成测试需本机 MySQL，CI 环境自动 t.Skip（go test 仍 ok，见 server/test/）。
+# server job 挂 MySQL 8 服务并运行 integration build-tag 测试；本地无库才会 t.Skip。
 # ============================================================================
 name: CI
 
@@ -32,6 +32,21 @@ jobs:
   server:
     name: 后端（Go）
     runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: modernchat_ci
+          MYSQL_DATABASE: modernchat_test
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pmodernchat_ci"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    env:
+      DB_DSN: root:modernchat_ci@tcp(127.0.0.1:3307)/modernchat_test?charset=utf8mb4&parseTime=True&loc=Local
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -49,9 +64,12 @@ jobs:
       - name: go vet
         working-directory: server
         run: go vet ./...
-      - name: go test（单元测试；集成测试无 MySQL 自动跳过）
+      - name: go test（单元测试）
         working-directory: server
         run: go test ./...
+      - name: go test（integration，真实 MySQL）
+        working-directory: server
+        run: go test -tags integration ./test/ -count=1
 
   web:
     name: 前端（web）

@@ -136,6 +136,17 @@ func Auth(users *store.UserStore, secret string, sessions ...*store.SessionStore
 			return
 		}
 		if sessionStore != nil {
+			// lazy 登记：签发时只把 sid 写进 JWT，首次认证请求才落库。
+			// 必须先 Touch 再查 ActiveBySID，否则新登录的第一个请求会被误判为
+			// "该设备已退出登录"（2026-11-24 集成测试发现的真实缺陷）。
+			if _, err := sessionStore.Touch(u.ID, cl.SID,
+				ClientPlatform(c.GetHeader("X-Client-Platform")),
+				SanitizeHeader(c.GetHeader("X-Client-Type")),
+				SanitizeHeader(c.GetHeader("X-Client-Version")),
+				c.ClientIP()); err != nil {
+				// 会话登记失败不阻断业务（老部署未跑新迁移时表不存在也能继续登录）
+				slog.Warn("auth touch session failed", "err", err.Error())
+			}
 			sess, err := sessionStore.ActiveBySID(cl.SID)
 			if err != nil {
 				slog.Error("auth load session", "err", err.Error())
@@ -145,16 +156,6 @@ func Auth(users *store.UserStore, secret string, sessions ...*store.SessionStore
 			if sess == nil {
 				abort401With(c, "该设备已退出登录，请重新登录")
 				return
-			}
-			// 首次请求落库 + 后续刷新活跃时间；IP / 客户端标识只在此处采集，
-			// 不经由 handler，避免每个 handler 重复解析请求头。
-			if _, err := sessionStore.Touch(u.ID, cl.SID,
-				ClientPlatform(c.GetHeader("X-Client-Platform")),
-				SanitizeHeader(c.GetHeader("X-Client-Type")),
-				SanitizeHeader(c.GetHeader("X-Client-Version")),
-				c.ClientIP()); err != nil {
-				// 会话登记失败不阻断业务（老部署未跑新迁移时表不存在也能继续登录）
-				slog.Warn("auth touch session failed", "err", err.Error())
 			}
 			c.Set("sid", cl.SID)
 		}

@@ -117,6 +117,15 @@ func Serve(
 		return
 	}
 	if sessionStore != nil {
+		q := r.URL.Query()
+		platform := middleware.ClientPlatform(firstNonEmpty(q.Get("platform"), r.Header.Get("X-Client-Platform")))
+		clientType := middleware.SanitizeHeader(firstNonEmpty(q.Get("clientType"), r.Header.Get("X-Client-Type")))
+		appVersion := middleware.SanitizeHeader(firstNonEmpty(q.Get("appVersion"), r.Header.Get("X-Client-Version")))
+		// 与 REST Auth 同口径：先 lazy 登记，再校验未撤销状态。
+		// 新登录 token 首次 WS 握手不应被会话表空行误判为"已退出登录"。
+		if _, err := sessionStore.Touch(u.ID, sid, platform, clientType, appVersion, r.RemoteAddr); err != nil {
+			slog.Warn("ws touch session failed", "err", err.Error())
+		}
 		sess, err := sessionStore.ActiveBySID(sid)
 		if err != nil {
 			slog.Error("ws load session", "err", err.Error())
@@ -126,13 +135,6 @@ func Serve(
 		if sess == nil {
 			http.Error(w, `{"error":"该设备已退出登录，请重新登录"}`, http.StatusUnauthorized)
 			return
-		}
-		q := r.URL.Query()
-		platform := middleware.ClientPlatform(firstNonEmpty(q.Get("platform"), r.Header.Get("X-Client-Platform")))
-		clientType := middleware.SanitizeHeader(firstNonEmpty(q.Get("clientType"), r.Header.Get("X-Client-Type")))
-		appVersion := middleware.SanitizeHeader(firstNonEmpty(q.Get("appVersion"), r.Header.Get("X-Client-Version")))
-		if _, err := sessionStore.Touch(u.ID, sid, platform, clientType, appVersion, r.RemoteAddr); err != nil {
-			slog.Warn("ws touch session failed", "err", err.Error())
 		}
 	}
 	// 维护模式下非管理员不许建连：REST 已经被中间件挡住，
