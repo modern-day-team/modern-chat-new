@@ -75,7 +75,7 @@ func (h *AdminUpdateHandler) Check(c *gin.Context) {
 	}
 	res, err := h.updater.Check()
 	if err != nil {
-		fail(c, http.StatusBadRequest, err.Error())
+		internal(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, res)

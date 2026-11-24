@@ -11,6 +11,7 @@
     "type-check": "vue-tsc --noEmit"
   },
   "dependencies": {
+    "dompurify": "^3.5.0",
     "marked": "^15.0.12",
     "vue": "^3.5.42",
     "vue-i18n": "^11.4.16",

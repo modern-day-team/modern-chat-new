@@ -79,6 +79,10 @@ type Config struct {
 	VAPIDSubject    string
 	Redis           RedisConfig
 	SMTP            SMTPConfig
+	// TLSCertFile / TLSKeyFile：可选 TLS 证书路径。两项都设置时服务端启用 HTTPS，
+	// 否则以明文 HTTP 运行（依赖前置反向代理终止 TLS）。
+	TLSCertFile string
+	TLSKeyFile  string
 }
 
 // RedisConfig 可选：配置后限流使用 Redis 共享配额，连接失败自动降级为内存。
@@ -132,11 +136,13 @@ func (c Config) SSOEnabled() bool {
 // Load 读取环境变量。JWT_SECRET 规则：
 //   - 生产（GIN_MODE=release）必须显式设置且 ≥32 字节，否则拒绝启动；
 //   - 开发模式缺省时生成随机值并告警（重启即全端失效）。
+//
+// DB_DSN 规则：无弱默认值，必须显式配置（开发模式同样要求），避免静默以 root:root 连接。
 func Load() (Config, error) {
 	cfg := Config{
 		Port:                getv("PORT", "8080"),
 		GinMode:             getv("GIN_MODE", "release"),
-		DBDSN:               getv("DB_DSN", "root:root@tcp(127.0.0.1:3306)/modernchat?charset=utf8mb4&parseTime=True&loc=Local"),
+		DBDSN:               getv("DB_DSN", ""),
 		JWTSecret:           os.Getenv("JWT_SECRET"),
 		LogLevel:            getv("LOG_LEVEL", "info"),
 		LegacyAPISecret:     getv("LEGACY_API_SECRET", ""),
@@ -189,6 +195,8 @@ func Load() (Config, error) {
 			// 生产默认不把可用令牌写进日志；本地开发保留便利
 			LogResetLink: getBool("LOG_RESET_LINK", getv("GIN_MODE", "release") != "release"),
 		},
+		TLSCertFile: os.Getenv("TLS_CERT_FILE"),
+		TLSKeyFile:  os.Getenv("TLS_KEY_FILE"),
 	}
 	// 前端来源：逗号分隔，用于 WS Origin 白名单与找回密码链接。
 	// 必须先 TrimSpace 再 TrimSuffix：配置项写成 "https://a.com/, https://b.com/ " 时，
@@ -230,6 +238,21 @@ func Load() (Config, error) {
 		}
 		cfg.JWTSecret = randomHex(32)
 		fmt.Fprintln(os.Stderr, "WARN: JWT_SECRET 未设置，已生成随机值（重启后所有登录态失效；仅限本地开发）")
+	}
+	// 生产模式开启 LOG_RESET_LINK 会把含可用令牌的重置链接写入日志，
+	// 任何能读日志的人都能拿到该链接重置密码。默认强制关闭；确需开启
+	// （如临时排查）必须显式设置 ALLOW_RESET_LINK_IN_LOGS=true。
+	if cfg.GinMode == "release" && cfg.SMTP.LogResetLink {
+		if os.Getenv("ALLOW_RESET_LINK_IN_LOGS") != "true" {
+			cfg.SMTP.LogResetLink = false
+			fmt.Fprintln(os.Stderr, "WARN: 生产模式已强制关闭 LOG_RESET_LINK（含可用令牌的重置链接会写入日志）；确需开启请显式设置 ALLOW_RESET_LINK_IN_LOGS=true 并限制日志访问。")
+		} else {
+			fmt.Fprintln(os.Stderr, "WARN: 生产模式 LOG_RESET_LINK=true 且已显式允许，日志将含可用密码重置链接，请确保日志访问权限受控。")
+		}
+	}
+	// DB_DSN 无弱默认值：未显式设置时拒绝启动，避免静默以 root:root 等弱凭据连接数据库
+	if strings.TrimSpace(cfg.DBDSN) == "" {
+		return cfg, fmt.Errorf("必须显式设置 DB_DSN 环境变量（连接字符串，如 root:密码@tcp(127.0.0.1:3306)/modernchat）")
 	}
 	return cfg, nil
 }

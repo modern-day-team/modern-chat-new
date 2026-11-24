@@ -228,7 +228,7 @@ func (h *OpsHandler) RunBackup(c *gin.Context) {
 	file, err := h.backup.RunOnce()
 	if err != nil {
 		slog.Error("manual backup failed", "err", err.Error())
-		fail(c, http.StatusInternalServerError, "备份失败："+err.Error())
+		internal(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true, "file": filepath.Base(file)})

@@ -37,11 +37,17 @@ ARG APK_MIRROR=dl-cdn.alpinelinux.org
 RUN if [ "${APK_MIRROR}" != "dl-cdn.alpinelinux.org" ]; then \
         sed -i "s|https://dl-cdn.alpinelinux.org|https://${APK_MIRROR}|g" /etc/apk/repositories; \
     fi \
-    && apk add --no-cache ca-certificates tzdata
+    && apk add --no-cache ca-certificates tzdata \
+    && adduser -D -u 10001 -h /app appuser
 WORKDIR /app
 
 COPY --from=build /out/modernchat-server .
 COPY --from=build /src/migrations ./migrations
+
+# 运行时以非 root 用户运行，降低容器被攻破后的横向移动风险
+# data/ 与 logs/ 目录归 appuser 所有，确保读写权限
+RUN mkdir -p /app/data /app/logs && chown -R appuser:appuser /app
+USER appuser
 
 EXPOSE 8080
 ENTRYPOINT ["./modernchat-server"]

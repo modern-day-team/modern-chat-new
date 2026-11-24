@@ -399,7 +399,7 @@ func (h *AdminHandler) TestStorage(c *gin.Context) {
 	}
 	s, err := service.NewStorage(cfg)
 	if err != nil {
-		fail(c, http.StatusBadRequest, err.Error())
+		internal(c, err)
 		return
 	}
 	probe, ok := s.(interface{ Probe() error })
@@ -408,7 +408,7 @@ func (h *AdminHandler) TestStorage(c *gin.Context) {
 		return
 	}
 	if err := probe.Probe(); err != nil {
-		fail(c, http.StatusBadRequest, err.Error())
+		internal(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true, "provider": ss.Provider, "endpoint": service.ResolveEndpoint(ss.Provider, ss.Endpoint, service.ResolveRegion(ss.Provider, ss.Region))})
@@ -435,7 +435,7 @@ func (h *AdminHandler) TestSMTP(c *gin.Context) {
 	h.reloadSMTP() // 确保用最新配置
 	if err := h.mailer.SendTest(to); err != nil {
 		slog.Warn("smtp test failed", "to", to, "err", err.Error())
-		c.JSON(http.StatusBadRequest, gin.H{"error": "发送失败：" + err.Error()})
+		fail(c, http.StatusBadRequest, "发送失败，请检查邮件服务器配置")
 		return
 	}
 	h.audit(c, "test_smtp", "system", 0, "SMTP", "to="+to)

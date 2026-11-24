@@ -238,9 +238,16 @@ func main() {
 		IdleTimeout:       90 * time.Second,
 	}
 	go func() {
-		slog.Info("server started", "port", cfg.Port, "mode", cfg.GinMode)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			slog.Error("listen", "err", err)
+		slog.Info("server started", "port", cfg.Port, "mode", cfg.GinMode, "tls", cfg.TLSCertFile != "" && cfg.TLSKeyFile != "")
+		var serveErr error
+		if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
+			// 配置了证书则直接启用 HTTPS，不再依赖前置反向代理
+			serveErr = srv.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile)
+		} else {
+			serveErr = srv.ListenAndServe()
+		}
+		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			slog.Error("listen", "err", serveErr)
 			os.Exit(1)
 		}
 	}()

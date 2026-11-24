@@ -12,7 +12,7 @@ var envKeys = []string{
 	"PORT", "GIN_MODE", "DB_DSN", "JWT_SECRET", "LOG_LEVEL", "MIGRATE",
 	"PLUGIN_MAX_SIZE", "FRONTEND_URL", "TRUSTED_PROXIES", "LOG_DIR", "LOG_RETAIN_DAYS",
 	"REDIS_ADDR", "REDIS_PASSWORD", "REDIS_DB",
-	"SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "SMTP_FROM",
+	"SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "SMTP_FROM", "LOG_RESET_LINK", "ALLOW_RESET_LINK_IN_LOGS",
 }
 
 // isolateEnv 清空 Load 相关的环境变量，按 set 设置，测试结束自动还原。
@@ -33,6 +33,11 @@ func isolateEnv(t *testing.T, set map[string]string) {
 	// 多数用例关注的是别的字段，不应被这条安全限制干扰（需要测它的用例会显式覆盖）。
 	if _, ok := set["GIN_MODE"]; !ok {
 		_ = os.Setenv("GIN_MODE", "debug")
+	}
+	// DB_DSN 已无弱默认值：多数用例不关心连接串，注入一个纯测试值；
+	// 需要验证"未设置即报错"的用例显式传空串覆盖。
+	if _, ok := set["DB_DSN"]; !ok {
+		_ = os.Setenv("DB_DSN", "root:test@tcp(127.0.0.1:3306)/config_test")
 	}
 	for k, v := range set {
 		_ = os.Setenv(k, v)
@@ -227,6 +232,43 @@ func TestLoadJWTSecretRules(t *testing.T) {
 	}
 	if c.JWTSecret != secret {
 		t.Fatalf("JWT_SECRET 应原样保留，got %q", c.JWTSecret)
+	}
+}
+
+// TestLoadRequiresExplicitDBDSN 无弱默认值：未设置 DB_DSN 必须拒绝启动。
+func TestLoadRequiresExplicitDBDSN(t *testing.T) {
+	isolateEnv(t, map[string]string{"DB_DSN": ""})
+	if _, err := Load(); err == nil {
+		t.Fatal("未设置 DB_DSN 应报错（不允许弱默认连接串）")
+	}
+}
+
+// TestLoadReleaseForcesLogResetLinkOff 生产模式默认强制关闭重置链接写日志，
+// 仅显式 ALLOW_RESET_LINK_IN_LOGS=true 才允许（审计 F-02）。
+func TestLoadReleaseForcesLogResetLinkOff(t *testing.T) {
+	secret := strings.Repeat("a", 32)
+	base := map[string]string{
+		"GIN_MODE": "release", "JWT_SECRET": secret, "DB_DSN": "root:pw@tcp(127.0.0.1:3306)/x",
+		"LOG_RESET_LINK": "true",
+	}
+
+	isolateEnv(t, base)
+	c, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.SMTP.LogResetLink {
+		t.Fatal("生产模式未显式允许时 LOG_RESET_LINK 应被强制关闭")
+	}
+
+	base["ALLOW_RESET_LINK_IN_LOGS"] = "true"
+	isolateEnv(t, base)
+	c, err = Load()
+	if err != nil {
+		t.Fatalf("Load with override: %v", err)
+	}
+	if !c.SMTP.LogResetLink {
+		t.Fatal("显式 ALLOW_RESET_LINK_IN_LOGS=true 时应保留 LOG_RESET_LINK")
 	}
 }
 

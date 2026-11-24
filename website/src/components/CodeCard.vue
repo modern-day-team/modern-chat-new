@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import DOMPurify from 'dompurify'
 
 import UiIcon from './UiIcon.vue'
 
 /**
  * 代码块：高亮由调用方传 HTML（站点里只有 2-3 段固定代码，
  * 引 highlight.js 会让体积翻倍，不划算）；复制走 clipboard。
+ * v-html 渲染前经 DOMPurify 净化，防止传入内容含 XSS 向量。
  */
 const props = withDefaults(
   defineProps<{
@@ -21,6 +23,9 @@ const props = withDefaults(
 const { t } = useI18n()
 const done = ref(false)
 let timer: ReturnType<typeof setTimeout> | undefined
+
+// 净化 HTML，去除 <script>、事件处理器、javascript: 链接等危险内容
+const safeHtml = computed(() => DOMPurify.sanitize(props.html, { USE_PROFILES: { html: true } }))
 
 async function copy() {
   if (!props.raw) return
@@ -45,6 +50,6 @@ async function copy() {
       </button>
     </div>
     <!-- eslint-disable-next-line vue/no-v-html -->
-    <pre><code v-html="html" /></pre>
+    <pre><code v-html="safeHtml" /></pre>
   </div>
 </template>

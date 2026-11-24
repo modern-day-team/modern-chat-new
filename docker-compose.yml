@@ -5,7 +5,11 @@
 #
 # 说明：
 # - 首次启动 MIGRATE=true 会执行 server/migrations 建表
-# - JWT_SECRET 请换成自己的随机串（openssl rand -hex 32）
+# - JWT_SECRET 与 MYSQL_ROOT_PASSWORD 必须显式设置，不再提供弱默认值。
+#   启动前创建 .env 文件（参考 .env.example），或直接导出环境变量：
+#     export JWT_SECRET=$(openssl rand -hex 32)
+#     export MYSQL_ROOT_PASSWORD=$(openssl rand -base64 24)
+#   未设置时 compose 会报错并提示，不会以弱凭据启动。
 # - 前端已构建时，可把 web/dist 挂到 nginx 容器，见文末注释
 # - 版本注入：VERSION / COMMIT / BUILD_TIME 作为 build args 传给 server/Dockerfile，
 #   未设置时回退 dev / unknown（构建上下文没有 .git 也不影响构建）。构建机有 git 时：
@@ -21,18 +25,19 @@ services:
     container_name: modernchat-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: root
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD must be set (use: openssl rand -base64 24)}"
       MYSQL_DATABASE: modernchat
       TZ: Asia/Shanghai
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
     ports:
-      - "3306:3306"
+      # 仅绑定宿主机回环地址，避免 MySQL 端口暴露到所有网络接口
+      - "127.0.0.1:3306:3306"
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
+      test: ["CMD", "sh", "-c", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$MYSQL_ROOT_PASSWORD\""]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -58,8 +63,8 @@ services:
     environment:
       PORT: "8080"
       GIN_MODE: release
-      DB_DSN: "root:root@tcp(mysql:3306)/modernchat?charset=utf8mb4&parseTime=True&loc=Local"
-      JWT_SECRET: "dev-only-secret-please-change-32-bytes-min"
+      DB_DSN: "root:${MYSQL_ROOT_PASSWORD}@tcp(mysql:3306)/modernchat?charset=utf8mb4&parseTime=True&loc=Local"
+      JWT_SECRET: "${JWT_SECRET:?JWT_SECRET must be set (use: openssl rand -hex 32)}"
       LOG_LEVEL: info
       MIGRATE: "true"
       FRONTEND_URL: "http://localhost:5173"

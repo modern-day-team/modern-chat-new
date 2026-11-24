@@ -289,7 +289,7 @@ func (h *AuthHandler) SSOCallback(c *gin.Context) {
 	u, err := h.ssoLinkUser(profile)
 	if err != nil {
 		slog.Warn("sso link user failed", "err", err.Error())
-		fail(c, http.StatusBadRequest, err.Error())
+		internal(c, err)
 		return
 	}
 	ticket, err := ssoIssueTicket(u.ID)

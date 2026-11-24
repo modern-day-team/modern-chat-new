@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
+import DOMPurify from 'dompurify'
 
 import { currentLang } from '@/i18n'
 
@@ -222,7 +223,10 @@ async function renderMd(md: string, fallbackNote: boolean) {
     const mapped = LINK_MAP[base] ?? base
     return `href="/docs/${mapped}${hash ?? ''}"`
   })
-  return fallbackNote ? `<p class="docs-fallback">${t('docs.enMissing')}</p>${rewritten}` : rewritten
+  // 净化：marked 不净化输出 HTML，用 DOMPurify 去除 <script>、javascript: 链接、
+  // 事件处理器等危险内容，防止文档被篡改后的存储型 XSS
+  const safe = DOMPurify.sanitize(rewritten, { USE_PROFILES: { html: true } })
+  return fallbackNote ? `<p class="docs-fallback">${t('docs.enMissing')}</p>${safe}` : safe
 }
 
 /** 文档内跳转走前端路由，避免整页刷新（静态托管下会 404） */

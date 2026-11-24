@@ -1,0 +1,23 @@
+# 凭据与本地环境文件：绝不进入构建上下文
+.env
+.env.*
+!.env.example
+
+# 本地构建产物
+*.exe
+*.exe.*
+
+# Git
+.git
+.gitignore
+
+# 测试与覆盖率
+*.test
+*.out
+coverage.*
+
+# 文档与编辑器
+*.md
+!README.md
+.vscode/
+.idea/

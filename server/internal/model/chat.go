@@ -246,10 +246,11 @@ type Sticker struct {
 }
 
 // PasswordReset 找回密码令牌：crypto/rand 32 字节 hex（64 字符），15 分钟有效，一次性。
+// 库里只存 sha256 哈希（TokenHash），不存明文令牌。
 type PasswordReset struct {
 	ID        uint      `gorm:"primaryKey" json:"-"`
 	UserID    uint      `json:"-"`
-	Token     string    `gorm:"size:64;uniqueIndex" json:"-"`
+	TokenHash string    `gorm:"size:64;uniqueIndex" json:"-"`
 	ExpiresAt time.Time `json:"-"`
 	Used      bool      `json:"-"`
 	CreatedAt time.Time `json:"-"`

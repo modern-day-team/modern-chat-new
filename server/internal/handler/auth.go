@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -448,12 +447,7 @@ func (h *AuthHandler) Forgot(c *gin.Context) {
 	}
 	if u != nil {
 		token := randomToken(32)
-		pr := &model.PasswordReset{
-			UserID:    u.ID,
-			Token:     token,
-			ExpiresAt: time.Now().Add(15 * time.Minute),
-		}
-		if err := h.resets.Create(pr); err != nil {
+		if err := h.resets.Create(u.ID, token); err != nil {
 			internal(c, err)
 			return
 		}
@@ -588,7 +582,7 @@ func (h *AuthHandler) EmailCode(c *gin.Context) {
 		fail(c, http.StatusServiceUnavailable, "验证邮件发送失败，请联系管理员检查邮件服务")
 		return
 	}
-	slog.Info("email verify code sent", "email", email, "ip", c.ClientIP())
+	slog.Info("email verify code sent", "ip", c.ClientIP())
 	c.JSON(http.StatusOK, gin.H{"ok": true, "cooldownSeconds": int(store.EmailCodeCooldown.Seconds())})
 }
 
@@ -842,7 +836,7 @@ func (h *AuthHandler) EmailCodeChange(c *gin.Context) {
 		fail(c, http.StatusServiceUnavailable, "验证邮件发送失败，请稍后重试")
 		return
 	}
-	slog.Info("email change code sent", "uid", u.ID, "email", email)
+	slog.Info("email change code sent", "uid", u.ID)
 	c.JSON(http.StatusOK, gin.H{"ok": true, "cooldownSeconds": int(store.EmailCodeCooldown.Seconds())})
 }
 

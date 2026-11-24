@@ -1,6 +1,8 @@
 package store
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"time"
 
@@ -14,12 +16,26 @@ type PasswordResetStore struct{ db *gorm.DB }
 
 func NewPasswordResetStore(db *gorm.DB) *PasswordResetStore { return &PasswordResetStore{db: db} }
 
-func (s *PasswordResetStore) Create(pr *model.PasswordReset) error { return s.db.Create(pr).Error }
+// hashToken 对令牌做 sha256 哈希，库中只存哈希不存明文。
+func hashToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
 
-// Valid 查有效令牌：未使用且未过期。
+// Create 创建找回密码令牌：传入明文令牌，内部哈希后入库。
+func (s *PasswordResetStore) Create(userID uint, token string) error {
+	pr := &model.PasswordReset{
+		UserID:    userID,
+		TokenHash: hashToken(token),
+		ExpiresAt: time.Now().Add(15 * time.Minute),
+	}
+	return s.db.Create(pr).Error
+}
+
+// Valid 查有效令牌：未使用且未过期。传入明文令牌，内部哈希后查询。
 func (s *PasswordResetStore) Valid(token string) (*model.PasswordReset, error) {
 	var pr model.PasswordReset
-	err := s.db.Where("token = ? AND used = ? AND expires_at > ?", token, false, time.Now()).
+	err := s.db.Where("token_hash = ? AND used = ? AND expires_at > ?", hashToken(token), false, time.Now()).
 		First(&pr).Error
 	if err == gorm.ErrRecordNotFound {
 		return nil, nil
