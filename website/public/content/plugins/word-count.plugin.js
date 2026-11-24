@@ -26,7 +26,7 @@ function __mcActivate(api) {
     if (raw) {
       try {
         stats = JSON.parse(raw)
-      } catch (e) {
+      } catch {
         /* 数据损坏则从零开始 */
       }
     }

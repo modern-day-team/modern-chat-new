@@ -31,7 +31,7 @@ function __mcActivate(api) {
     if (raw) {
       try {
         weather = JSON.parse(raw)
-      } catch (e) {
+      } catch {
         /* 数据损坏则用默认值 */
       }
     }

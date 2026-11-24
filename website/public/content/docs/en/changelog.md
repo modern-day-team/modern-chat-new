@@ -20,6 +20,7 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 
 ### Fixed
 
+- **Lint errors fixed**: the marketing site now has `oxlint` / `eslint` config and dependencies (same setup as the main web app), a `npm run lint` script and a CI lint gate. Two example plugins (weather / word-count) replaced unused `catch (e)` with optional catch bindings, keeping the website copies in sync with `plugins/examples/`. An obsolete `.vue` module declaration was removed while retaining the Vite client type reference.
 - **Frontend layout stability (CLS)**: fixed the async-content shifts behind a measured CLS of 0.751 (FCP/LCP 0.5 s, TBT 240 ms). The marketing site now reserves a full first screen for the async route view and 60vh for Markdown bodies so the footer and pager no longer jump. The web login screen reserves the SSO button slot and only toggles visibility. Message images use a fixed 4:3 container with `object-fit: contain`, so decoding no longer expands the virtual list. The typing hint is an overlay above the composer, and the maintenance screen is a fixed overlay instead of replacing the whole RouterView. Message images still must not use `loading="lazy"` because virtual-list measurement depends on it.
 
 ---
