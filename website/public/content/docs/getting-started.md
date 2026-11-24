@@ -68,7 +68,7 @@
 | 层 | 选型 |
 |---|---|
 | 前端 | Vue 3 + Vite + TypeScript + Pinia + Vue Router |
-| UI | **UnoCSS 原子类 + 自研控件层 `components/ui/Ui*`**（13 个组件）；`tdesign-vue-next` 仅剩后台表格、页签与认证页表单。颜色/圆角/字号/动效全部走 `--td-*` 与 `--mc-*` 令牌，插件可直接换肤 |
+| UI | **UnoCSS 原子类 + 自研控件层 `components/ui/Ui*`**（15 个组件）；`tdesign-vue-next` 仅剩后台表格、页签与认证页表单。颜色/圆角/字号/动效全部走 `--td-*` 与 `--mc-*` 令牌，插件可直接换肤 |
 | 大列表 | vue-virtual-scroller（消息流虚拟滚动） |
 | 存储 | 本地磁盘（`DATA_DIR/uploads`）或 **S3 兼容对象存储**（MinIO / AWS S3 / OSS / COS），后台可切 |
 | 实时 | 原生 WebSocket 封装（心跳 25s + 指数退避重连） |
@@ -102,7 +102,7 @@ modernchat-new/
 │   │   ├── service/            # mailer / storage(本地+S3) / push / backup / updater
 │   │   ├── logx/ metrics/      # 日志轮转 / Prometheus 指标
 │   │   └── router/             # 全部路由与中间件装配
-│   ├── migrations/             # 0001_init … 0032_user_avatar_thumb（版本化 SQL）
+│   ├── migrations/             # 0001_init … 0034_password_reset_token_hash（版本化 SQL）
 │   ├── test/                   # 集成测试（-tags integration；需 MySQL，详见 server/README）
 │   └── Dockerfile
 ├── web/                        # Vue 前端
@@ -111,7 +111,7 @@ modernchat-new/
 │       ├── stores/             # auth / ws / conversations / friends / favorites / plugins / prefs / layout / site
 │       ├── composables/        # useWebSocket、usePluginHost、notifications、announcement、localCache、useOverlay
 │       ├── components/
-│       │   ├── ui/             # 13 个自研控件（UiButton/UiInput/UiDialog/UiDrawer/…）
+│       │   ├── ui/             # 15 个自研控件（UiButton/UiInput/UiDialog/UiDrawer/…）
 │       │   ├── chat/           # 图标栏 / 分组栏 / 会话列表 / 消息流 / 输入区 / 详情面板 /
 │       │   │                   # 插件抽屉 / 收藏抽屉 / 通知抽屉 / 语音气泡 / 资料卡 / 头像
 │       │   ├── common/         # AuthScene / QuickPrefs / AppBackgroundPicker / PaneResizer / ContextMenu

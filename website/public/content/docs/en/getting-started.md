@@ -66,7 +66,7 @@ A **frontend-backend separated, plugin-first** web chat platform. It works out o
 | Layer | Choice |
 |---|---|
 | Frontend | Vue 3 + Vite + TypeScript + Pinia + Vue Router |
-| UI | **UnoCSS atomic classes + in-house control layer `components/ui/Ui*`** (13 components); `tdesign-vue-next` remains only for admin tables, tabs and auth-page forms. Colors/radii/font sizes/motion all use the `--td-*` and `--mc-*` tokens, so plugins can reskin directly |
+| UI | **UnoCSS atomic classes + in-house control layer `components/ui/Ui*`** (15 components); `tdesign-vue-next` remains only for admin tables, tabs and auth-page forms. Colors/radii/font sizes/motion all use the `--td-*` and `--mc-*` tokens, so plugins can reskin directly |
 | Long lists | vue-virtual-scroller (virtual scrolling for message streams) |
 | Storage | Local disk (`DATA_DIR/uploads`) or **S3-compatible object storage** (MinIO / AWS S3 / OSS / COS), switchable in the admin console |
 | Realtime | Native WebSocket wrapper (25s heartbeat + exponential-backoff reconnect) |
@@ -100,7 +100,7 @@ modernchat-new/
 │   │   ├── service/            # mailer / storage(local+S3) / push / backup / updater
 │   │   ├── logx/ metrics/      # Log rotation / Prometheus metrics
 │   │   └── router/             # All routes & middleware wiring
-│   ├── migrations/             # 0001_init … 0032_user_avatar_thumb (versioned SQL)
+│   ├── migrations/             # 0001_init … 0034_password_reset_token_hash (versioned SQL)
 │   ├── test/                   # Integration tests (-tags integration; needs MySQL, see server/README)
 │   └── Dockerfile
 ├── web/                        # Vue frontend
@@ -109,7 +109,7 @@ modernchat-new/
 │       ├── stores/             # auth / ws / conversations / friends / favorites / plugins / prefs / layout / site
 │       ├── composables/        # useWebSocket, usePluginHost, notifications, announcement, localCache, useOverlay
 │       ├── components/
-│       │   ├── ui/             # 13 in-house controls (UiButton/UiInput/UiDialog/UiDrawer/…)
+│       │   ├── ui/             # 15 in-house controls (UiButton/UiInput/UiDialog/UiDrawer/…)
 │       │   ├── chat/           # icon rail / group pane / conversation list / message stream / composer / detail panel /
 │       │   │                   # plugin drawer / favorites drawer / notification drawer / voice bubble / profile card / avatar
 │       │   ├── common/         # AuthScene / QuickPrefs / AppBackgroundPicker / PaneResizer / ContextMenu
