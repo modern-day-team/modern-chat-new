@@ -186,6 +186,9 @@ go run ./cmd/server        # :8080
 cd web
 npm install
 npm run dev                # http://localhost:5173，已代理 /api 与 /ws 到 :8080
+
+# 官网（可选，另开终端）
+cd website && npm run dev  # http://localhost:5174；开发态「进入聊天室」会跳到 :5173/app/
 ```
 
 首个注册的用户自动成为站长（可访问 `/admin`：用户封禁 / 重置密码 / 插件全局下架）。

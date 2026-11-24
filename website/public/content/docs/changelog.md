@@ -30,6 +30,7 @@
 - **CI 真正运行集成测试**：server job 挂 MySQL 8 服务并以 `-tags integration` 执行 `server/test/`；修复过程中发现并解决两个真实问题——`UserSession.SID` 未显式声明列名导致 AutoMigrate 生成 `s_id`，REST/WS 在 lazy 登记前就查会话导致新登录首个请求 401
 - **清理脚手架残留**：删除 `web/eslint.config.ts` 中未使用的 Vue ESLint 模板注释（与主仓库其余前端配置保持一致）
 - **文档数字校准**：README 自研控件 13→15、迁移上限 0032→0034
+- **修复开发环境下官网「进入聊天室」无法跳转**：开发态入口改为指向 `http://<当前主机>:5173/app/`（生产仍为同源 `/app/`），避免 `/app/` 被官网 dev server 的 history fallback 接住后跳回首页
 - **修复 lint 报错**：官网补齐 `oxlint` / `eslint` 配置与依赖（与主仓库 web 同体系，新增 `npm run lint`），CI 官网 job 增加 lint 门禁；两个示例插件（weather / word-count）的未使用 `catch (e)` 改为可选 catch binding，官网副本与 `plugins/examples/` 真源同步；移除一条无用的 `.vue` 模块声明（保留 Vite 客户端类型引用）
 - **前端布局稳定性（CLS）**：针对 Lighthouse 实测 CLS 0.751（FCP/LCP 0.5s、TBT 240ms）集中修复异步内容造成的位移。官网给路由视图预留首屏高度、给文档正文预留 60vh，页脚与翻页导航不再被内容插入顶走；web 登录页 SSO 入口改为占位后切可见性；消息图片容器固定 4:3 且 `object-fit: contain`，不再加载完成后撑高虚拟列表；typing 提示改浮层，不推输入框；维护页改固定覆盖层，不再整页替换 RouterView。消息图片仍禁止 `loading="lazy"`（虚拟列表测量依赖）。
 

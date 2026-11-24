@@ -19,4 +19,11 @@ export const INSTALL_CMD = `curl -fsSL ${REPO}/raw/${BRANCH}/scripts/install.sh 
  * /app/ 才是聊天 SPA（vite base '/app/'、history 路由）。
  * 写成同源绝对路径而不是外部域名，这样切换域名时不用改代码。
  */
-export const CHAT_APP = '/app/'
+/**
+ * 开发环境两个 Vite server 分立：官网在 :5174，聊天应用在 :5173。
+ * 若仍写 /app/，会被官网 dev server 的 history fallback 接住并跳回首页。
+ * 生产由 nginx 把同源 /app/ 指向聊天 SPA，保持 /app/ 不变。
+ */
+export const CHAT_APP = import.meta.env.DEV
+  ? `${location.protocol}//${location.hostname}:5173/app/`
+  : '/app/'

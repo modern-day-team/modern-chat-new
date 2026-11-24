@@ -184,6 +184,9 @@ go run ./cmd/server        # :8080
 cd web
 npm install
 npm run dev                # http://localhost:5173, /api and /ws proxied to :8080
+
+# Website (optional, separate terminal)
+cd website && npm run dev  # http://localhost:5174; "Enter chat" points to :5173/app/ in dev
 ```
 
 The first registered user automatically becomes the site admin (can access `/admin`: ban users / reset passwords / global plugin takedown).
