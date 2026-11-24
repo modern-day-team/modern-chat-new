@@ -27,6 +27,7 @@
 
 ### 修复
 
+- **清理脚手架残留**：删除 `web/eslint.config.ts` 中未使用的 Vue ESLint 模板注释（与主仓库其余前端配置保持一致）
 - **修复 lint 报错**：官网补齐 `oxlint` / `eslint` 配置与依赖（与主仓库 web 同体系，新增 `npm run lint`），CI 官网 job 增加 lint 门禁；两个示例插件（weather / word-count）的未使用 `catch (e)` 改为可选 catch binding，官网副本与 `plugins/examples/` 真源同步；移除一条无用的 `.vue` 模块声明（保留 Vite 客户端类型引用）
 - **前端布局稳定性（CLS）**：针对 Lighthouse 实测 CLS 0.751（FCP/LCP 0.5s、TBT 240ms）集中修复异步内容造成的位移。官网给路由视图预留首屏高度、给文档正文预留 60vh，页脚与翻页导航不再被内容插入顶走；web 登录页 SSO 入口改为占位后切可见性；消息图片容器固定 4:3 且 `object-fit: contain`，不再加载完成后撑高虚拟列表；typing 提示改浮层，不推输入框；维护页改固定覆盖层，不再整页替换 RouterView。消息图片仍禁止 `loading="lazy"`（虚拟列表测量依赖）。
 
