@@ -15,7 +15,9 @@ const props = withDefaults(
     placement?: 'right-top' | 'right-bottom' | 'bottom-right' | 'bottom-left' | 'top-right'
     minWidth?: number
   }>(),
-  { placement: 'bottom-right', minWidth: 0 },
+  // Boolean prop 未传时 Vue 默认会 cast 成 false；显式 default: undefined
+  // 才能区分「非受控（不传 visible）」与「受控且当前关闭（visible=false）」。
+  { visible: undefined, placement: 'bottom-right', minWidth: 0 },
 )
 
 const emit = defineEmits<{ 'update:visible': [value: boolean] }>()

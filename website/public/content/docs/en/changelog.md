@@ -27,6 +27,7 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 
 ### Fixed
 
+- **Auth-page background picker fixed**: `UiPopup` used `props.visible === undefined` to detect uncontrolled mode, but Vue casts an omitted Boolean prop to `false`, so clicking the background button in `auth-top` never opened the panel. The prop now defaults to `undefined` explicitly, with regression tests for both uncontrolled and controlled modes.
 - **Dev-only "Enter chat" link fixed**: in development the website now links to `http://<current-host>:5173/app/` instead of same-origin `/app/`, which was swallowed by the website dev server's history fallback and redirected back home. Production still uses same-origin `/app/`.
 - **Integration tests now run in CI**: the server job starts MySQL 8 and runs `server/test/` with `-tags integration`. This uncovered and fixed two real defects: `UserSession.SID` lacked an explicit `column:sid` tag so AutoMigrate created `s_id`; REST/WS checked for an active session before lazy registration, so the first authenticated request after login returned 401.
 - **Documentation numbers corrected**: README now lists 15 in-house controls and migrations through 0034.
