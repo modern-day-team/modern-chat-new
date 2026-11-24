@@ -8,6 +8,16 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Security & deployment hardening
+
+- **Password-reset tokens stored hashed (migration 0034)**: the `token` column of `password_resets` is renamed to `token_hash`; only a SHA-256 digest is stored instead of the plaintext token. The migration invalidates already-issued plaintext tokens immediately (15-minute validity, negligible impact) — users need to request a new reset link. Code, model and migration are aligned.
+- **No weak DB_DSN default**: `DB_DSN` must now be set explicitly in development and production; the service no longer silently connects with `root:root`.
+- **Log redaction**: verification-code e-mails no longer log the e-mail address; password-reset tokens are no longer stored in plaintext.
+- **HTTPS and security headers**: the nginx examples add an 80→443 redirect, TLSv1.2/1.3, HSTS and `X-Frame-Options` / `X-Content-Type-Options` / `Referrer-Policy` / `Permissions-Policy` (repeated inside the static-asset location because nginx `add_header` is not inherited). The server adds optional `TLS_CERT_FILE` / `TLS_KEY_FILE` for self-managed TLS.
+- **Production log risk blocked**: with `GIN_MODE=release`, `LOG_RESET_LINK` is forcibly disabled (it would write usable reset links to logs). A temporary override requires explicitly setting `ALLOW_RESET_LINK_IN_LOGS=true` and restricting log access yourself.
+- **No internal error leakage**: failure details from the SSO callback, storage probe and SMTP test are no longer returned verbatim to clients.
+- Dependency updates: `gorilla/websocket`, `golang.org/x/crypto/net`, `klauspost/compress`, etc.; WebP encoding moved to `golang.org/x/image` (`gen2brain/webp` removed).
+
 ### Fixed
 
 - **Frontend layout stability (CLS)**: fixed the async-content shifts behind a measured CLS of 0.751 (FCP/LCP 0.5 s, TBT 240 ms). The marketing site now reserves a full first screen for the async route view and 60vh for Markdown bodies so the footer and pager no longer jump. The web login screen reserves the SSO button slot and only toggles visibility. Message images use a fixed 4:3 container with `object-fit: contain`, so decoding no longer expands the virtual list. The typing hint is an overlay above the composer, and the maintenance screen is a fixed overlay instead of replacing the whole RouterView. Message images still must not use `loading="lazy"` because virtual-list measurement depends on it.

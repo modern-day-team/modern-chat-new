@@ -8,6 +8,16 @@
 
 ## [未发布]
 
+### 安全与部署加固
+
+- **找回密码令牌哈希存储（迁移 0034）**：`password_resets` 的 `token` 列改名 `token_hash`，库中只存 SHA-256 摘要不存明文令牌；迁移会使已发出的明文令牌立即失效（15 分钟有效期，影响可忽略），需重新发起找回流程。代码、模型与迁移三处已对齐。
+- **DB_DSN 无弱默认值**：开发/生产均须显式设置 `DB_DSN`，不再静默以 `root:root` 连接数据库。
+- **日志脱敏**：邮箱验证码与换绑验证码的发送日志不再记录邮箱地址；密码找回令牌不再以明文入库。
+- **HTTPS 与安全响应头**：nginx 示例增加 80→443 跳转、TLSv1.2/1.3、HSTS 与 `X-Frame-Options` / `X-Content-Type-Options` / `Referrer-Policy` / `Permissions-Policy`（静态资源 location 重复声明，避免 nginx `add_header` 不继承的坑）；服务端新增可选 `TLS_CERT_FILE` / `TLS_KEY_FILE` 自托管 TLS。
+- **生产日志风险阻断**：`GIN_MODE=release` 下强制关闭 `LOG_RESET_LINK`（含可用令牌的重置链接会写入日志）；确需临时开启必须显式设置 `ALLOW_RESET_LINK_IN_LOGS=true`，并自行限制日志访问权限。
+- **错误信息不外泄**：SSO 回调 / 存储连通性测试 / SMTP 测试的失败详情不再直接回显给客户端。
+- 依赖升级：`gorilla/websocket`、`golang.org/x/crypto/net`、`klauspost/compress` 等；WebP 编码改用 `golang.org/x/image`（移除 `gen2brain/webp`）。
+
 ### 修复
 
 - **前端布局稳定性（CLS）**：针对 Lighthouse 实测 CLS 0.751（FCP/LCP 0.5s、TBT 240ms）集中修复异步内容造成的位移。官网给路由视图预留首屏高度、给文档正文预留 60vh，页脚与翻页导航不再被内容插入顶走；web 登录页 SSO 入口改为占位后切可见性；消息图片容器固定 4:3 且 `object-fit: contain`，不再加载完成后撑高虚拟列表；typing 提示改浮层，不推输入框；维护页改固定覆盖层，不再整页替换 RouterView。消息图片仍禁止 `loading="lazy"`（虚拟列表测量依赖）。
