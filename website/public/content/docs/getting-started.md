@@ -316,7 +316,7 @@ UI 描述仅接受 8 个组件：`text / image / button / input / card / list / 
 - **REST**：前缀 `/api`，除注册/登录/登出/找回/重置/健康检查/版本外均需 `Authorization: Bearer <token>`；错误统一 `{ "error": "msg" }`。登录会下发同源 `mc_auth` cookie，仅用于 `/uploads` 子资源与 WS 握手回退，REST 仍只认头。全量接口与字段见 [后端需求规格 §3](docs/后端需求规格.md)。
 - **附件**：`GET /uploads/**` 必须登录（`Authorization` 或 `mc_auth` cookie），禁止目录列举，缓存 `private, max-age=3600`。S3 模式的新文件由桶/CDN 提供，访问控制下沉。
 - **WebSocket**：`GET /ws?token=<JWT>`（兼容旧客户端；token 缺失时回退 `mc_auth` cookie），Origin 白名单校验；**每一帧**都复核封禁与 `token_version`，不通过回 `error` 帧并断开。上行帧 `chat / typing / read / delivered / recall / edit / reaction / ping`，下行帧 `message / message_update / recall / reaction / message_delivered / message_admin_deleted / read / typing / presence / user_change / conv_change / kicked / pong / error`。消息以 `clientMsgId` 幂等去重，单帧上行上限 64 KB。详见 [设计文档 §7](docs/设计文档.md)。
-- **版本**：`GET /api/version` → `{version, commit, buildTime}`，用于核对升级是否生效。
+- **版本**：`GET /api/version` → `{version, commit, buildTime}`，用于核对升级是否生效。发行包由 `-ldflags` 注入；本地直接构建也可在 `server/.env` 配 `VERSION` / `COMMIT` / `BUILD_TIME` 覆盖默认值。
 
 ## 更新与升级
 

@@ -6,11 +6,23 @@ import UiButton from '@/components/ui/UiButton.vue'
 import UiInput from '@/components/ui/UiInput.vue'
 import UiSwitch from '@/components/ui/UiSwitch.vue'
 import UiTag from '@/components/ui/UiTag.vue'
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, type Component } from 'vue'
 import { useRouter } from 'vue-router'
 import { DialogPlugin, MessagePlugin } from '@/components/ui/feedback'
 import { Table as TTable } from 'tdesign-vue-next'
-import { SettingIcon } from 'tdesign-icons-vue-next'
+import {
+  ArrowLeftIcon,
+  ChatIcon,
+  DashboardIcon,
+  DesktopIcon,
+  ExtensionIcon,
+  LockOnIcon,
+  NotificationIcon,
+  RefreshIcon,
+  SearchIcon,
+  SettingIcon,
+  UserIcon,
+} from 'tdesign-icons-vue-next'
 
 import AvatarBadge from '@/components/chat/AvatarBadge.vue'
 import AdminGroupsPanel from '@/views/admin/AdminGroupsPanel.vue'
@@ -42,6 +54,16 @@ const { t, te } = useAppI18n()
 
 type AdminTab = 'users' | 'groups' | 'plugins' | 'audits' | 'invites' | 'settings' | 'updates'
 const tab = ref<AdminTab>('users')
+
+const tabIcons: Record<AdminTab, Component> = {
+  users: UserIcon,
+  groups: ChatIcon,
+  plugins: ExtensionIcon,
+  audits: DashboardIcon,
+  invites: NotificationIcon,
+  settings: SettingIcon,
+  updates: RefreshIcon,
+}
 
 /**
  * 页签切换。
@@ -76,15 +98,43 @@ function switchTab(next: AdminTab) {
   if (next === 'updates') void fetchUpdateStatus()
 }
 
-const tabItems = computed<Array<{ value: AdminTab; label: string }>>(() => [
-  { value: 'users', label: t('admin.tabUsers') },
-  { value: 'groups', label: t('admin.tabGroups') },
-  { value: 'plugins', label: t('admin.tabPlugins') },
-  { value: 'audits', label: t('admin.tabAudits') },
-  { value: 'invites', label: t('admin.tabInvites') },
-  { value: 'settings', label: t('admin.tabSettings') },
-  { value: 'updates', label: t('admin.tabUpdates') },
+const tabItems = computed<Array<{ value: AdminTab; label: string; icon: Component }>>(() => [
+  { value: 'users', label: t('admin.tabUsers'), icon: tabIcons.users },
+  { value: 'groups', label: t('admin.tabGroups'), icon: tabIcons.groups },
+  { value: 'plugins', label: t('admin.tabPlugins'), icon: tabIcons.plugins },
+  { value: 'audits', label: t('admin.tabAudits'), icon: tabIcons.audits },
+  { value: 'invites', label: t('admin.tabInvites'), icon: tabIcons.invites },
+  { value: 'settings', label: t('admin.tabSettings'), icon: tabIcons.settings },
+  { value: 'updates', label: t('admin.tabUpdates'), icon: tabIcons.updates },
 ])
+
+const panelMeta = computed(() => {
+  const meta: Record<AdminTab, { title: string; hint: string }> = {
+    users: { title: t('admin.tabUsers'), hint: t('admin.usersDesc') },
+    groups: { title: t('admin.tabGroups'), hint: '' },
+    plugins: { title: t('admin.tabPlugins'), hint: t('admin.pluginsDesc') },
+    audits: { title: t('admin.tabAudits'), hint: t('admin.auditsDesc') },
+    invites: { title: t('admin.tabInvites'), hint: t('admin.invitesDesc') },
+    settings: { title: t('admin.tabSettings'), hint: t('admin.settingsPanelDesc') },
+    updates: { title: t('admin.tabUpdates'), hint: t('admin.updatesDesc') },
+  }
+  return meta[tab.value]
+})
+
+const panelCount = computed<number | null>(() => {
+  switch (tab.value) {
+    case 'users':
+      return pagination.value.total
+    case 'plugins':
+      return pluginPagination.value.total
+    case 'audits':
+      return auditPagination.value.total
+    case 'invites':
+      return invites.value.length
+    default:
+      return null
+  }
+})
 
 // ---- 注册邀请码 ----
 const invites = ref<InviteCode[]>([])
@@ -541,6 +591,60 @@ const buildInfo = ref<VersionInfo | null>(null)
 const stats = ref<AdminStats | null>(null)
 const statsLoading = ref(false)
 
+const statCards = computed(() => [
+  {
+    key: 'users',
+    label: t('admin.statUsers'),
+    value: stats.value?.users.total ?? '—',
+    sub: t('admin.statToday', { n: stats.value?.users.today ?? 0 }),
+    icon: UserIcon,
+    tone: 'brand',
+  },
+  {
+    key: 'online',
+    label: t('admin.statOnline'),
+    value: stats.value?.online ?? '—',
+    sub: t('admin.statOnlineSub'),
+    icon: DesktopIcon,
+    tone: 'success',
+  },
+  {
+    key: 'convs',
+    label: t('admin.statConvs'),
+    value: stats.value ? stats.value.conversations.single + stats.value.conversations.group : '—',
+    sub: t('admin.statConvSub', {
+      s: stats.value?.conversations.single ?? 0,
+      g: stats.value?.conversations.group ?? 0,
+    }),
+    icon: ChatIcon,
+    tone: 'brand',
+  },
+  {
+    key: 'msgs',
+    label: t('admin.statMsgs'),
+    value: stats.value?.messages.total ?? '—',
+    sub: t('admin.statToday', { n: stats.value?.messages.today ?? 0 }),
+    icon: DashboardIcon,
+    tone: 'warning',
+  },
+  {
+    key: 'plugins',
+    label: t('admin.statPlugins'),
+    value: stats.value?.plugins.installed ?? '—',
+    sub: t('admin.statPluginSub', { n: stats.value?.plugins.enabled ?? 0 }),
+    icon: ExtensionIcon,
+    tone: 'success',
+  },
+  {
+    key: 'banned',
+    label: t('admin.statBanned'),
+    value: stats.value?.users.banned ?? '—',
+    sub: t('admin.statAdminSub', { n: stats.value?.users.admins ?? 0 }),
+    icon: LockOnIcon,
+    tone: 'danger',
+  },
+])
+
 // ---- 用户筛选 ----
 const keyword = ref('')
 const roleFilter = ref<'' | 'user' | 'admin'>('')
@@ -958,92 +1062,77 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
 <template>
   <div class="mc-admin">
     <header class="mc-admin__header">
-      <h2>{{ t('admin.title') }}</h2>
+      <div class="mc-admin__brand">
+        <span class="mc-admin__brand-icon" aria-hidden="true"><SettingIcon /></span>
+        <div>
+          <h2>{{ t('admin.title') }}</h2>
+          <p>{{ t('admin.subtitle') }}</p>
+        </div>
+      </div>
       <div class="mc-admin__header-right">
         <span
           v-if="buildInfo"
-          class="mc-admin__build text-placeholder num"
+          class="mc-admin__build num"
           :title="t('admin.buildVersion')"
         >
-          {{ buildInfo.version }} · {{ buildInfo.commit }} · {{ buildInfo.buildTime }}
+          {{ buildInfo.version }} · {{ buildInfo.commit }}
         </span>
         <UiButton
-          variant="text"
+          variant="outline"
+          size="small"
           shape="square"
           :aria-label="t('settings.title')"
+          :title="t('settings.title')"
           @click="router.push('/settings')"
         >
           <template #icon><SettingIcon /></template>
         </UiButton>
-        <UiButton variant="text" @click="router.push('/chat')">{{
-          t('admin.backToChat')
-        }}</UiButton>
+        <UiButton variant="outline" size="small" @click="router.push('/chat')">
+          <template #icon><ArrowLeftIcon /></template>
+          {{ t('admin.backToChat') }}
+        </UiButton>
       </div>
     </header>
 
     <!-- 概览统计 -->
     <section class="mc-admin__stats" :class="{ 'is-loading': statsLoading }">
-      <div class="mc-admin__stat">
-        <span class="mc-admin__stat-label">{{ t('admin.statUsers') }}</span>
-        <strong class="mc-admin__stat-value num">{{ stats?.users.total ?? '—' }}</strong>
-        <span class="mc-admin__stat-sub">{{
-          t('admin.statToday', { n: stats?.users.today ?? 0 })
-        }}</span>
-      </div>
-      <div class="mc-admin__stat">
-        <span class="mc-admin__stat-label">{{ t('admin.statOnline') }}</span>
-        <strong class="mc-admin__stat-value num">{{ stats?.online ?? '—' }}</strong>
-        <span class="mc-admin__stat-sub">{{ t('admin.statOnlineSub') }}</span>
-      </div>
-      <div class="mc-admin__stat">
-        <span class="mc-admin__stat-label">{{ t('admin.statConvs') }}</span>
-        <strong class="mc-admin__stat-value num">
-          {{ stats ? stats.conversations.single + stats.conversations.group : '—' }}
-        </strong>
-        <span class="mc-admin__stat-sub">
-          {{
-            t('admin.statConvSub', {
-              s: stats?.conversations.single ?? 0,
-              g: stats?.conversations.group ?? 0,
-            })
-          }}
-        </span>
-      </div>
-      <div class="mc-admin__stat">
-        <span class="mc-admin__stat-label">{{ t('admin.statMsgs') }}</span>
-        <strong class="mc-admin__stat-value num">{{ stats?.messages.total ?? '—' }}</strong>
-        <span class="mc-admin__stat-sub">{{
-          t('admin.statToday', { n: stats?.messages.today ?? 0 })
-        }}</span>
-      </div>
-      <div class="mc-admin__stat">
-        <span class="mc-admin__stat-label">{{ t('admin.statPlugins') }}</span>
-        <strong class="mc-admin__stat-value num">{{ stats?.plugins.installed ?? '—' }}</strong>
-        <span class="mc-admin__stat-sub">
-          {{ t('admin.statPluginSub', { n: stats?.plugins.enabled ?? 0 }) }}
-        </span>
-      </div>
-      <div class="mc-admin__stat">
-        <span class="mc-admin__stat-label">{{ t('admin.statBanned') }}</span>
-        <strong class="mc-admin__stat-value num">{{ stats?.users.banned ?? '—' }}</strong>
-        <span class="mc-admin__stat-sub">{{
-          t('admin.statAdminSub', { n: stats?.users.admins ?? 0 })
-        }}</span>
+      <div
+        v-for="card in statCards"
+        :key="card.key"
+        class="mc-admin__stat"
+        :class="`mc-admin__stat--${card.tone}`"
+      >
+        <div class="mc-admin__stat-head">
+          <span class="mc-admin__stat-label">{{ card.label }}</span>
+          <component :is="card.icon" class="mc-admin__stat-icon" />
+        </div>
+        <strong class="mc-admin__stat-value num">{{ card.value }}</strong>
+        <span class="mc-admin__stat-sub">{{ card.sub }}</span>
+        <span class="mc-admin__stat-accent" aria-hidden="true" />
       </div>
     </section>
 
     <!-- 全站公告 -->
-    <div class="mc-admin__announce">
-      <UiInput
-        v-model="announceText"
-        :placeholder="t('admin.announcePlaceholder')"
-        :maxlength="200"
-        @enter="doAnnounce"
-      />
-      <UiButton theme="primary" :loading="announceSending" @click="doAnnounce">
-        {{ t('admin.announceSend') }}
-      </UiButton>
-    </div>
+    <section class="mc-admin__announce">
+      <div class="mc-admin__announce-icon" aria-hidden="true"><NotificationIcon /></div>
+      <div class="mc-admin__announce-body">
+        <div class="mc-admin__announce-head">
+          <h3>{{ t('admin.announceTitle') }}</h3>
+          <p>{{ t('admin.announceDesc') }}</p>
+        </div>
+        <div class="mc-admin__announce-form">
+          <UiInput
+            v-model="announceText"
+            :placeholder="t('admin.announcePlaceholder')"
+            :maxlength="200"
+            @enter="doAnnounce"
+          />
+          <UiButton theme="primary" :loading="announceSending" @click="doAnnounce">
+            {{ t('admin.announceSend') }}
+          </UiButton>
+        </div>
+      </div>
+    </section>
 
     <div class="mc-admin__tabs">
       <div class="mc-admin__tabbar" role="tablist">
@@ -1057,8 +1146,29 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
           :aria-selected="tab === item.value"
           @click="switchTab(item.value)"
         >
-          {{ item.label }}
+          <component :is="item.icon" />
+          <span>{{ item.label }}</span>
         </button>
+      </div>
+
+      <!-- 面板统一标题 -->
+      <div class="mc-admin__panel-head">
+        <div class="mc-admin__panel-heading">
+          <component :is="tabIcons[tab]" class="mc-admin__panel-icon" />
+          <div>
+            <h3>{{ panelMeta.title }}</h3>
+            <p v-if="panelMeta.hint">{{ panelMeta.hint }}</p>
+          </div>
+        </div>
+        <div class="mc-admin__panel-meta">
+          <UiTag v-if="panelCount !== null" variant="outline" size="small">
+            {{ t('admin.itemsTotal', { n: panelCount }) }}
+          </UiTag>
+          <span v-if="auth.user?.role === 'admin'" class="mc-admin__role-pill">
+            <LockOnIcon />
+            {{ t('admin.roleAdmin') }}
+          </span>
+        </div>
       </div>
 
       <div v-if="tab === 'users'" class="mc-admin__panel" role="tabpanel">
@@ -1070,22 +1180,25 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
             clearable
             @enter="applyFilter"
             @clear="applyFilter"
-          />
+          >
+            <template #prefix-icon><SearchIcon /></template>
+          </UiInput>
           <UiSelect
             v-model="roleFilter"
             :options="filterRoleOptions()"
             :placeholder="t('admin.filterRole')"
-            style="width: 130px"
+            class="mc-admin__filter-select"
             @change="applyFilter"
           />
           <UiSelect
             v-model="statusFilter"
             :options="filterStatusOptions()"
             :placeholder="t('admin.filterStatus')"
-            style="width: 130px"
+            class="mc-admin__filter-select"
             @change="applyFilter"
           />
           <UiButton size="small" variant="outline" @click="resetFilter">
+            <template #icon><RefreshIcon /></template>
             {{ t('admin.resetFilter') }}
           </UiButton>
         </div>
@@ -1111,7 +1224,9 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
           </template>
 
           <template #role="{ row }">
-            {{ row.role === 'admin' ? t('admin.roleAdmin') : t('admin.roleUser') }}
+            <UiTag :theme="row.role === 'admin' ? 'primary' : 'default'" variant="light" size="small">
+              {{ row.role === 'admin' ? t('admin.roleAdmin') : t('admin.roleUser') }}
+            </UiTag>
           </template>
 
           <template #status="{ row }">
@@ -1127,16 +1242,39 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
             }}</UiTag>
           </template>
 
+          <template #empty>
+            <div class="mc-admin__empty">
+              <SearchIcon />
+              <p>{{ t('admin.emptyUsers') }}</p>
+            </div>
+          </template>
+
           <template #ops="{ row }">
             <div class="mc-admin__ops">
-              <a @click="openDetail(row)">{{ t('admin.detail') }}</a>
-              <a v-if="!isBanned(row)" @click="openBan(row)">{{ t('admin.ban') }}</a>
-              <a v-else @click="unban(row)">{{ t('admin.unban') }}</a>
-              <a @click="kick(row)">{{ t('admin.kick') }}</a>
-              <a @click="setRole(row)">
+              <UiButton variant="text" size="small" @click="openDetail(row)">
+                {{ t('admin.detail') }}
+              </UiButton>
+              <UiButton
+                v-if="!isBanned(row)"
+                variant="text"
+                theme="danger"
+                size="small"
+                @click="openBan(row)"
+              >
+                {{ t('admin.ban') }}
+              </UiButton>
+              <UiButton v-else variant="text" size="small" @click="unban(row)">
+                {{ t('admin.unban') }}
+              </UiButton>
+              <UiButton variant="text" theme="danger" size="small" @click="kick(row)">
+                {{ t('admin.kick') }}
+              </UiButton>
+              <UiButton variant="text" size="small" @click="setRole(row)">
                 {{ row.role === 'admin' ? t('admin.revokeAdmin') : t('admin.grantAdmin') }}
-              </a>
-              <a @click="resetPassword(row)">{{ t('admin.resetPassword') }}</a>
+              </UiButton>
+              <UiButton variant="text" size="small" @click="resetPassword(row)">
+                {{ t('admin.resetPassword') }}
+              </UiButton>
             </div>
           </template>
         </TTable>
@@ -1148,7 +1286,7 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
       </div>
 
       <div v-if="tab === 'plugins'" class="mc-admin__panel" role="tabpanel">
-        <p class="mc-admin__hint text-placeholder">{{ t('admin.pluginHint') }}</p>
+        <p class="mc-admin__hint">{{ t('admin.pluginHint') }}</p>
         <TTable
           row-key="name"
           :data="plugins"
@@ -1157,6 +1295,13 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
           :pagination="pluginPagination"
           @page-change="onPluginPageChange"
         >
+          <template #empty>
+            <div class="mc-admin__empty">
+              <ExtensionIcon />
+              <p>{{ t('admin.emptyPlugins') }}</p>
+            </div>
+          </template>
+
           <template #name="{ row }">
             <span class="mc-admin__plugin-name">{{ row.name }}</span>
           </template>
@@ -1176,10 +1321,12 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
           </template>
           <template #ops="{ row }">
             <div class="mc-admin__ops">
-              <a @click="toggleGlobalDisabled(row)">
+              <UiButton variant="text" size="small" @click="toggleGlobalDisabled(row)">
                 {{ row.globalDisabled ? t('admin.globalEnable') : t('admin.globalDisable') }}
-              </a>
-              <a class="mc-admin__danger" @click="purgePlugin(row)">{{ t('admin.purge') }}</a>
+              </UiButton>
+              <UiButton variant="text" theme="danger" size="small" @click="purgePlugin(row)">
+                {{ t('admin.purge') }}
+              </UiButton>
             </div>
           </template>
         </TTable>
@@ -1195,6 +1342,13 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
           :pagination="auditPagination"
           @page-change="onAuditPageChange"
         >
+          <template #empty>
+            <div class="mc-admin__empty">
+              <DashboardIcon />
+              <p>{{ t('admin.emptyAudits') }}</p>
+            </div>
+          </template>
+
           <template #createdAt="{ row }">{{ formatDate(row.createdAt) }}</template>
           <template #action="{ row }">
             <UiTag variant="outline" size="small">{{ actionLabel(row.action) }}</UiTag>
@@ -1943,9 +2097,9 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
 
 <style scoped>
 .mc-admin {
-  max-width: 980px;
+  max-width: 1120px;
   margin: 0 auto;
-  padding: 32px 24px 48px;
+  padding: 28px 24px 56px;
 }
 
 .mc-admin__header {
@@ -1953,28 +2107,61 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  margin-bottom: 18px;
+  margin-bottom: 20px;
+}
+
+.mc-admin__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.mc-admin__brand-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: var(--mc-radius-md);
+  background: var(--mc-brand-soft);
+  color: var(--td-brand-color);
+}
+
+.mc-admin__brand-icon > svg {
+  width: 20px;
+  height: 20px;
 }
 
 .mc-admin__header h2 {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--mc-fs-heading);
   font-weight: 600;
   letter-spacing: -0.01em;
+}
+
+.mc-admin__brand p {
+  margin: 2px 0 0;
+  font-size: var(--mc-fs-sm);
+  color: var(--td-text-color-secondary);
 }
 
 .mc-admin__header-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
-/* 构建版本做成一枚元信息胶囊，不再是一条游离的长文本 */
 .mc-admin__build {
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: var(--td-bg-color-secondarycontainer);
-  font-size: var(--mc-fs-sm);
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border: 1px solid var(--mc-hairline);
+  border-radius: var(--mc-radius-pill);
+  background: var(--td-bg-color-container);
+  color: var(--td-text-color-secondary);
+  font-size: var(--mc-fs-caption);
   white-space: nowrap;
 }
 
@@ -1987,82 +2174,131 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
 .mc-admin__ops {
   display: flex;
   flex-wrap: wrap;
-  /* 5 个操作挤在一行时，12px 间距会让它们看起来连成一片文字；
-     16px + hover 底色之后每一档都能单独识别 */
-  gap: 6px 16px;
+  align-items: center;
+  gap: 2px 4px;
 }
 
-.mc-admin__ops a {
-  font-size: 13px;
-  white-space: nowrap;
-  cursor: pointer;
-  /* 负 margin 让 hover 底色外扩，但文字基线不动 */
-  padding: 2px 5px;
-  margin: -2px -5px;
-  border-radius: var(--mc-radius-sm);
-  transition: background-color var(--mc-dur-instant) var(--mc-ease-out);
-}
-
-.mc-admin__ops a:hover {
-  background: var(--td-bg-color-container-hover);
-}
-
-.mc-admin__ops a:focus-visible {
-  outline: 2px solid var(--td-brand-color);
-  outline-offset: 1px;
+.mc-admin__ops > * {
+  flex-shrink: 0;
 }
 
 .mc-admin__tabs {
   margin-top: 4px;
 }
 
-/* 轻量页签：视觉与 TDesign 下划线页签一致，但不渲染隐藏面板 */
+/* 分段页签：选中态是唯一品牌重心，未选中降为次级文字 */
 .mc-admin__tabbar {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
+  padding: 4px;
   margin-bottom: 14px;
-  border-bottom: 1px solid var(--mc-hairline);
+  border: 1px solid var(--mc-hairline);
+  border-radius: var(--mc-radius-md);
+  background: var(--td-bg-color-secondarycontainer);
 }
 
 .mc-admin__tab {
-  position: relative;
-  padding: 10px 12px 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
   border: none;
+  border-radius: var(--mc-radius-sm);
   background: transparent;
   font: inherit;
-  font-size: var(--mc-fs-emphasis);
+  font-size: var(--mc-fs-body);
   color: var(--td-text-color-secondary);
   cursor: pointer;
-  border-radius: var(--mc-radius-sm) var(--mc-radius-sm) 0 0;
+  opacity: 0.75;
   transition:
     color var(--mc-dur-instant) var(--mc-ease-out),
-    background-color var(--mc-dur-instant) var(--mc-ease-out);
+    background-color var(--mc-dur-instant) var(--mc-ease-out),
+    opacity var(--mc-dur-instant) var(--mc-ease-out);
+}
+
+.mc-admin__tab > svg {
+  width: 15px;
+  height: 15px;
 }
 
 .mc-admin__tab:hover {
   color: var(--td-text-color-primary);
-  background: var(--td-bg-color-secondarycontainer);
+  background: var(--td-bg-color-container-hover);
+  opacity: 1;
 }
 
 .mc-admin__tab.is-active {
-  color: var(--td-brand-color);
-  font-weight: 600;
-}
-
-.mc-admin__tab.is-active::after {
-  content: '';
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: -1px;
-  height: 2px;
-  border-radius: 2px;
+  color: #fff;
   background: var(--td-brand-color);
+  font-weight: 600;
+  opacity: 1;
+  box-shadow: var(--mc-shadow-1);
 }
 
 .mc-admin__tab:focus-visible {
   outline: 2px solid var(--td-brand-color);
   outline-offset: 2px;
+}
+
+.mc-admin__panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--mc-hairline);
+}
+
+.mc-admin__panel-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.mc-admin__panel-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--td-brand-color);
+}
+
+.mc-admin__panel-head h3 {
+  margin: 0;
+  font-size: var(--mc-fs-title);
+  font-weight: 600;
+}
+
+.mc-admin__panel-head p {
+  margin: 2px 0 0;
+  font-size: var(--mc-fs-sm);
+  color: var(--td-text-color-secondary);
+}
+
+.mc-admin__panel-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.mc-admin__role-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: var(--mc-radius-pill);
+  background: var(--mc-brand-soft);
+  color: var(--td-brand-color);
+  font-size: var(--mc-fs-caption);
+  white-space: nowrap;
+}
+
+.mc-admin__role-pill > svg {
+  width: 13px;
+  height: 13px;
 }
 
 .mc-admin__hint {
@@ -2073,11 +2309,30 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
 
 /* 每个页签的内容收进一块卡片，页面背景变化时仍有稳定的阅读面 */
 .mc-admin__panel {
-  padding: 16px;
+  padding: 0 18px 18px;
   background: var(--td-bg-color-container);
   border: 1px solid var(--mc-hairline);
   border-radius: var(--mc-radius-lg);
   box-shadow: var(--mc-shadow-1);
+}
+
+.mc-admin__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 36px 16px;
+  color: var(--td-text-color-placeholder);
+}
+
+.mc-admin__empty > svg {
+  width: 24px;
+  height: 24px;
+}
+
+.mc-admin__empty p {
+  margin: 0;
+  font-size: var(--mc-fs-sm);
 }
 
 .mc-admin__plugin-name {
@@ -2099,19 +2354,33 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
 
 /* 表头回归数据本身：无色带、12px 常规灰字 */
 .mc-admin :deep(.t-table__header th) {
-  background: transparent;
-  color: var(--mc-text-faint);
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-text-color-secondary);
   font-weight: 500;
   font-size: 12px;
   letter-spacing: 0.02em;
+  border-bottom: 1px solid var(--mc-hairline);
+}
+
+.mc-admin :deep(.t-table__header th:first-child) {
+  border-top-left-radius: var(--mc-radius-sm);
+}
+
+.mc-admin :deep(.t-table__header th:last-child) {
+  border-top-right-radius: var(--mc-radius-sm);
 }
 
 .mc-admin :deep(.t-table td) {
   font-variant-numeric: tabular-nums;
+  border-bottom-color: var(--mc-hairline);
 }
 
 .mc-admin :deep(.t-table__row--hover:hover > td) {
-  background: var(--td-bg-color-secondarycontainer);
+  background: var(--td-bg-color-container-hover);
+}
+
+.mc-admin :deep(.t-pagination) {
+  margin-top: 12px;
 }
 
 /* ===== 概览统计 ===== */
@@ -2128,10 +2397,14 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
 }
 
 .mc-admin__stat {
+  --stat-accent: var(--td-brand-color);
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 16px 16px;
+  gap: 5px;
+  min-height: 108px;
+  padding: 14px 16px 16px;
+  overflow: hidden;
   border: 1px solid var(--mc-hairline);
   border-radius: var(--mc-radius-lg);
   background: var(--td-bg-color-container);
@@ -2140,26 +2413,63 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
     box-shadow var(--mc-dur-fast) var(--mc-ease-out);
 }
 
+.mc-admin__stat--success {
+  --stat-accent: var(--td-success-color);
+}
+
+.mc-admin__stat--warning {
+  --stat-accent: var(--td-warning-color);
+}
+
+.mc-admin__stat--danger {
+  --stat-accent: var(--td-error-color);
+}
+
 .mc-admin__stat:hover {
-  border-color: var(--td-component-border);
+  border-color: var(--stat-accent);
   box-shadow: var(--mc-shadow-1);
+}
+
+.mc-admin__stat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mc-admin__stat-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--stat-accent);
 }
 
 .mc-admin__stat-label {
   font-size: 12px;
-  color: var(--mc-text-faint);
+  color: var(--td-text-color-secondary);
 }
 
 .mc-admin__stat-value {
   font-size: var(--mc-fs-display);
-  line-height: 1.2;
+  line-height: 1.15;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
 
 .mc-admin__stat-sub {
   font-size: var(--mc-fs-sm);
-  color: var(--mc-text-faint);
+  color: var(--td-text-color-secondary);
+}
+
+.mc-admin__stat-accent {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--stat-accent);
+  opacity: 0.55;
 }
 
 /* ===== 筛选栏 ===== */
@@ -2167,20 +2477,42 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  padding: 12px;
   margin-bottom: 14px;
+  border: 1px solid var(--mc-hairline);
+  border-radius: var(--mc-radius-md);
+  background: var(--td-bg-color-page);
 }
 
 .mc-admin__search {
   flex: 1;
-  min-width: 180px;
-  max-width: 320px;
+  min-width: 200px;
+  max-width: 360px;
+}
+
+.mc-admin__filter-select {
+  width: 132px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 560px) {
+  .mc-admin__filter-select {
+    width: 100%;
+  }
 }
 
 /* ===== 系统设置 ===== */
 .mc-settings {
-  padding: 16px 0;
-  border-bottom: 1px solid var(--mc-hairline);
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  border: 1px solid var(--mc-hairline);
+  border-radius: var(--mc-radius-lg);
+  background: var(--td-bg-color-page);
+}
+
+.mc-settings:last-of-type {
+  margin-bottom: 0;
 }
 
 .mc-settings__head {
@@ -2404,16 +2736,53 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
 /* ===== 全站公告 ===== */
 .mc-admin__announce {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
-  padding: 12px;
+  padding: 14px 16px;
   margin-bottom: 18px;
   border: 1px solid var(--mc-hairline);
   border-radius: var(--mc-radius-lg);
-  background: var(--td-bg-color-container);
+  background:
+    linear-gradient(90deg, var(--mc-brand-soft), transparent 42%),
+    var(--td-bg-color-container);
 }
 
-.mc-admin__announce > :first-child {
+.mc-admin__announce-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: var(--mc-radius-md);
+  background: var(--td-brand-color-light);
+  color: var(--td-brand-color);
+}
+
+.mc-admin__announce-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.mc-admin__announce-head h3 {
+  margin: 0;
+  font-size: var(--mc-fs-emphasis);
+  font-weight: 600;
+}
+
+.mc-admin__announce-head p {
+  margin: 2px 0 10px;
+  font-size: var(--mc-fs-sm);
+  color: var(--td-text-color-secondary);
+}
+
+.mc-admin__announce-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mc-admin__announce-form > :first-child {
   flex: 1;
   min-width: 0;
 }
@@ -2545,12 +2914,42 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
 }
 
 @media (max-width: 560px) {
+  .mc-admin {
+    padding: 20px 12px 40px;
+  }
+
+  .mc-admin__header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .mc-admin__header-right {
+    width: 100%;
+  }
+
+  .mc-admin__build {
+    margin-right: auto;
+  }
+
   .mc-admin__stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .mc-admin__panel {
-    padding: 12px;
+    padding: 0 12px 12px;
+  }
+
+  .mc-admin__panel-head {
+    padding: 14px 0;
+  }
+
+  .mc-admin__announce {
+    flex-direction: column;
+  }
+
+  .mc-admin__announce-form {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .mc-admin__detail-grid {
