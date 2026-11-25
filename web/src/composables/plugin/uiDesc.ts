@@ -5,7 +5,7 @@
  * 这里是宿主渲染前唯一的闸门：白名单外组件、javascript: 链接、非原始值
  * props 一律拒绝，杜绝插件把任意 DOM/脚本带进宿主文档。
  */
-import type { PanelDesc, UIDescNode } from '@/types/proto'
+import type { PageDesc, PanelDesc, UIDescNode } from '@/types/proto'
 
 const ALLOWED_COMPONENTS = new Set([
   'text',
@@ -79,4 +79,32 @@ export function validateRenderDesc(desc: unknown): PanelDesc | null {
   if (Array.isArray((desc as Record<string, unknown>).body)) return validatePanel(desc)
   const node = validateUIDesc(desc)
   return node ? { kind: 'panel', title: '', body: [node] } : null
+}
+
+/** 递归统计描述树节点数（含自身），超过上限即提前返回，避免深树反复遍历 */
+function countNodes(nodes: readonly UIDescNode[], limit: number): number {
+  let total = 0
+  for (const node of nodes) {
+    total += 1 + countNodes(node.children ?? [], limit)
+    if (total > limit) return total
+  }
+  return total
+}
+
+/**
+ * 校验插件页面描述：{ id, title, icon?, scope?, body: UIDescNode[] }（SDK v3）。
+ * id 是路由片段、title 是页面标题，都按短文本约束；body 完全复用面板渲染白名单规则，
+ * 再叠加 100 节点总量上限——页面是全屏渲染，不能被插件用海量节点把主线程顶死。
+ */
+export function validatePage(desc: unknown): PageDesc | null {
+  if (!desc || typeof desc !== 'object') return null
+  const d = desc as Record<string, unknown>
+  if (typeof d.id !== 'string' || !/^[a-z0-9_-]{1,40}$/.test(d.id)) return null
+  if (typeof d.title !== 'string' || d.title.length < 1 || d.title.length > 40) return null
+  if (d.icon !== undefined && (typeof d.icon !== 'string' || d.icon.length > 40)) return null
+  const scope = (d.scope === undefined ? 'user' : d.scope) as 'user' | 'admin'
+  if (scope !== 'user' && scope !== 'admin') return null
+  const panel = validateRenderDesc(d)
+  if (!panel || countNodes(panel.body, 100) > 100) return null
+  return { id: d.id, title: d.title, icon: typeof d.icon === 'string' ? d.icon : undefined, scope, body: panel.body }
 }

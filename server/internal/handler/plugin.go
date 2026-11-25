@@ -25,11 +25,16 @@ type PluginHandler struct {
 	cfg     config.Config
 	plugins *store.PluginStore
 	audits  *store.AuditStore
+	// pluginData 卸载插件时清理该插件的用户数据（可为 nil：测试环境）
+	pluginData *store.PluginDataStore
 }
 
 func NewPluginHandler(cfg config.Config, plugins *store.PluginStore, audits *store.AuditStore) *PluginHandler {
 	return &PluginHandler{cfg: cfg, plugins: plugins, audits: audits}
 }
+
+// SetPluginData 注入插件数据存储，卸载时连带清理私有 KV。
+func (h *PluginHandler) SetPluginData(data *store.PluginDataStore) { h.pluginData = data }
 
 // List 我的插件。
 func (h *PluginHandler) List(c *gin.Context) {
@@ -287,6 +292,11 @@ func (h *PluginHandler) Remove(c *gin.Context) {
 	if err := h.plugins.Delete(uint(id), me.ID); err != nil {
 		internal(c, err)
 		return
+	}
+	if h.pluginData != nil {
+		if err := h.pluginData.ClearForPlugin(uint(id)); err != nil {
+			slog.Warn("plugin data cleanup failed", "plugin", id, "err", err.Error())
+		}
 	}
 	slog.Info("plugin uninstalled", "uid", me.ID, "plugin", id)
 	c.JSON(http.StatusOK, gin.H{"ok": true})

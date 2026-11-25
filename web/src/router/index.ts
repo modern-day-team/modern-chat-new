@@ -35,6 +35,20 @@ const router = createRouter({
       meta: { legal: 'privacy' },
     },
     { path: '/chat', name: 'chat', component: () => import('@/views/ChatLayout.vue'), meta: { requiresAuth: true } },
+    // 用户插件注册的全站页面（SDK v3 addPage/setPage）
+    {
+      path: '/plugin/:pluginId/:pageId',
+      name: 'plugin-page',
+      component: () => import('@/views/PluginPageView.vue'),
+      meta: { requiresAuth: true },
+    },
+    // 服务端插件清单里声明的全站页面（管理员安装）
+    {
+      path: '/plugin-server/:pluginId/:pageId',
+      name: 'server-plugin-page',
+      component: () => import('@/views/ServerPluginPageView.vue'),
+      meta: { requiresAuth: true },
+    },
     // 群邀请落地页：未登录时先跳登录，登录后回到这里
     {
       path: '/join/:token',

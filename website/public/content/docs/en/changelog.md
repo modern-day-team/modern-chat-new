@@ -8,6 +8,14 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Two-layer plugin system
+
+- **Full pages for user plugins (SDK v3)**: added `ui:page` permission and `api.addPage/setPage/removePage`; plugins can register complete pages with titles, icons and declarative UI bodies. Added the `/plugin/:pluginId/:pageId` route, page action callbacks and plugin-drawer entries.
+- **Account-level server data**: added `data` permission and `api.data.get/set/remove/keys`. Plugin data is stored server-side per user, plugin and key, so it survives device changes and browser cache clears; each value is capped at 64 KB.
+- **Admin server plugins**: admins can install site-wide plugins from a JSON manifest, providing pages, static or proxied APIs, `message:new` event hooks and scheduled jobs. External endpoints must be HTTPS, listed in `allowedHosts` and protected by SSRF checks; webhooks carry an HMAC signature and all admin actions are audited.
+- **Examples and docs**: added `page-kit.plugin.js` (SDK v3 user page) and `server-hello.plugin.json` (server plugin); the website plugin market lists the downloadable example, and the plugin guide is split into user-plugin and server-plugin parts.
+- **Integration fixes**: registered `ui:page` / `data` in the backend manifest permission table (SDK v3 plugins were otherwise rejected); excluded `/api/ext` from gzip, preventing small plugin responses from being incorrectly labelled `Content-Encoding: gzip`.
+
 ### Plugin capabilities (SDK v2)
 
 - **More host APIs**: conversation list (`conv.list`), global message search (`messages.search`), current-conversation draft (`draft.get/set`), write-only clipboard (`clipboard.writeText`), and plugin storage management (`storage.remove/keys`). The SDK version is now `v2`; older plugins keep working unchanged. All new APIs reuse existing permissions: reading message content still requires `message:read`, draft/clipboard require `ui:host`, and storage requires `storage`.

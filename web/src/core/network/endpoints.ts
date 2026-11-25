@@ -15,6 +15,7 @@ import type {
   SearchHit,
   TwofaEnableResult,
   TwofaStatus,
+  UIDescNode,
   User,
   UserSession,
   ClientVersionInfo,
@@ -361,6 +362,53 @@ export const pluginApi = {
   remove: (id: number) => http.delete<{ ok: true }>(`/plugins/${id}`),
 }
 
+/**
+ * 用户插件服务端数据（SDK v3 api.data.*）：后端按「用户 + 插件记录 id + key」隔离。
+ * 插件沙箱拿不到自己的 id，由宿主桥接层用 runtime.plugin.id 代入这里的 pluginId。
+ */
+export const pluginDataApi = {
+  get: (pluginId: number, key: string) =>
+    http.get<{ value: string }>(`/plugins/${pluginId}/data`, { key }),
+  set: (pluginId: number, key: string, value: string) =>
+    http.put<{ ok: true }>(`/plugins/${pluginId}/data`, { key, value }),
+  remove: (pluginId: number, key: string) =>
+    http.delete<{ ok: true }>(`/plugins/${pluginId}/data?key=${encodeURIComponent(key)}`),
+  keys: (pluginId: number) => http.get<{ keys: string[] }>(`/plugins/${pluginId}/data/keys`),
+}
+
+/** 服务端插件清单里声明的全站页面（pluginId = manifest.name） */
+export interface ServerPluginPage {
+  pluginId: string
+  plugin?: string
+  version?: string
+  id: string
+  title: string
+  icon?: string
+  scope?: 'user' | 'admin'
+  body: UIDescNode[]
+}
+
+/** 站长视角：已安装的服务端插件（计数由后端聚合，list 不含 manifest 原文） */
+export interface ServerPluginRow {
+  id: string | number
+  name: string
+  version: string
+  description?: string
+  enabled: boolean
+  installedBy?: number
+  createdAt?: string
+  updatedAt?: string
+  pages: number
+  routes: number
+  events: number
+  jobs: number
+}
+
+/** 全站服务端插件页面（登录用户可读） */
+export const serverPluginApi = {
+  pages: () => http.get<ServerPluginPage[]>('/server-plugins/pages'),
+}
+
 // ===== 站长后台 =====
 
 export interface AdminUserRow extends User {
@@ -462,6 +510,25 @@ export const adminApi = {
   updateStatus: () => http.get<AdminUpdateStatus>('/admin/update/status'),
   updateCheck: () => http.get<AdminUpdateCheck>('/admin/update/check'),
   updateStart: () => http.post<{ started: true }>('/admin/update/start'),
+
+  /** 服务端插件：list 返回计数视图，install 直接把 manifest JSON 字符串作为 raw body */
+  serverPlugins: {
+    list: () => http.get<ServerPluginRow[]>('/admin/server-plugins'),
+    install: (manifest: string) =>
+      rawFetch('/api/admin/server-plugins', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: manifest,
+      }).then(async (res) => {
+        const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
+        if (!res.ok) throw new ApiError(res.status, typeof data.error === 'string' ? data.error : '安装失败')
+        return data as unknown as ServerPluginRow
+      }),
+    toggle: (id: string | number, enabled: boolean) =>
+      http.patch<ServerPluginRow>(`/admin/server-plugins/${encodeURIComponent(String(id))}`, { enabled }),
+    remove: (id: string | number) =>
+      http.delete<{ ok: true }>(`/admin/server-plugins/${encodeURIComponent(String(id))}`),
+  },
 }
 
 /** 在线更新：自动更新运行态（并入状态接口） */

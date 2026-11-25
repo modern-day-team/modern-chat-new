@@ -18,6 +18,7 @@ import (
 	"github.com/modern-day-team/modern-chat-new/server/internal/handler"
 	"github.com/modern-day-team/modern-chat-new/server/internal/metrics"
 	"github.com/modern-day-team/modern-chat-new/server/internal/middleware"
+	"github.com/modern-day-team/modern-chat-new/server/internal/serverplugin"
 	"github.com/modern-day-team/modern-chat-new/server/internal/service"
 	"github.com/modern-day-team/modern-chat-new/server/internal/store"
 	"github.com/modern-day-team/modern-chat-new/server/internal/ws"
@@ -43,6 +44,8 @@ type Deps struct {
 	AutoUpdater *service.AutoScheduler
 	// Push Web Push 服务（可为 nil 或未配置，此时前端显示「未启用」）
 	Push *service.PushService
+	// ServerPlugins 服务端插件运行时（main 构造并启动；测试可为 nil）
+	ServerPlugins *serverplugin.Runtime
 }
 
 // New 装配引擎。
@@ -87,7 +90,9 @@ func New(d Deps) *gin.Engine {
 	// MinLength=1024：小于该长度的响应压缩后反而更大（gzip 头 + 熵不足）。
 	r.Use(gzip.Gzip(
 		gzip.DefaultCompression,
-		gzip.WithExcludedPaths([]string{"/ws", "/uploads"}),
+		// /api/ext 的插件响应可能只有几十字节；gzip 中间件会给小响应错误地打上
+		// Content-Encoding: gzip（浏览器解压失败），统一排除动态插件接口。
+		gzip.WithExcludedPaths([]string{"/ws", "/uploads", "/api/ext"}),
 		gzip.WithMinLength(1024),
 	))
 	if d.Notifier != nil {
@@ -108,6 +113,13 @@ func New(d Deps) *gin.Engine {
 	moderation := store.NewModerationStore(d.DB)
 	pushSubs := store.NewPushStore(d.DB)
 	plugins := store.NewPluginStore(d.DB)
+	pluginData := store.NewPluginDataStore(d.DB)
+	serverPluginStore := store.NewServerPluginStore(d.DB)
+	// main 拥有并启动同一个 runtime（ws.Emit 也用它）；测试未注入时用本地实例兜底。
+	spRuntime := d.ServerPlugins
+	if spRuntime == nil {
+		spRuntime = serverplugin.NewRuntime(d.Cfg.JWTSecret, serverPluginStore)
+	}
 	resets := store.NewPasswordResetStore(d.DB)
 	audits := store.NewAuditStore(d.DB)
 	sessions := store.NewSessionStore(d.DB)
@@ -142,6 +154,9 @@ func New(d Deps) *gin.Engine {
 	stickerH := handler.NewStickerHandler(stickers, d.Storage)
 	fileH := handler.NewFileHandler(files, convs, d.Storage)
 	pluginH := handler.NewPluginHandler(d.Cfg, plugins, audits)
+	pluginH.SetPluginData(pluginData)
+	pluginDataH := handler.NewPluginDataHandler(plugins, pluginData)
+	serverPluginH := handler.NewServerPluginHandler(serverPluginStore, audits, spRuntime)
 	adminH := handler.NewAdminHandler(d.Cfg, users, convs, msgs, plugins, audits, settings, d.Mailer)
 	opsH := handler.NewOpsHandler(d.Cfg, d.DB, d.Backup)
 	pushH := handler.NewPushHandler(d.Push, pushSubs)
@@ -351,6 +366,14 @@ func New(d Deps) *gin.Engine {
 		authed.POST("/plugins/from-url", pluginLimit, pluginH.FromURL)
 		authed.PATCH("/plugins/:id", pluginH.SetEnabled)
 		authed.DELETE("/plugins/:id", pluginH.Remove)
+		// 用户插件服务端私有 KV（按「当前用户 + 插件 id」隔离）
+		authed.GET("/plugins/:id/data", pluginDataH.Get)
+		authed.PUT("/plugins/:id/data", pluginDataH.Set)
+		authed.DELETE("/plugins/:id/data", pluginDataH.Delete)
+		authed.GET("/plugins/:id/data/keys", pluginDataH.Keys)
+		// 服务端插件：页面声明与动态接口（仍需登录）
+		authed.GET("/server-plugins/pages", serverPluginH.Pages)
+		authed.Any("/ext/:plugin/*path", serverPluginH.Dynamic)
 	}
 
 	// 站长
@@ -367,6 +390,11 @@ func New(d Deps) *gin.Engine {
 		admin.GET("/plugins", adminH.Plugins)
 		admin.POST("/plugins/global-disable", adminH.SetPluginGlobalDisabled)
 		admin.POST("/plugins/purge", adminH.PurgePlugin)
+		// 服务端声明式插件（manifest 安装 / 启停 / 删除）
+		admin.GET("/server-plugins", serverPluginH.List)
+		admin.POST("/server-plugins", serverPluginH.Install)
+		admin.PATCH("/server-plugins/:id", serverPluginH.SetEnabled)
+		admin.DELETE("/server-plugins/:id", serverPluginH.Delete)
 		admin.POST("/users/:id/role", adminH.SetRole)
 		// 注册邀请码
 		admin.GET("/invites", inviteH.List)

@@ -28,6 +28,18 @@ func TestParseValid(t *testing.T) {
 	}
 }
 
+func TestParseSDKV3Permissions(t *testing.T) {
+	for _, p := range []string{"ui:page", "data"} {
+		if !ValidPermissions[p] {
+			t.Fatalf("SDK v3 权限 %q 未登记", p)
+		}
+		code := `/* {"name":"v3","version":"1.0.0","permissions":["` + p + `"]} */`
+		if _, err := Parse(code); err != nil {
+			t.Fatalf("权限 %q 应可安装: %v", p, err)
+		}
+	}
+}
+
 func TestParseErrors(t *testing.T) {
 	cases := []struct {
 		name   string

@@ -20,6 +20,7 @@ import (
 	"github.com/modern-day-team/modern-chat-new/server/internal/logx"
 	"github.com/modern-day-team/modern-chat-new/server/internal/middleware"
 	"github.com/modern-day-team/modern-chat-new/server/internal/router"
+	"github.com/modern-day-team/modern-chat-new/server/internal/serverplugin"
 	"github.com/modern-day-team/modern-chat-new/server/internal/service"
 	"github.com/modern-day-team/modern-chat-new/server/internal/store"
 	"github.com/modern-day-team/modern-chat-new/server/internal/ws"
@@ -196,6 +197,16 @@ func main() {
 		autoScheduler = service.NewAutoScheduler(updater, time.Duration(cfg.AutoUpdateIntervalMin)*time.Minute, nil)
 	}
 
+	// 服务端声明式插件：runtime 由 main 拥有，router 与 WS 共用同一实例。
+	// 启动期加载一次，之后管理员安装/启停/删除时会 Reload。
+	serverPluginStore := store.NewServerPluginStore(db)
+	serverPluginRuntime := serverplugin.NewRuntime(cfg.JWTSecret, serverPluginStore)
+	if err := serverPluginRuntime.Reload(); err != nil {
+		slog.Warn("server plugin reload failed", "err", err.Error())
+	}
+	runtimeCtx, runtimeCancel := context.WithCancel(context.Background())
+	go serverPluginRuntime.Start(runtimeCtx)
+
 	// WebSocket Hub
 	hub := ws.NewHub(&ws.Deps{
 		Convs:      store.NewConversationStore(db),
@@ -208,6 +219,7 @@ func main() {
 		Settings:   settings,
 		Push:       pushService,
 		PushSubs:   store.NewPushStore(db),
+		Events:     serverPluginRuntime,
 	})
 	go hub.Run()
 
@@ -225,6 +237,7 @@ func main() {
 		PluginLimiter: pluginLimiter,
 		Updater:       updater,
 		AutoUpdater:   autoScheduler,
+		ServerPlugins: serverPluginRuntime,
 	})
 
 	// 只设读头/空闲超时，不设 ReadTimeout / WriteTimeout：
@@ -258,6 +271,7 @@ func main() {
 
 	slog.Info("shutting down")
 	autoScheduler.Stop()
+	runtimeCancel()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {

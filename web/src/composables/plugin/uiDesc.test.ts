@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { validatePanel, validateRenderDesc, validateUIDesc } from './uiDesc'
+import { validatePage, validatePanel, validateRenderDesc, validateUIDesc } from './uiDesc'
 
 describe('validateUIDesc 白名单', () => {
   it('白名单内组件且 props 合法时通过', () => {
@@ -78,5 +78,46 @@ describe('validatePanel / validateRenderDesc', () => {
     expect(single?.body).toHaveLength(1)
     const panel = validateRenderDesc({ title: 'T', body: [{ component: 'divider' }] })
     expect(panel?.title).toBe('T')
+  })
+})
+
+describe('validatePage（SDK v3）', () => {
+  const valid = {
+    id: 'my_page-1',
+    title: '页面工具箱',
+    icon: '页',
+    scope: 'user',
+    body: [{ component: 'text', props: { content: 'hi' } }],
+  }
+
+  it('合法页面通过；scope 缺省时归一为 user', () => {
+    const page = validatePage(valid)
+    expect(page?.id).toBe('my_page-1')
+    expect(page?.title).toBe('页面工具箱')
+    expect(page?.scope).toBe('user')
+    expect(page?.body).toHaveLength(1)
+    expect(validatePage({ id: 'x', title: 't', body: [] })?.scope).toBe('user')
+  })
+
+  it('id 格式、标题长度、scope 取值均严格校验', () => {
+    expect(validatePage({ ...valid, id: 'Bad ID!' })).toBeNull()
+    expect(validatePage({ ...valid, id: '' })).toBeNull()
+    expect(validatePage({ ...valid, title: '' })).toBeNull()
+    expect(validatePage({ ...valid, title: 'x'.repeat(41) })).toBeNull()
+    expect(validatePage({ ...valid, scope: 'superuser' })).toBeNull()
+    expect(validatePage({ ...valid, scope: 'admin' })?.scope).toBe('admin')
+  })
+
+  it('body 复用面板白名单：非法节点整体拒绝', () => {
+    expect(validatePage({ ...valid, body: [{ component: 'script', props: {} }] })).toBeNull()
+    expect(validatePage({ ...valid, body: 'x' })).toBeNull()
+  })
+
+  it('节点总量上限 100（含嵌套子节点）', () => {
+    const body = Array.from({ length: 101 }, () => ({ component: 'divider', props: {} }))
+    expect(validatePage({ ...valid, body })).toBeNull()
+    expect(validatePage({ ...valid, body: body.slice(0, 100) })).not.toBeNull()
+    const nested = [{ component: 'list', props: {}, children: body.slice(0, 100) }]
+    expect(validatePage({ ...valid, body: nested })).toBeNull()
   })
 })

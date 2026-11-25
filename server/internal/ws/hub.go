@@ -11,6 +11,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/modern-day-team/modern-chat-new/server/internal/middleware"
+	"github.com/modern-day-team/modern-chat-new/server/internal/serverplugin"
 	"github.com/modern-day-team/modern-chat-new/server/internal/service"
 	"github.com/modern-day-team/modern-chat-new/server/internal/store"
 )
@@ -41,6 +42,8 @@ type Deps struct {
 	// Push / PushSubs Web Push：离线用户的新消息提醒（Push 为 nil 或未配置时跳过）
 	Push     *service.PushService
 	PushSubs *store.PushStore
+	// Events 服务端插件事件总线（message:new 等；可为 nil）
+	Events *serverplugin.Runtime
 }
 
 // Hub 在线连接注册表（按用户分片锁）。

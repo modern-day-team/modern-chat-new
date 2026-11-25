@@ -78,6 +78,19 @@ interface McPanelDesc {
   body: McUIDescNode[]
 }
 
+/** SDK v3：插件注册的全站页面（需 ui:page；同一 id 再次注册即覆盖） */
+interface McPageDesc {
+  /** 路由片段，^[a-z0-9_-]{1,40}$，同一插件内唯一 */
+  id: string
+  /** 1–40 字符 */
+  title: string
+  icon?: string
+  /** user=所有登录用户（默认），admin=仅站长可见 */
+  scope?: 'user' | 'admin'
+  /** 白名单描述式 UI 节点，最多 100 个 */
+  body: McUIDescNode[]
+}
+
 interface McRequestOptions {
   method?: string
   headers?: Record<string, string>
@@ -101,7 +114,7 @@ type McEvent =
   | 'message:action'
 
 interface McApi {
-  /** 宿主 API 级别（新增 SDK 能力时递增），插件据此做特性检测 */
+  /** 宿主 API 级别，插件据此做特性检测：'3' = 全站页面 + 服务端用户数据 */
   version: string
   /** 监听事件。门槛按事件而定：message:new/recall、presence 需 message:read；ui:action / message:action 只投递给注册者本身（见 docs/插件开发.md §5） */
   on(event: McEvent, fn: (payload: unknown) => void): void
@@ -113,6 +126,12 @@ interface McApi {
   addSidePanel(desc: McPanelDesc): Promise<void>
   /** 收起自己的面板（需 ui:panel）；重新展示用 addSidePanel */
   removeSidePanel(): Promise<void>
+  /** SDK v3：注册/覆盖全站页面（需 ui:page），页面按钮动作通过 on('ui:action') 回传 */
+  addPage(desc: McPageDesc): Promise<void>
+  /** SDK v3：覆盖指定 id 的页面（需 ui:page） */
+  setPage(desc: McPageDesc): Promise<void>
+  /** SDK v3：移除指定 id 的页面（需 ui:page） */
+  removePage(id: string): Promise<void>
   /** 注册消息右键菜单项（需 ui:actions）；点击后收到 on('message:action', { actionId, message }) */
   registerMessageAction(desc: { id: string; label: string }): Promise<void>
 
@@ -151,6 +170,8 @@ interface McApi {
   nav: {
     openConversation(convId: number): Promise<void>
     jumpToMessage(messageId: number): Promise<boolean>
+    /** SDK v3：打开本插件注册的全站页面（pluginId 为插件记录的平台 id） */
+    openPluginPage(pluginId: number | string, pageId: string): Promise<void>
   }
   toast(text: string, kind?: 'info' | 'success' | 'warning' | 'error'): Promise<void>
 
@@ -160,6 +181,16 @@ interface McApi {
     set(key: string, value: string): Promise<void>
     remove(key: string): Promise<void>
     /** 列出本插件已存的键（剥离命名空间前缀，≤500 个） */
+    keys(): Promise<string[]>
+  }
+  /**
+   * SDK v3：服务端按「用户 + 插件 + key」隔离的 KV 数据（需 data）。
+   * 插件 id 由宿主注入，插件只传 key；key 1–120 字符，value ≤64KB，不存在时 get 返回空串。
+   */
+  data: {
+    get(key: string): Promise<string>
+    set(key: string, value: string): Promise<void>
+    remove(key: string): Promise<void>
     keys(): Promise<string[]>
   }
   /** 经主站转发的网络请求（需 net，且域名必须在 manifest.allowedHosts 里） */

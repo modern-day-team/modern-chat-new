@@ -50,9 +50,9 @@ describe('bootHtml 转义与注入', () => {
     expect(html).toContain('var HOST = "*";')
   })
 
-  it('SDK v2 暴露 users.search / removeSidePanel 与新增宿主能力', () => {
+  it('SDK v3 暴露页面注册 / 用户数据 / 页面跳转，且保留 v2 能力', () => {
     const html = bootHtml('', [], 'tk', 'https://app.example')
-    expect(html).toContain('version: "2"')
+    expect(html).toContain('version: "3"')
     expect(html).toContain('removeSidePanel')
     expect(html).toContain('call("users.search", [kw])')
     expect(html).toContain('call("conv.list", [])')
@@ -62,5 +62,14 @@ describe('bootHtml 转义与注入', () => {
     expect(html).toContain('call("clipboard.writeText", [text])')
     expect(html).toContain('call("storage.remove", [k])')
     expect(html).toContain('call("storage.keys", [])')
+    // v3 新增
+    expect(html).toContain('call("addPage", [desc])')
+    expect(html).toContain('call("removePage", [id])')
+    expect(html).toContain('call("setPage", [desc])')
+    expect(html).toContain('call("data.get", [key])')
+    expect(html).toContain('call("data.set", [key, value])')
+    expect(html).toContain('call("data.remove", [key])')
+    expect(html).toContain('call("data.keys", [])')
+    expect(html).toContain('call("nav.openPluginPage", [pluginId, pageId])')
   })
 })

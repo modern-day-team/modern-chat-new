@@ -75,6 +75,7 @@ desktop.ini
 .taste-skill/
 .agent/
 .zcode/
+.codebuddy/
 AGENTS.md
 # ===== 运行时数据（如后续启用上传）=====
 uploads/

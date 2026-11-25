@@ -31,6 +31,8 @@ var ValidPermissions = map[string]bool{
 	"ui:actions": true,
 	// 宿主侧动作：跳转会话 / 定位消息 / 轻提示
 	"ui:host": true,
+	// SDK v3：完整页面 + 用户级服务端数据
+	"ui:page": true, "data": true,
 }
 
 var (
@@ -79,10 +81,16 @@ func (m *Manifest) Validate() error {
 		return fmt.Errorf("%w: allowedHosts 最多 20 项", ErrInvalid)
 	}
 	for _, h := range m.AllowedHosts {
-		h = strings.ToLower(strings.TrimSpace(h))
-		if h == "" || len(h) > 253 || !hostRe.MatchString(h) {
+		if !ValidHost(h) {
 			return fmt.Errorf("%w: allowedHosts 含非法域名 %q", ErrInvalid, h)
 		}
 	}
 	return nil
+}
+
+// ValidHost 校验域名（允许 "*.example.com" 通配子域）。
+// 导出给服务端插件 manifest 复用同一套域名规则，避免两处各写一份正则。
+func ValidHost(h string) bool {
+	h = strings.ToLower(strings.TrimSpace(h))
+	return h != "" && len(h) <= 253 && hostRe.MatchString(h)
 }

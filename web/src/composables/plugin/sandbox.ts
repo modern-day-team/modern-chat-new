@@ -88,8 +88,8 @@ export function bootHtml(pluginCode: string, allowedHosts: string[], token: stri
     });
   }
   var sdk = {
-    // 宿主 API 级别：插件据此做特性检测（v2 增加会话列表/消息搜索/草稿/剪贴板/存储枚举）
-    version: "2",
+    // 宿主 API 级别：插件据此做特性检测（v2 会话列表/消息搜索/草稿/剪贴板/存储枚举；v3 全站页面 + 服务端用户数据）
+    version: "3",
     on: function (ev, fn) { (handlers[ev] || (handlers[ev] = [])).push(fn); },
     send: function (convId, payload, msgType) { return call("send", [convId, payload, msgType]); },
     registerMessageRenderer: function (type, fn) { renderers.set(type, fn); return call("registerMessageRenderer", [type]); },
@@ -98,6 +98,17 @@ export function bootHtml(pluginCode: string, allowedHosts: string[], token: stri
     removeSidePanel: function () { return call("removeSidePanel", []); },
     // 右键菜单动作：desc = { id, label }，触发时收到 on('message:action', { actionId, message })
     registerMessageAction: function (desc) { return call("registerMessageAction", [desc]); },
+    // SDK v3：全站页面（需 ui:page）。同一 id 再次 addPage / setPage 均覆盖
+    addPage: function (desc) { return call("addPage", [desc]); },
+    removePage: function (id) { return call("removePage", [id]); },
+    setPage: function (desc) { return call("setPage", [desc]); },
+    // SDK v3：服务端按「用户 + 插件」隔离的 KV 数据（需 data）
+    data: {
+      get: function (key) { return call("data.get", [key]); },
+      set: function (key, value) { return call("data.set", [key, value]); },
+      remove: function (key) { return call("data.remove", [key]); },
+      keys: function () { return call("data.keys", []); }
+    },
     // 当前用户身份（需 conv:read）：只含 id / 昵称
     me: function () { return call("me", []); },
     // 当前会话与会话列表只读数据（需 conv:read）
@@ -122,7 +133,9 @@ export function bootHtml(pluginCode: string, allowedHosts: string[], token: stri
     // 宿主侧动作（需 ui:host）
     nav: {
       openConversation: function (id) { return call("nav.openConversation", [id]); },
-      jumpToMessage: function (id) { return call("nav.jumpToMessage", [id]); }
+      jumpToMessage: function (id) { return call("nav.jumpToMessage", [id]); },
+      // SDK v3：跳到本插件注册的全站页面（需 ui:host）
+      openPluginPage: function (pluginId, pageId) { return call("nav.openPluginPage", [pluginId, pageId]); }
     },
     toast: function (text, kind) { return call("toast", [text, kind]); },
     storage: {

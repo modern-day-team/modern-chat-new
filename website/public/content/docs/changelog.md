@@ -8,6 +8,14 @@
 
 ## [未发布]
 
+### 插件体系（双层架构）
+
+- **用户插件完整页面（SDK v3）**：新增 `ui:page` 权限与 `api.addPage/setPage/removePage`，插件可向主站注册带标题、图标和描述式 UI 的完整页面；新增 `/plugin/:pluginId/:pageId` 路由、页面动作回传与插件抽屉入口。
+- **用户级服务端数据**：新增 `data` 权限与 `api.data.get/set/remove/keys`，插件数据按「用户 + 插件 + key」存服务端，换设备与清浏览器缓存都不丢；单值 ≤64KB。
+- **管理员服务端插件**：管理员可在后台用 JSON manifest 安装全站插件，支持全站页面、静态 / 代理 API、`message:new` 事件订阅与定时任务；外部地址强制 HTTPS + `allowedHosts` + SSRF 防护，Webhook 带 HMAC 签名，所有管理动作写入审计。
+- **示例与文档**：新增 `page-kit.plugin.js`（SDK v3 用户页面）与 `server-hello.plugin.json`（服务端插件）；官网插件市场登记可下载示例，插件开发指南按用户插件 / 服务端插件两部分重写。
+- **集成期修复**：后端 manifest 权限表补齐 `ui:page` / `data`（否则 SDK v3 插件安装被拒）；`/api/ext` 动态插件接口排除 gzip，避免小响应被错误加上 `Content-Encoding: gzip` 导致前端解析失败。
+
 ### 插件能力增强（SDK v2）
 
 - **宿主 API 扩展**：新增会话列表 `conv.list`、全局消息搜索 `messages.search`、当前会话草稿 `draft.get/set`、只写剪贴板 `clipboard.writeText`、插件存储 `storage.remove/keys`；SDK 版本升到 `v2`，旧插件无需改动。新能力全部复用既有权限名：读正文仍要求 `message:read`，草稿 / 剪贴板要求 `ui:host`，存储要求 `storage`。

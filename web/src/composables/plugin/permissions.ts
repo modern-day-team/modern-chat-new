@@ -35,6 +35,15 @@ export const API_PERMISSION: Record<string, string> = {
   toast: 'ui:host',
   'storage.remove': 'storage',
   'storage.keys': 'storage',
+  // SDK v3：全站页面（需 ui:page）与服务端用户数据（需 data）
+  addPage: 'ui:page',
+  removePage: 'ui:page',
+  setPage: 'ui:page',
+  'data.get': 'data',
+  'data.set': 'data',
+  'data.remove': 'data',
+  'data.keys': 'data',
+  'nav.openPluginPage': 'ui:host',
 }
 
 /**

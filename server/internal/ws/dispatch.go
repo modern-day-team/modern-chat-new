@@ -315,6 +315,18 @@ func (h *Hub) handleChat(c *Client, f *clientFrame) {
 	h.ToUsers(others, ginH{"type": "conv_change", "convId": f.ConvID})
 	// 离线用户补一条 Web Push（在线用户已经收到桌面通知，不重复打扰）
 	h.notifyPush(others, msg)
+	// 服务端插件事件：消息成功落库并广播后异步通知订阅端点。
+	// 失败由 runtime 内部只记日志，绝不影响消息主流程。
+	if h.deps.Events != nil {
+		h.deps.Events.Emit("message:new", ginH{
+			"id":        msg.ID,
+			"convId":    msg.ConversationID,
+			"from":      msg.SenderID,
+			"msgType":   msg.MsgType,
+			"content":   msg.Content,
+			"createdAt": msg.CreatedAt.UTC().Format(time.RFC3339Nano),
+		})
+	}
 }
 
 // notifyPush 给离线成员推送浏览器通知。失败只记日志，不影响消息投递。

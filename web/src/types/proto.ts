@@ -343,6 +343,16 @@ export interface PanelDesc {
   body: UIDescNode[]
 }
 
+/** 用户插件注册的全站页面（SDK v3；id 在同一插件内唯一，整站路由 /plugin/:pluginId/:pageId） */
+export interface PageDesc {
+  id: string
+  title: string
+  icon?: string
+  /** 可见范围：user=所有登录用户（默认），admin=仅站长 */
+  scope?: 'user' | 'admin'
+  body: UIDescNode[]
+}
+
 // ===== 管理后台：群聊管理（旧站迁移 §8，只读） =====
 
 /** 群列表行 */

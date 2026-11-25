@@ -53,7 +53,7 @@
 | 表情 / 转发 | 个人表情库（上传 ≤2 MB、点一下即发、右键删除）；右键消息转发到任意会话（单条，气泡标注「转发」） |
 | 群协作 | 群公告（群主发布，聊天区顶部折叠条 + 详情面板编辑/撤销）、群文件（≤20 MB，成员可传，上传者或群主可删）、拉好友入群、**群邀请链接**（任意成员可生成，0–30 天有效，落地页免登录可看群信息） |
 | 群管理 | 改群名、**群头像**（群主 / 管理员上传，可恢复默认）、**管理员**（群主可设置 / 取消）、**禁言**（群主与管理员可操作，到期自动解除）、**全员禁言**（群主/管理员仍可发言）、拉好友入群、踢人、转让群主（`owner_id` 与成员角色事务同步；群主须先转让才能退群） |
-| 插件 | 上传 / URL 安装（SSRF 防护）、权限清单确认、启停、卸载、同名上传即升级、自定义消息类型渲染、站长全局下架；SDK v2 支持会话/消息搜索、草稿、剪贴板、存储管理和丰富描述式控件 |
+| 插件 | 用户插件：上传 / URL 安装（SSRF 防护）、权限确认、启停、卸载、同名升级、自定义消息渲染、完整插件页面、账号级数据、站长全局下架；服务端插件：管理员 JSON manifest 安装，提供全站页面 / API / 事件 / 定时任务 |
 | 界面 | 飞书式四栏（图标栏 / 分组栏 / 会话列表 / 聊天区）、统一设置页（外观 / 账号 / 布局 / 插件 / 站长 / 关于）、**全站公告弹窗提醒**（在线即时弹出，离线期间的公告下次进入聊天页补弹，关闭即标记已读；系统通知会话仅作存储，不在会话列表展示）、登录页背景色与特效（光晕/波纹/网格，访客可自选，本地持久化）、全站页面背景（预设色 / 自定义色 / 本地图片 + 网格 / 圆点 / 斜纹；图片自动压缩后存本机，全站生效；**入口只在设置页「外观」**）、连续消息分组、头像/昵称实时同步、中 / 英文切换、亮 / 暗 / 跟随系统主题 |
 | 布局 | 分组栏 / 会话列表 / 详情面板均可**拖拽调宽**、双击分隔条在「常驻 / 抽屉」间切换，宽度与形态跨刷新保持，设置页可一键恢复默认 |
 | 站长后台 | 概览统计、用户管理（搜索 / 筛选 / 封禁 / 强制下线 / 重置密码）、插件上下架、**全站公告**、操作审计、**注册邀请码**（批量生成 / 停用 / 原子核销）、系统设置（SMTP / Redis / 对象存储，密钥加密落库不回显；**站点名 / 注册开关 / 维护模式 / 消息长度 / 撤回时限 / 群上限 / 上传体积 / 登录锁定**即时生效） |
@@ -84,7 +84,7 @@ modernchat-new/
 ├── website/                    # 官网（Vue 3 + Vite，无组件库）：落地页 / 文档站 / 插件市场
 │   ├── public/content/docs/    # 由仓库文档同步生成的文档站内容（website/scripts/sync-docs.*）
 │   └── scripts/sync-docs.*     # 把 README / docs / server / web 文档同步到官网
-├── plugins/examples/           # 示例插件（weather / dice / word-count / conv-stats）
+├── plugins/examples/           # 示例插件（weather / dice / word-count / conv-stats / search-kit / page-kit / server-hello）
 ├── scripts/                    # install.sh（发行版一键安装）/ package-release.sh（构建机打包）
 │                               # update.sh（热更新 / 发行版升级）/ update-release.sh / uninstall.sh / coverage.sh
 ├── server/                     # Go 后端
@@ -222,7 +222,7 @@ cd server && go test -tags integration ./test/   # 需要本机 MySQL
 
 > **依赖裸 `fetch` 的插件已失效，必须改用 `mc.request`**（宿主注入的 SDK 对象名是 `api`，代码写作 `api.request`）。沙箱是 opaque origin，且 CSP `connect-src` 只放行 `allowedHosts`。详见 [插件开发.md](docs/插件开发.md)。
 
-SDK 当前为 **v2**：新增会话列表、全局消息搜索、当前会话草稿、只写剪贴板、插件存储键管理，以及 `textarea` / `checkbox` / `switch` / `segmented` 描述式控件；v1 API 全部保留，插件可用 `api.version` 做特性检测。
+SDK 当前为 **v3**：在 v2 的会话列表 / 消息搜索 / 草稿 / 剪贴板 / 存储管理基础上，新增完整插件页面、跟随账号的用户级数据 API；v1 / v2 API 全部保留。另有管理员安装的**服务端插件**：用单个 JSON manifest 为全站增加页面、API、消息事件与定时任务。
 
 ### 入口约定
 
@@ -298,11 +298,14 @@ UI 描述仅接受 8 个组件：`text / image / button / input / card / list / 
 
 ### 试一试示例插件
 
-仓库自带三个示例插件（在官网「插件市场」页也可直接下载）：
+仓库自带六个示例插件/清单（用户插件在官网「插件市场」页可直接下载）：
 
 - [`plugins/examples/weather.plugin.js`](plugins/examples/weather.plugin.js)：侧边栏天气面板 + 自定义 `weather` 消息类型
 - [`plugins/examples/dice.plugin.js`](plugins/examples/dice.plugin.js)：掷骰子面板 + 自定义 `dice` 消息类型
 - [`plugins/examples/word-count.plugin.js`](plugins/examples/word-count.plugin.js)：会话消息统计面板（`message:new` 事件 + storage 持久化）
+- [`plugins/examples/search-kit.plugin.js`](plugins/examples/search-kit.plugin.js)：SDK v2 搜索工具箱（会话/消息搜索、草稿、剪贴板）
+- [`plugins/examples/page-kit.plugin.js`](plugins/examples/page-kit.plugin.js)：SDK v3 完整页面 + 账号级服务端数据
+- [`plugins/examples/server-hello.plugin.json`](plugins/examples/server-hello.plugin.json)：管理员服务端插件清单（全站页面 + 静态 API）
 
 1. 登录后点击侧栏「插件」图标 → 上传该文件 → 确认权限清单并启用
 2. 右侧详情面板出现「天气（示例插件）」卡片：点「刷新数据」看面板更新，「发送到当前聊天」把天气发到当前会话

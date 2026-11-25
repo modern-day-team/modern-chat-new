@@ -4,16 +4,20 @@ import UiDrawer from '@/components/ui/UiDrawer.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiInput from '@/components/ui/UiInput.vue'
 import UiTag from '@/components/ui/UiTag.vue'
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { DialogPlugin, MessagePlugin } from '@/components/ui/feedback'
 
 import { useAppI18n } from '@/composables/useAppI18n'
-import { pluginApi } from '@/core/network/endpoints'
+import { pluginApi, serverPluginApi, type ServerPluginPage } from '@/core/network/endpoints'
 import { usePluginHost } from '@/composables/usePluginHost'
+import { useAuthStore } from '@/stores/auth'
 import { usePluginsStore } from '@/stores/plugins'
-import type { Plugin } from '@/types/proto'
+import type { PageDesc, Plugin } from '@/types/proto'
 
 const visible = defineModel<boolean>({ default: false })
+const router = useRouter()
+const auth = useAuthStore()
 const pluginsStore = usePluginsStore()
 const host = usePluginHost()
 const { t, te } = useAppI18n()
@@ -35,7 +39,10 @@ function pickFile() {
 /**
  * 抽屉打开时拉全量清单（含已停用）：宿主的 active 列表只有启用项，
  * 若沿用它，停用后的插件将从抽屉里消失、再也无法重新启用。
+ * 同时刷新服务端插件页面清单。
  */
+const serverPages = ref<ServerPluginPage[]>([])
+
 watch(
   visible,
   (v) => {
@@ -43,9 +50,46 @@ watch(
     pluginsStore.load().catch((e) => {
       void MessagePlugin.error(te(e))
     })
+    serverPluginApi.pages()
+      .then((list) => {
+        serverPages.value = Array.isArray(list) ? list : []
+      })
+      .catch((e) => {
+        // 页面清单加载失败不影响插件管理本身，只让分组显示空态
+        serverPages.value = []
+        void MessagePlugin.error(te(e))
+      })
   },
   { immediate: true },
 )
+
+/** 用户插件注册的页面；admin 页仅站长可见 */
+const pluginPages = computed<Array<{ pluginId: number; pluginName: string; page: PageDesc }>>(() => {
+  const out: Array<{ pluginId: number; pluginName: string; page: PageDesc }> = []
+  for (const p of pluginsStore.plugins) {
+    for (const page of host.state.pages[p.id] ?? []) {
+      if (page.scope === 'admin' && auth.user?.role !== 'admin') continue
+      // host.state 是深层 readonly（body/children 都是只读数组），深拷贝成可变 PageDesc
+      out.push({ pluginId: p.id, pluginName: p.name, page: JSON.parse(JSON.stringify(page)) as PageDesc })
+    }
+  }
+  return out
+})
+
+/** 站点页面：scope=user 人人可见，admin 页仅站长可见 */
+const visibleServerPages = computed(() =>
+  serverPages.value.filter((p) => p.scope !== 'admin' || auth.user?.role === 'admin'),
+)
+
+function openUserPage(pluginId: number, pageId: string) {
+  visible.value = false
+  void router.push(`/plugin/${pluginId}/${pageId}`)
+}
+
+function openServerPage(pluginId: string, pageId: string) {
+  visible.value = false
+  void router.push(`/plugin-server/${pluginId}/${pageId}`)
+}
 
 // ===== 安装 / 升级 =====
 
@@ -218,6 +262,42 @@ async function uninstall(plugin: Plugin) {
         </div>
       </div>
 
+      <!-- 用户插件页面（SDK v3 addPage / setPage） -->
+      <div class="mc-plugins__group">
+        <div class="mc-plugins__group-title">{{ t('plugin.userPages') }}</div>
+        <button
+          v-for="item in pluginPages"
+          :key="`u-${item.pluginId}-${item.page.id}`"
+          type="button"
+          class="mc-plugins__page"
+          @click="openUserPage(item.pluginId, item.page.id)"
+        >
+          <span class="mc-plugins__page-name">{{ item.page.title }}</span>
+          <span class="mc-plugins__page-sub text-placeholder">{{ item.pluginName }}</span>
+        </button>
+        <div v-if="!pluginPages.length" class="text-placeholder mc-plugins__pages-empty">
+          {{ t('plugin.noUserPages') }}
+        </div>
+      </div>
+
+      <!-- 站点页面（管理员安装的服务端插件） -->
+      <div class="mc-plugins__group">
+        <div class="mc-plugins__group-title">{{ t('plugin.sitePages') }}</div>
+        <button
+          v-for="p in visibleServerPages"
+          :key="`s-${p.pluginId}-${p.id}`"
+          type="button"
+          class="mc-plugins__page"
+          @click="openServerPage(String(p.pluginId), p.id)"
+        >
+          <span class="mc-plugins__page-name">{{ p.title }}</span>
+          <span class="mc-plugins__page-sub text-placeholder">{{ p.pluginId }}</span>
+        </button>
+        <div v-if="!visibleServerPages.length" class="text-placeholder mc-plugins__pages-empty">
+          {{ t('plugin.noSitePages') }}
+        </div>
+      </div>
+
       <!-- 列表 -->
       <div v-for="p in pluginsStore.plugins" :key="p.id" class="mc-plugins__item">
         <div class="mc-plugins__head">
@@ -277,6 +357,52 @@ async function uninstall(plugin: Plugin) {
 .mc-plugins__url {
   display: flex;
   gap: 8px;
+}
+
+.mc-plugins__group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mc-plugins__group-title {
+  font-size: var(--mc-fs-sm);
+  font-weight: 600;
+  color: var(--td-text-color-secondary);
+}
+
+.mc-plugins__page {
+  border: none;
+  background: var(--td-bg-color-container);
+  padding: 8px 10px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  border-radius: var(--mc-radius-md);
+  transition: background var(--mc-dur-fast) var(--mc-ease-out);
+}
+
+.mc-plugins__page:hover {
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+.mc-plugins__page-name {
+  font-size: var(--mc-fs-body);
+  color: var(--td-text-color-primary);
+}
+
+.mc-plugins__page-sub {
+  font-size: var(--mc-fs-caption);
+  flex-shrink: 0;
+}
+
+.mc-plugins__pages-empty {
+  font-size: var(--mc-fs-caption);
+  padding: 2px 0;
 }
 
 .mc-plugins__item {

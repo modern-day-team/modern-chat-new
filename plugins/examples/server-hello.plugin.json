@@ -1,0 +1,31 @@
+{
+  "name": "server-hello",
+  "version": "1.0.0",
+  "description": "管理员服务端插件示例：全站页面 + 静态 API，不依赖外部服务",
+  "pages": [
+    {
+      "id": "hello",
+      "title": "服务端示例页",
+      "icon": "服务器",
+      "scope": "user",
+      "body": [
+        { "component": "badge", "props": { "text": "由管理员安装", "tone": "success" } },
+        { "component": "text", "props": { "content": "这个页面来自服务端插件清单，所有登录用户都能看到。" } },
+        { "component": "button", "props": { "text": "调用示例 API", "theme": "primary" }, "action": "hello" }
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/hello",
+      "response": {
+        "status": 200,
+        "body": { "ok": true, "message": "Hello from a server plugin" }
+      }
+    }
+  ],
+  "events": [],
+  "jobs": [],
+  "allowedHosts": []
+}

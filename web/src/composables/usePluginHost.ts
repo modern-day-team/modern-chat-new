@@ -14,19 +14,19 @@ import { reactive, readonly } from 'vue'
 
 import { MessagePlugin } from '@/components/ui/feedback'
 
-import type { Plugin, PanelDesc, ServerFrame } from '@/types/proto'
-import { convApi, pluginApi, searchApi, userApi } from '@/core/network/endpoints'
+import type { PageDesc, Plugin, PanelDesc, ServerFrame } from '@/types/proto'
+import { convApi, pluginApi, pluginDataApi, searchApi, userApi } from '@/core/network/endpoints'
 import { useAuthStore } from '@/stores/auth'
 import { useConversationsStore } from '@/stores/conversations'
 import { usePluginsStore } from '@/stores/plugins'
 import { useWsStore } from '@/stores/ws'
 // 内核子模块：声明式 UI 校验 / 权限映射 / 沙箱引导，各自单一职责（见 ./plugin/）
-import { validatePanel, validateRenderDesc } from './plugin/uiDesc'
+import { validatePage, validatePanel, validateRenderDesc } from './plugin/uiDesc'
 import { API_PERMISSION, EVENT_PERMISSION } from './plugin/permissions'
 import { bootHtml } from './plugin/sandbox'
 
 // 公共校验函数保持原有导出面（外部如有引用不受拆分影响）
-export { validateUIDesc, validatePanel } from './plugin/uiDesc'
+export { validateUIDesc, validatePanel, validatePage } from './plugin/uiDesc'
 
 // ===== allowed_hosts 匹配 =====
 
@@ -93,6 +93,8 @@ interface Runtime {
 interface PluginHostState {
   started: boolean
   panels: Record<number, PanelDesc> // pluginId -> panel desc
+  /** pluginId -> 该插件注册的全站页面（SDK v3，同 id 覆盖） */
+  pages: Record<number, PageDesc[]>
   /** pluginId -> 该插件注册的右键菜单动作 */
   actions: Record<number, Array<{ id: string; label: string }>>
 }
@@ -118,7 +120,7 @@ function convBrief(c: { id: number; type: number; name?: string | null; peer?: {
 }
 
 function createHost() {
-  const state = reactive<PluginHostState>({ started: false, panels: {}, actions: {} })
+  const state = reactive<PluginHostState>({ started: false, panels: {}, pages: {}, actions: {} })
   const runtimes = new Map<number, Runtime>()
   let offFrame: (() => void) | null = null
 
@@ -546,6 +548,87 @@ function createHost() {
           reply(runtime, callId, true)
           break
         }
+        // SDK v3：全站页面注册（同一 id 覆盖；数量上限防止一个插件把路由表顶爆）
+        case 'addPage':
+        case 'setPage': {
+          const page = validatePage(args[0])
+          if (!page) {
+            reply(runtime, callId, false, undefined, 'invalid page desc')
+            return
+          }
+          const list = state.pages[runtime.plugin.id] ?? (state.pages[runtime.plugin.id] = [])
+          const idx = list.findIndex((p) => p.id === page.id)
+          if (idx >= 0) list[idx] = page
+          else {
+            if (list.length >= 20) {
+              reply(runtime, callId, false, undefined, 'too many pages (max 20)')
+              return
+            }
+            list.push(page)
+          }
+          reply(runtime, callId, true)
+          break
+        }
+        case 'removePage': {
+          const id = String(args[0] ?? '')
+          const list = state.pages[runtime.plugin.id]
+          if (list) {
+            const idx = list.findIndex((p) => p.id === id)
+            if (idx >= 0) list.splice(idx, 1)
+            if (!list.length) delete state.pages[runtime.plugin.id]
+          }
+          reply(runtime, callId, true)
+          break
+        }
+        // SDK v3：服务端用户数据（后端按「用户 + 插件记录 id + key」隔离；
+        // 插件沙箱拿不到自己的 id，这里由宿主注入 runtime.plugin.id）
+        case 'data.get': {
+          const key = String(args[0] ?? '')
+          if (!key || key.length > 120) {
+            reply(runtime, callId, false, undefined, 'invalid data key')
+            return
+          }
+          const r = await pluginDataApi.get(runtime.plugin.id, key)
+          reply(runtime, callId, true, r.value ?? '')
+          break
+        }
+        case 'data.set': {
+          const key = String(args[0] ?? '')
+          const value = String(args[1] ?? '')
+          if (!key || key.length > 120 || value.length > 64 * 1024) {
+            reply(runtime, callId, false, undefined, 'invalid data key or value too large')
+            return
+          }
+          await pluginDataApi.set(runtime.plugin.id, key, value)
+          reply(runtime, callId, true)
+          break
+        }
+        case 'data.remove': {
+          const key = String(args[0] ?? '')
+          if (!key || key.length > 120) {
+            reply(runtime, callId, false, undefined, 'invalid data key')
+            return
+          }
+          await pluginDataApi.remove(runtime.plugin.id, key)
+          reply(runtime, callId, true)
+          break
+        }
+        case 'data.keys': {
+          const r = await pluginDataApi.keys(runtime.plugin.id)
+          reply(runtime, callId, true, (r.keys ?? []).slice(0, 500))
+          break
+        }
+        case 'nav.openPluginPage': {
+          const pluginId = String(args[0] ?? '')
+          const pageId = String(args[1] ?? '')
+          if (!/^[a-zA-Z0-9_-]{1,40}$/.test(pluginId) || !/^[a-z0-9_-]{1,40}$/.test(pageId)) {
+            reply(runtime, callId, false, undefined, 'invalid plugin page id')
+            return
+          }
+          window.location.assign(`${import.meta.env.BASE_URL}plugin/${pluginId}/${pageId}`)
+          reply(runtime, callId, true)
+          break
+        }
         default:
           reply(runtime, callId, false, undefined, `unknown api: ${apiName}`)
       }
@@ -681,6 +764,7 @@ function createHost() {
     rt.themeVars.clear()
     runtimes.delete(pluginId)
     delete state.panels[pluginId]
+    delete state.pages[pluginId]
     delete state.actions[pluginId]
   }
 
@@ -735,6 +819,7 @@ function createHost() {
     // unmountRuntime 会删除当前项，Map 迭代器按序遍历时这是安全的
     for (const id of runtimes.keys()) unmountRuntime(id)
     state.panels = {}
+    state.pages = {}
     state.started = false
   }
 
@@ -765,6 +850,16 @@ function createHost() {
     const rt = runtimes.get(pluginId)
     if (!rt) return
     postToSandbox(rt, { __mc: 'event', event: 'ui:action', payload: { action, value } })
+  }
+
+  /**
+   * 插件页面内 UI 动作回传（SDK v3）：payload 带 scope:'page' + pageId，
+   * 插件可据此区分侧栏面板动作与页面动作，旧面板 payload 形状保持不变。
+   */
+  function pageAction(pluginId: number, pageId: string, action: string, value?: unknown) {
+    const rt = runtimes.get(pluginId)
+    if (!rt) return
+    postToSandbox(rt, { __mc: 'event', event: 'ui:action', payload: { scope: 'page', pageId, action, value } })
   }
 
   /** 所有插件注册的右键菜单动作（供消息菜单渲染） */
@@ -801,6 +896,7 @@ function createHost() {
     requestRender,
     hasRenderer,
     panelAction,
+    pageAction,
     pluginActions,
     runMessageAction,
     notifyConvOpen: (convId: number) => dispatchEvent('conv:open', { convId }),

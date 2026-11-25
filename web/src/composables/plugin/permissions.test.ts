@@ -11,7 +11,8 @@ import { API_PERMISSION, EVENT_PERMISSION } from './permissions'
 describe('API_PERMISSION 完整性', () => {
   it('bootHtml SDK 中每个 call("...") 都已登记权限', () => {
     const html = bootHtml('', [], 'tk', 'https://app.example')
-    const calls = [...html.matchAll(/call\("([a-z.]+)"/g)].map((m) => m[1] ?? '')
+    // SDK v3 的 api 名含大写（nav.openPluginPage），字符类必须允许大写
+    const calls = [...html.matchAll(/call\("([a-zA-Z.]+)"/g)].map((m) => m[1] ?? '')
     expect(calls.length).toBeGreaterThan(10) // SDK 面非空，防止正则失效导致测试空转
     const missing = [...new Set(calls)].filter((api) => !(api in API_PERMISSION))
     expect(missing).toEqual([])
@@ -29,6 +30,8 @@ describe('API_PERMISSION 完整性', () => {
       'storage',
       'net',
       'ui:theme',
+      'ui:page',
+      'data',
     ])
     const bad = Object.entries(API_PERMISSION)
       .concat(Object.entries(EVENT_PERMISSION))
@@ -45,6 +48,18 @@ describe('API_PERMISSION 完整性', () => {
     expect(API_PERMISSION['clipboard.writeText']).toBe('ui:host')
     expect(API_PERMISSION['storage.remove']).toBe('storage')
     expect(API_PERMISSION['storage.keys']).toBe('storage')
+  })
+
+  it('SDK v3 新增 API 权限门槛：页面注册需 ui:page，用户数据需 data', () => {
+    expect(API_PERMISSION['addPage']).toBe('ui:page')
+    expect(API_PERMISSION['removePage']).toBe('ui:page')
+    expect(API_PERMISSION['setPage']).toBe('ui:page')
+    expect(API_PERMISSION['data.get']).toBe('data')
+    expect(API_PERMISSION['data.set']).toBe('data')
+    expect(API_PERMISSION['data.remove']).toBe('data')
+    expect(API_PERMISSION['data.keys']).toBe('data')
+    // 跳页面是宿主 UI 动作，沿用 ui:host，不新造权限名
+    expect(API_PERMISSION['nav.openPluginPage']).toBe('ui:host')
   })
 
   it('on 不进 API_PERMISSION：api.on 是沙箱内本地注册，不走 RPC', () => {

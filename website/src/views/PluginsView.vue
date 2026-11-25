@@ -60,6 +60,15 @@ const PLUGINS: MarketPlugin[] = [
     en: 'SDK v2 demo: conversation list, global message search, draft/clipboard and storage management with textarea/checkbox/switch/segmented controls.',
     perms: ['ui:panel', 'conv:read', 'message:read', 'ui:host', 'storage'],
   },
+  {
+    file: 'page-kit.plugin.js',
+    name: 'page-kit',
+    version: '1.0.0',
+    cat: 'demo',
+    zh: 'SDK v3 示例：注册带表单的完整插件页面，并用账号级服务端数据保存便签。',
+    en: 'SDK v3 demo: register a full plugin page with a form and persist notes in account-level server data.',
+    perms: ['ui:panel', 'ui:page', 'ui:host', 'data'],
+  },
 ]
 
 const keyword = ref('')

@@ -20,6 +20,7 @@ import {
   NotificationIcon,
   RefreshIcon,
   SearchIcon,
+  ServerIcon,
   SettingIcon,
   UserIcon,
 } from 'tdesign-icons-vue-next'
@@ -43,6 +44,7 @@ import {
   type AdminUserRow,
   type BackupFile,
   type InviteCode,
+  type ServerPluginRow,
   type StorageStats,
   type VersionInfo,
 } from '@/core/network/endpoints'
@@ -52,13 +54,14 @@ const router = useRouter()
 const auth = useAuthStore()
 const { t, te } = useAppI18n()
 
-type AdminTab = 'users' | 'groups' | 'plugins' | 'audits' | 'invites' | 'settings' | 'updates'
+type AdminTab = 'users' | 'groups' | 'plugins' | 'serverPlugins' | 'audits' | 'invites' | 'settings' | 'updates'
 const tab = ref<AdminTab>('users')
 
 const tabIcons: Record<AdminTab, Component> = {
   users: UserIcon,
   groups: ChatIcon,
   plugins: ExtensionIcon,
+  serverPlugins: ServerIcon,
   audits: DashboardIcon,
   invites: NotificationIcon,
   settings: SettingIcon,
@@ -82,10 +85,12 @@ function switchTab(next: AdminTab) {
   // 表格的遮罩会跟着页签一起残留，看起来像「一直转圈」。
   loading.value = false
   pluginsLoading.value = false
+  serverPluginsLoading.value = false
   auditsLoading.value = false
   tab.value = next
   // 数据按页签懒加载：打开页面时只拉当前页签需要的内容，减少首屏请求与渲染压力
   if (next === 'plugins') void fetchPlugins()
+  if (next === 'serverPlugins') void fetchServerPlugins()
   // 审计记录会随操作持续增长，进入页签时重新拉取，避免显示旧数据
   if (next === 'audits') void fetchAudits()
   if (next === 'invites') void fetchInvites()
@@ -102,6 +107,7 @@ const tabItems = computed<Array<{ value: AdminTab; label: string; icon: Componen
   { value: 'users', label: t('admin.tabUsers'), icon: tabIcons.users },
   { value: 'groups', label: t('admin.tabGroups'), icon: tabIcons.groups },
   { value: 'plugins', label: t('admin.tabPlugins'), icon: tabIcons.plugins },
+  { value: 'serverPlugins', label: t('admin.tabServerPlugins'), icon: tabIcons.serverPlugins },
   { value: 'audits', label: t('admin.tabAudits'), icon: tabIcons.audits },
   { value: 'invites', label: t('admin.tabInvites'), icon: tabIcons.invites },
   { value: 'settings', label: t('admin.tabSettings'), icon: tabIcons.settings },
@@ -113,6 +119,7 @@ const panelMeta = computed(() => {
     users: { title: t('admin.tabUsers'), hint: t('admin.usersDesc') },
     groups: { title: t('admin.tabGroups'), hint: '' },
     plugins: { title: t('admin.tabPlugins'), hint: t('admin.pluginsDesc') },
+    serverPlugins: { title: t('admin.tabServerPlugins'), hint: t('admin.serverPluginsDesc') },
     audits: { title: t('admin.tabAudits'), hint: t('admin.auditsDesc') },
     invites: { title: t('admin.tabInvites'), hint: t('admin.invitesDesc') },
     settings: { title: t('admin.tabSettings'), hint: t('admin.settingsPanelDesc') },
@@ -127,6 +134,8 @@ const panelCount = computed<number | null>(() => {
       return pagination.value.total
     case 'plugins':
       return pluginPagination.value.total
+    case 'serverPlugins':
+      return serverPlugins.value.length
     case 'audits':
       return auditPagination.value.total
     case 'invites':
@@ -584,6 +593,12 @@ const pluginsLoading = ref(false)
 const plugins = ref<AdminPluginRow[]>([])
 const pluginPagination = ref({ current: 1, pageSize: 20, total: 0 })
 
+// ---- 服务端插件（manifest 安装 + 全站页面/接口） ----
+const serverPlugins = ref<ServerPluginRow[]>([])
+const serverPluginsLoading = ref(false)
+const manifestText = ref('')
+const manifestInstalling = ref(false)
+
 // 当前构建版本（升级后刷新本页即可确认是否生效）
 const buildInfo = ref<VersionInfo | null>(null)
 
@@ -662,6 +677,8 @@ const columns = ref<any[]>([])
 const pluginColumns = ref<any[]>([])
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const auditColumns = ref<any[]>([])
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const serverPluginColumns = ref<any[]>([])
 
 function buildColumns() {
   columns.value = [
@@ -678,6 +695,16 @@ function buildColumns() {
     { colKey: 'enabledCount', title: t('admin.colEnabled'), width: 100 },
     { colKey: 'globalStatus', title: t('admin.colGlobal'), width: 120 },
     { colKey: 'ops', title: t('admin.colOps'), width: 160 },
+  ]
+  serverPluginColumns.value = [
+    { colKey: 'name', title: t('admin.serverColName'), width: 200 },
+    { colKey: 'version', title: t('admin.serverColVersion'), width: 100 },
+    { colKey: 'enabled', title: t('admin.serverColEnabled'), width: 100 },
+    { colKey: 'pages', title: t('admin.serverColPages'), width: 90 },
+    { colKey: 'routes', title: t('admin.serverColRoutes'), width: 90 },
+    { colKey: 'events', title: t('admin.serverColEvents'), width: 90 },
+    { colKey: 'jobs', title: t('admin.serverColJobs'), width: 90 },
+    { colKey: 'ops', title: t('admin.serverColOps'), width: 180 },
   ]
   auditColumns.value = [
     { colKey: 'createdAt', title: t('admin.auditTime'), width: 170 },
@@ -969,6 +996,72 @@ function onPluginPageChange(info: { current: number; pageSize: number }) {
   pluginPagination.value.current = info.current
   pluginPagination.value.pageSize = info.pageSize
   void fetchPlugins()
+}
+
+// ---- 服务端插件 ----
+async function fetchServerPlugins() {
+  serverPluginsLoading.value = true
+  try {
+    const list = await adminApi.serverPlugins.list()
+    serverPlugins.value = Array.isArray(list) ? list : []
+  } catch (e) {
+    void MessagePlugin.error(te(e))
+  } finally {
+    serverPluginsLoading.value = false
+  }
+}
+
+async function installServerPlugin() {
+  const raw = manifestText.value.trim()
+  if (!raw) return
+  try {
+    JSON.parse(raw)
+  } catch {
+    void MessagePlugin.error(t('admin.serverManifestInvalid'))
+    return
+  }
+  manifestInstalling.value = true
+  try {
+    await adminApi.serverPlugins.install(raw)
+    void MessagePlugin.success(t('admin.serverInstallOk'))
+    manifestText.value = ''
+    await fetchServerPlugins()
+    refreshAfterWrite()
+  } catch (e) {
+    void MessagePlugin.error(te(e))
+  } finally {
+    manifestInstalling.value = false
+  }
+}
+
+async function toggleServerPlugin(row: ServerPluginRow) {
+  try {
+    await adminApi.serverPlugins.toggle(row.id, !row.enabled)
+    row.enabled = !row.enabled
+    void MessagePlugin.success(t('admin.serverToggleOk'))
+    refreshAfterWrite()
+  } catch (e) {
+    void MessagePlugin.error(te(e))
+  }
+}
+
+function removeServerPlugin(row: ServerPluginRow) {
+  const dlg = DialogPlugin.confirm({
+    header: t('admin.serverRemoveTitle'),
+    body: t('admin.serverRemoveBody', { name: row.name }),
+    confirmBtn: { content: t('admin.serverRemove'), theme: 'danger' },
+    onConfirm: async () => {
+      try {
+        await adminApi.serverPlugins.remove(row.id)
+        void MessagePlugin.success(t('admin.serverRemoveOk'))
+        await fetchServerPlugins()
+        refreshAfterWrite()
+      } catch (e) {
+        void MessagePlugin.error(te(e))
+      }
+      dlg.destroy()
+    },
+  })
 }
 
 // ===== 封禁 =====
@@ -1326,6 +1419,62 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
               </UiButton>
               <UiButton variant="text" theme="danger" size="small" @click="purgePlugin(row)">
                 {{ t('admin.purge') }}
+              </UiButton>
+            </div>
+          </template>
+        </TTable>
+      </div>
+
+      <!-- 服务端插件：管理员安装 manifest，为全站提供页面与静态接口 -->
+      <div v-if="tab === 'serverPlugins'" class="mc-admin__panel" role="tabpanel">
+        <div class="mc-serverplugins__install">
+          <label class="mc-serverplugins__field">
+            <span>{{ t('admin.serverManifestLabel') }}</span>
+            <textarea
+              v-model="manifestText"
+              class="mc-serverplugins__textarea"
+              :placeholder="t('admin.serverManifestPlaceholder')"
+              rows="8"
+              spellcheck="false"
+            />
+          </label>
+          <UiButton theme="primary" :loading="manifestInstalling" @click="installServerPlugin">
+            {{ t('admin.serverInstall') }}
+          </UiButton>
+        </div>
+
+        <TTable
+          row-key="id"
+          :data="serverPlugins"
+          :columns="serverPluginColumns"
+          :loading="serverPluginsLoading"
+        >
+          <template #empty>
+            <div class="mc-admin__empty">
+              <ServerIcon />
+              <p>{{ t('admin.serverEmpty') }}</p>
+            </div>
+          </template>
+          <template #name="{ row }">
+            <span class="mc-admin__plugin-name">{{ row.name }}</span>
+          </template>
+          <template #enabled="{ row }">
+            <UiTag v-if="row.enabled" theme="success" variant="light" size="small">
+              {{ t('admin.serverEnabled') }}
+            </UiTag>
+            <UiTag v-else variant="outline" size="small">{{ t('admin.serverDisabled') }}</UiTag>
+          </template>
+          <template #pages="{ row }"><span class="mc-admin__num">{{ row.pages }}</span></template>
+          <template #routes="{ row }"><span class="mc-admin__num">{{ row.routes }}</span></template>
+          <template #events="{ row }"><span class="mc-admin__num">{{ row.events }}</span></template>
+          <template #jobs="{ row }"><span class="mc-admin__num">{{ row.jobs }}</span></template>
+          <template #ops="{ row }">
+            <div class="mc-admin__ops">
+              <UiButton variant="text" size="small" @click="toggleServerPlugin(row)">
+                {{ row.enabled ? t('admin.serverDisable') : t('admin.serverEnable') }}
+              </UiButton>
+              <UiButton variant="text" theme="danger" size="small" @click="removeServerPlugin(row)">
+                {{ t('admin.serverRemove') }}
               </UiButton>
             </div>
           </template>
@@ -2323,6 +2472,39 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
   gap: 8px;
   padding: 36px 16px;
   color: var(--td-text-color-placeholder);
+}
+
+/* 服务端插件 manifest 安装区 */
+.mc-serverplugins__install {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin: 4px 0 16px;
+}
+
+.mc-serverplugins__field {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--mc-fs-sm);
+  color: var(--td-text-color-secondary);
+}
+
+.mc-serverplugins__textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--mc-hairline);
+  border-radius: var(--mc-radius-md);
+  padding: 10px 12px;
+  font: inherit;
+  font-size: var(--mc-fs-body);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  line-height: 1.5;
+  resize: vertical;
+  background: var(--td-bg-color-page);
+  color: var(--td-text-color-primary);
 }
 
 .mc-admin__empty > svg {
