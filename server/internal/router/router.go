@@ -241,7 +241,8 @@ func New(d Deps) *gin.Engine {
 	api.GET("/metrics", metrics.Handler(d.Cfg.MetricsToken))
 	// 站点信息（免鉴权）：站点名、注册开关、消息长度/撤回时限/上传上限。
 	// 不含任何密钥类配置。
-	api.GET("/site", handler.NewSiteHandler(settings, d.Mailer, users).Get)
+	siteH := handler.NewSiteHandler(settings, d.Mailer, users, d.Cfg.Call)
+	api.GET("/site", siteH.Get)
 	// 客户端版本探测（免鉴权）：各端启动时提示升级，不阻断旧端登录
 	api.GET("/client/version", handler.ClientVersion(d.Cfg.MinClientVersion))
 	// 群邀请落地页信息（免登录可看；实际加入需要登录）
@@ -407,6 +408,8 @@ func New(d Deps) *gin.Engine {
 		authed.GET("/plugins/:id/data/keys", pluginDataH.Keys)
 		// 服务端统一 AI 代理：密钥只在服务端；按用户限流，避免用户插件刷爆上游
 		aiLimit := middleware.RateLimit(newLimiter("ai", 20, 5), middleware.KeyByUID)
+		// WebRTC ICE 配置（TURN 凭据只经此登录接口下发）
+		authed.GET("/call/config", siteH.CallConfig)
 		authed.GET("/ai/status", aiH.Status)
 		authed.POST("/ai/chat", aiLimit, aiH.Chat)
 		// 服务端插件：页面声明与动态接口（仍需登录）

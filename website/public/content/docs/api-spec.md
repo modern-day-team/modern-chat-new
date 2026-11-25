@@ -219,6 +219,18 @@ AdminPluginRow  { name, version, installCount, enabledCount, globalDisabled, cre
 - 下线：tv 变化 / 封禁 / 站长重置密码 → 向该用户全部连接推 `{"type":"kicked","reason":"..."}` 后关闭
 - 资料变更：`PATCH /api/me` 修改昵称或头像（可选 `avatarThumb` 64×64 缩略图，≤16KB）后，向好友、同会话成员及本人其他连接推 `{"type":"user_change","userId","nickname","avatar","avatarColor"}`；前端就地更新会话列表、好友/申请列表与群成员头像，无需刷新。换主图而未带缩略图时清空旧缩略图，避免新旧混显
 
+#### 3.3.1 一对一通话信令（WebRTC）
+- **后端只做信令中继，不处理媒体流**：音视频由浏览器 `RTCPeerConnection` 端到端传输，服务端不落库、不解码、不记录通话内容；本功能不需要新增数据库表。
+- 上行帧（均带 `callId` 128 位随机串；SDP/ICE 单帧仍受 64KB 上限）：
+  - `{"type":"call.invite","callId","toUserId","mediaType":"audio"|"video","convId?"}` —— 发起前校验目标在线（`Hub.Online`）且双方是好友或同会话成员；向目标**全部在线连接**下发 `call.incoming`；同一时刻每个用户最多一路通话，忙线回 `{"type":"call.busy","callId"}`
+  - `{"type":"call.accept","callId"}` / `{"type":"call.reject","callId"}` —— 被叫应答/拒绝；服务端用连接自身的 `sid` 精确投递到发起端（前端无需知道自己的 sid）；超时 60s 未应答自动按拒绝处理
+  - `{"type":"call.offer","callId","toSid","sdp"}` / `{"type":"call.answer","callId","toSid","sdp"}` —— SDP 交换，服务端原样转发，只校验帧归属
+  - `{"type":"call.ice","callId","toSid","candidate"}` —— trickle ICE，单条 candidate 一帧；高频但受控制帧令牌桶约束
+  - `{"type":"call.hangup","callId","toSid?"}` —— 任一方挂断，向对端（全部设备）下发 `call.ended`，释放通话状态
+- 下行帧：`call.incoming {callId,fromUserId,nickname,avatar,mediaType}`、`call.accepted {callId,toSid}`、`call.rejected {callId}`、`call.busy {callId}`、`call.offer/answer {callId,sdp}`、`call.ice {callId,candidate}`、`call.ended {callId,reason?}`（`reason` 为中文：`rejected` / `busy` / `hangup` / `timeout` / `error`）
+- 通话状态仅在 Hub 内存维护（`callId → {fromUid, fromSid, toUid, startedAt}`），带 5 分钟 TTL 兜底清理；**多实例部署下通话状态不跨实例共享**，媒体 P2P 本身不受影响，跨实例忙线判定属二期边界（与 presence 一致）。
+- ICE 配置经 **`GET /api/call/config`（需登录）** 下发 `{enabled, iceServers:[{urls,username?,credential?}]}`，前端登录后取一次并缓存；**TURN 凭据绝不放公开接口**（`/api/site` 只暴露 `call:{enabled:true}` 供前端判断入口是否显示）。默认启用公开 STUN，`TURN_*` 环境变量未配置时无 TURN（对称 NAT 下可能无法直连，需部署方自行配置）。
+
 ## 4. 数据模型与校验规则
 
 全部表（users / conversations / conversation_members / messages / user_conversations / message_deletions / message_favorites / message_reactions / user_blocks / message_reports / friends / plugins / password_resets / admin_audits / system_settings / stickers / conversation_files / conversation_invites / invite_codes / login_attempts / push_subscriptions / email_codes）结构见设计文档 §5，此处只定校验与关键索引。

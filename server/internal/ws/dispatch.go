@@ -66,6 +66,14 @@ type clientFrame struct {
 	// Emoji / Action 用于表情回应：action=set|remove
 	Emoji  string `json:"emoji"`
 	Action string `json:"action"`
+	// 通话信令（§3.3.1）：callId 一路通话 ID；toUserId / mediaType 用于 invite；
+	// toSid 为精确投递的目标设备；sdp / candidate 为 WebRTC 信令载荷。
+	CallID    string `json:"callId"`
+	ToUserID  uint   `json:"toUserId"`
+	ToSid     string `json:"toSid"`
+	MediaType string `json:"mediaType"`
+	SDP       string `json:"sdp"`
+	Candidate string `json:"candidate"`
 }
 
 // Dispatch 上行帧路由：先复核连接状态，再按类型分发。
@@ -103,6 +111,13 @@ func (h *Hub) Dispatch(c *Client, data []byte) {
 			return
 		}
 		h.dispatchControl(c, &f)
+	case "call.invite", "call.accept", "call.reject", "call.offer", "call.answer", "call.ice", "call.hangup":
+		// 通话信令同走控制帧令牌桶（20/s + burst 40，trickle ICE 足够）：
+		// 被限流时静默丢弃，下一帧 candidate 会补上，避免刷 toast。
+		if !c.allowCtrlFrame() {
+			return
+		}
+		h.dispatchCall(c, &f)
 	default:
 		h.sendError(c, "未知帧类型")
 	}

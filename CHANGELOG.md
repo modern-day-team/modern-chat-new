@@ -8,6 +8,12 @@
 
 ## [未发布]
 
+### 一对一视频通话（WebRTC）
+- **端到端音视频通话**：新增 `call.*` WS 信令帧（invite / accept / reject / offer / answer / ice / hangup），后端只做中继 + 在线与好友/会话成员校验 + 内存态忙线控制（60s 未接自动超时），不处理媒体流、不落库；媒体由浏览器 `RTCPeerConnection` 端到端传输。
+- **来电弹窗 + 通话悬浮窗**：新增 `components/call/CallOverlay.vue`，自包含 Teleport、接听/拒接/挂断、麦克风与摄像头开关、远端视频、状态提示；在 `ChatLayout` 以 `ws.onFrame()` 旁路监听驱动，与消息状态机解耦。i18n 新增 `call` 分组（中英）。
+- **ICE 配置可部署**：新增登录后接口 `GET /api/call/config` 下发 `iceServers`（含可选 TURN 凭据，不放公开接口）；`/api/site` 只给 `call.enabled` 控制入口显示。默认公开 STUN，`STUN_SERVER/TURN_SERVER/TURN_USER/TURN_PASS` 环境变量可选配置（`server/.env.example` 同步）。
+- **边界**：通话状态存 Hub 内存，多实例间不共享忙线（与 presence 同属二期），媒体 P2P 本身不受影响。设计文档 / 后端需求规格 §3.3.1 / API 文档 / 前端技术方案 §4.1 已同步。
+
 ### 文档与契约校准
 
 - **`API文档.md` 补齐 8 类已实现端点**：多端会话管理（`/api/me/sessions`、`/api/client/version`）、服务端插件（`/api/server-plugins/*`、`/api/ext*`、`/api/ai/*`）、旧站迁移（`/api/migrate/*`）、站长后台群聊管理（`/api/admin/groups/*`）与存储服务商预设/自检。此前这些端点已在 `router.go` 注册但文档未记载，联调时容易误判为缺失。

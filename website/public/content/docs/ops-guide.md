@@ -90,6 +90,8 @@ https://chat.example.com/qiniu/<key> → 对象存储 CDN（私有空间，需�
 | `MYSQLDUMP_PATH` | `mysqldump` | 否 | `mysqldump` 可执行文件路径（不在 PATH 时填绝对路径） |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | 空 | 否 | Web Push 密钥对；两项都配置才启用，未配置时推送静默跳过 |
 | `VAPID_SUBJECT` | `mailto:admin@localhost` | 否 | Web Push 联系邮箱（`mailto:` 前缀） |
+| `STUN_SERVER` | `stun:stun.l.google.com:19302` | 否 | 一对一 WebRTC 通话的 STUN 服务器，默认公开 STUN |
+| `TURN_SERVER` / `TURN_USER` / `TURN_PASS` | 空 | 否 | TURN 中继：三项都配才生效（对称 NAT / 严格防火墙下必需）。凭据只经登录后的 `/api/call/config` 下发，**严禁写入公开 `/api/site`**，也不要提交到仓库 |
 
 > `FRONTEND_URL` 写法注意：逗号分隔、每项**不要带尾随空格**，可以带结尾斜杠（后端会去掉）。
 > 例：`FRONTEND_URL=https://chat.example.com,https://intranet.example.com`

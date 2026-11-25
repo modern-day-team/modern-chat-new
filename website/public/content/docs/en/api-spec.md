@@ -219,6 +219,18 @@ AdminPluginRow  { name, version, installCount, enabledCount, globalDisabled, cre
 - Forced logout: tv change / ban / admin reset → push `{"type":"kicked","reason":"..."}` to all the user's connections, then close
 - Profile changes: after `PATCH /api/me` changes nickname or avatar, push `{"type":"user_change","userId","nickname","avatar","avatarColor"}` to friends, co-members and the user's other connections; the frontend updates conversation list, friend/request lists and group member avatars in place, no refresh
 
+#### 3.3.1 One-to-one call signaling (WebRTC)
+- **The server only relays signaling, never touches media**: audio/video travels end-to-end via browser `RTCPeerConnection`; no DB tables, decoding or call-content logging.
+- Uplink frames (all carry a 128-bit random `callId`; SDP/ICE still subject to the 64 KB frame cap):
+  - `{"type":"call.invite","callId","toUserId","mediaType":"audio"|"video","convId?"}` — requires the target to be online and the pair to be friends or conversation co-members; rings **all** of the target's connections; a user already in a call gets `{"type":"call.busy","callId"}`.
+  - `{"type":"call.accept","callId"}` / `{"type":"call.reject","callId"}` — callee answers; the server uses the connection's own `sid` for precise delivery to the caller; unanswered invites time out after 60s.
+  - `{"type":"call.offer","callId","toSid","sdp"}` / `{"type":"call.answer","callId","toSid","sdp"}` — SDP exchange, relayed verbatim with ownership checks.
+  - `{"type":"call.ice","callId","toSid","candidate"}` — one trickle ICE candidate per frame, rate-limited with control frames.
+  - `{"type":"call.hangup","callId","toSid?"}` — either party hangs up; broadcasts `call.ended` to the peer's connections and frees state.
+- Downlink: `call.incoming`, `call.accepted {callId,fromSid}`, `call.rejected`, `call.busy`, `call.offer`/`call.answer`, `call.ice`, `call.ended {callId,reason?}` (`reason`: rejected / busy / hangup / timeout / error).
+- Call state lives only in Hub memory (`callId → participants`, with TTL); **not shared across instances** (phase two, like presence). Media P2P is unaffected.
+- ICE config comes from **authenticated `GET /api/call/config`** → `{enabled, iceServers:[{urls,username?,credential?}]}`; TURN credentials are never placed on the public `/api/site` (which exposes only `call:{enabled:true}`). Public STUN by default; TURN via `TURN_*` env vars.
+
 ## 4. Data Model & Validation
 
 All tables (users / conversations / conversation_members / messages / user_conversations / message_deletions / message_favorites / message_reactions / user_blocks / message_reports / friends / plugins / password_resets / admin_audits / system_settings / stickers / conversation_files / conversation_invites / invite_codes / login_attempts / push_subscriptions / email_codes) — structures in design doc §5; here only validations and key indexes.

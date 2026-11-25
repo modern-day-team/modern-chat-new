@@ -8,6 +8,12 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 
 ## [Unreleased]
 
+### One-to-one video calls (WebRTC)
+- **End-to-end audio/video calls**: added `call.*` WebSocket signaling frames (invite / accept / reject / offer / answer / ice / hangup). The server only relays signals, checks presence and friend/conversation membership, and enforces per-user busy state (60s no-answer timeout); it never handles media or stores call data. Media flows end-to-end via browser `RTCPeerConnection`.
+- **Incoming dialog + in-call floating window**: new `components/call/CallOverlay.vue` with self-contained Teleport, accept/decline/hangup, microphone and camera toggles, remote video and status hints; driven by `ws.onFrame()` in `ChatLayout`, decoupled from the message state machine. Added a `call` i18n group (zh/en).
+- **Deployable ICE config**: new authenticated `GET /api/call/config` returns `iceServers` (optional TURN credentials never exposed on public endpoints); `/api/site` only exposes `call.enabled`. Default public STUN; `STUN_SERVER/TURN_SERVER/TURN_USER/TURN_PASS` env vars are optional.
+- **Boundary**: call state lives in Hub memory and is not shared across instances (phase two, like presence); P2P media itself is unaffected. Design doc, backend spec §3.3.1, API reference and frontend guide §4.1 updated.
+
 ### Docs and contract alignment
 
 - **`API文档.md` adds 8 implemented endpoint groups**: multi-device sessions (`/api/me/sessions`, `/api/client/version`), server plugins (`/api/server-plugins/*`, `/api/ext*`, `/api/ai/*`), legacy-site migration (`/api/migrate/*`), admin group management (`/api/admin/groups/*`) and storage provider presets/test. All were already registered in `router.go` but undocumented, easy to mistake for missing features.

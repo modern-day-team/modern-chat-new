@@ -3,7 +3,7 @@ import UiButton from '@/components/ui/UiButton.vue'
 import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { MessagePlugin } from '@/components/ui/feedback'
-import { UsergroupIcon } from 'tdesign-icons-vue-next'
+import { CameraIcon, UsergroupIcon } from 'tdesign-icons-vue-next'
 
 import AddFriendDialog from '@/components/chat/AddFriendDialog.vue'
 import AppRail from '@/components/chat/AppRail.vue'
@@ -30,6 +30,7 @@ import { usePluginsStore } from '@/stores/plugins'
 
 // 公告弹窗只在收到公告时显示：拆成异步 chunk，聊天首屏少下载 TDesign Dialog/表单样式（gzip ~48KB）
 const AnnouncementDialog = defineAsyncComponent(() => import('@/components/chat/AnnouncementDialog.vue'))
+import CallOverlay from '@/components/call/CallOverlay.vue'
 import { useWsStore } from '@/stores/ws'
 import type { ServerFrame } from '@/types/proto'
 
@@ -165,12 +166,31 @@ useWebSocket()
 const bootError = ref(false)
 let listenersBound = false
 
+// ===== 一对一视频通话：call.* 帧旁路监听，不进消息状态机 =====
+const callRef = ref<InstanceType<typeof CallOverlay> | null>(null)
+let offCall: (() => void) | null = null
+function onCallFrame(frame: ServerFrame) {
+  void callRef.value?.handleFrame(frame)
+}
+function sendCallFrame(frame: import('@/types/proto').ClientFrame) {
+  return ws.send(frame)
+}
+function onCallError(message: string) {
+  void MessagePlugin.warning(message)
+}
+/** 会话侧「视频通话」按钮调用：对当前单聊对象发起通话 */
+function startCallWithPeer(peerId: number, mediaType: 'audio' | 'video' = 'video') {
+  void callRef.value?.startCall(peerId, mediaType)
+}
+const callPeerId = computed(() => convStore.currentConv?.peer?.id ?? 0)
+
 /** 帧监听与全局快捷键只绑定一次，重试引导不会重复注册 */
 function bindGlobalListeners() {
   if (listenersBound) return
   listenersBound = true
   offAnnouncement = ws.onFrame(onAnnouncementFrame)
   offNotify = ws.onFrame(onMessageNotify)
+  offCall = ws.onFrame(onCallFrame)
   window.addEventListener('keydown', onKeydown)
 }
 
@@ -227,6 +247,9 @@ onUnmounted(() => {
   offAnnouncement = null
   offNotify?.()
   offNotify = null
+  offCall?.()
+  offCall = null
+  callRef.value?.onWsDisconnect()
   host.stop()
   pluginsStore.reset()
   favoritesStore.reset()
@@ -323,6 +346,18 @@ onUnmounted(() => {
           </div>
         </div>
       </Transition>
+      <!-- 单聊视频通话入口（浮在主区右上角，与详情入口并排） -->
+      <UiButton
+        v-if="callPeerId"
+        class="mc-layout__call-toggle"
+        variant="text"
+        size="small"
+        :aria-label="t('call.incomingVideo')"
+        :title="t('call.incomingVideo')"
+        @click="startCallWithPeer(callPeerId, 'video')"
+      >
+        <CameraIcon size="16px" />
+      </UiButton>
       <!-- 详情抽屉形态下的入口按钮（浮在主区右上角） -->
       <UiButton
         v-if="showDetail && layout.panes.detail.drawer"
@@ -367,6 +402,12 @@ onUnmounted(() => {
       v-if="announcementVisible"
       v-model:visible="announcementVisible"
       :content="announcementContent"
+    />
+    <CallOverlay
+      ref="callRef"
+      :send="sendCallFrame"
+      :self-id="auth.user?.id ?? 0"
+      @error="onCallError"
     />
 
     <!-- 抽屉遮罩：点击空白处收起 -->
@@ -461,6 +502,12 @@ onUnmounted(() => {
   position: absolute;
   top: 10px;
   right: 14px;
+  z-index: 12;
+}
+.mc-layout__call-toggle {
+  position: absolute;
+  top: 10px;
+  right: 52px;
   z-index: 12;
 }
 

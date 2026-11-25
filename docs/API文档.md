@@ -292,7 +292,8 @@ curl https://站点/api/conversations -H 'Authorization: Bearer <token>'
 | 方法 路径 | 说明 |
 |---|---|
 | GET `/api/health` | `{"status":"ok"}`；探活 |
-| GET `/api/site` | 站点公开配置：`{name, allowRegister, maintenanceMode, maintenanceMessage, requireInviteCode, requireEmail, requireEmailVerify, maxMessageLength, recallMinutes, maxGroupMembers, maxImageMB, maxAudioMB, maxFileMB, maxVideoMB}`；维护模式下仍可用 |
+| GET `/api/site` | 站点公开配置：`{name, allowRegister, maintenanceMode, maintenanceMessage, requireInviteCode, requireEmail, requireEmailVerify, maxMessageLength, recallMinutes, maxGroupMembers, maxImageMB, maxAudioMB, maxFileMB, maxVideoMB, call:{enabled}}`；`call.enabled` 只用于前端判断是否显示通话入口，**不含 TURN 凭据**；维护模式下仍可用 |
+| GET `/api/call/config` | — | `{enabled, iceServers:[{urls,username?,credential?}]}`；**需登录**。WebRTC ICE 配置，含可选 TURN（凭据只经此接口下发，不写日志、不放公开接口） |
 | GET `/api/metrics` | Prometheus 文本格式；`METRICS_TOKEN` 非空时需 Bearer |
 
 ### 10.1 旧站数据迁移（免鉴权，一次性票据）

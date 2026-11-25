@@ -75,7 +75,9 @@ type Hub struct {
 	// relatedCache 用户「相关受众」短 TTL 缓存（见 presence.go）：上下线广播
 	// 每次要取同会话全部成员 ∪ 好友，最热的高频查库路径之一。
 	relatedCache sync.Map // userID -> *relatedEntry
-	done         chan struct{}
+	// calls 一对一通话的 WS 信令状态（只内存，不落库；二期再考虑跨实例共享）
+	calls *callManager
+	done  chan struct{}
 	// clusterCancel 取消跨实例事件订阅（Close 时调用，与 done 分开：done 是 Hub 生命周期）。
 	clusterCancel context.CancelFunc
 	closed        bool
@@ -118,7 +120,7 @@ func newShard() *shard { return &shard{conns: make(map[uint]map[*Client]struct{}
 
 // NewHub 创建 Hub（deps 可为 nil：仅注册表功能，供测试）。
 func NewHub(deps *Deps) *Hub {
-	h := &Hub{deps: deps, done: make(chan struct{})}
+	h := &Hub{deps: deps, done: make(chan struct{}), calls: newCallManager()}
 	for i := range h.shards {
 		h.shards[i] = newShard()
 	}

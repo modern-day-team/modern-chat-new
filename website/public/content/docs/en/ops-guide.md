@@ -68,6 +68,8 @@ The backend reads all config from environment variables (`server/internal/config
 | `MYSQLDUMP_PATH` | `mysqldump` | no | `mysqldump` executable path (absolute path when not on PATH) |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | empty | no | Web Push key pair; enabled only when both are set, otherwise pushes are skipped silently |
 | `VAPID_SUBJECT` | `mailto:admin@localhost` | no | Web Push contact email (`mailto:` prefix) |
+| `STUN_SERVER` | `stun:stun.l.google.com:19302` | no | STUN server for one-to-one WebRTC calls; public STUN by default |
+| `TURN_SERVER` / `TURN_USER` / `TURN_PASS` | empty | no | TURN relay: active only when all three are set (needed for symmetric NAT / strict firewalls). Credentials are served only by authenticated `/api/call/config`, **never** on the public `/api/site`; do not commit them |
 
 > `FRONTEND_URL` notes: comma-separated, each item **without trailing spaces**; a trailing slash is fine (the backend strips it).
 > Example: `FRONTEND_URL=https://chat.example.com,https://intranet.example.com`

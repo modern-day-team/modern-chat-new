@@ -144,6 +144,13 @@ Uplink frames: `chat` / `read` / `delivered` / `recall` / `edit` / `reaction` / 
 - **Emoji reactions**: `toggleReaction()` sends `reaction`; locally the `{emoji,count,mine}` triple is maintained incrementally from broadcasts
 - A single uplink frame is capped at 64 KB (server `maxMsgSize`), so the frontend needs no extra truncation; the input area still pre-validates against `site.maxMessageLength`
 
+### 4.1 One-to-one video calls (WebRTC)
+- **Signaling over WS, media P2P**: `call.*` frames are dispatched through `stores/ws.ts`'s `onFrame()` side channel (like announcements / notifications), not the message state machine; uplink goes through `useWsStore.send()`. `components/call/CallOverlay.vue` owns its `Teleport to="body"` and is mounted in `ChatLayout.vue`.
+- **State machine**: `idle → incoming (60s ring) → connecting → active → ended`. `callId` comes from `crypto.randomUUID()`; the callee's accept/offer/answer/ice carry the caller's `toSid`, matching precise server delivery.
+- **End-to-end media**: `RTCPeerConnection` + `getUserMedia({audio:true, video: mediaType==='video'})`; caller createOffer → `call.offer`, callee setRemoteDescription → createAnswer → `call.answer`; both sides send trickle `call.ice` one candidate per frame and queue candidates arriving before the remote description. ICE config comes from authenticated `GET /api/call/config` (`iceServers`); `/api/site` only exposes `call.enabled` for entry visibility.
+- **Lifecycle**: either party's `call.hangup` → `call.ended` for both; `pc.ontrack` binds remote `<video>`; reject / timeout / error all run the same `cleanup()` that stops media tracks and closes the peer connection (so the camera indicator never stays on); unmount and WS disconnect also clean up.
+- **Visual**: dialog and floating window use only `--mc-*` / `--td-*` tokens and in-house `Ui*` controls; motion uses token durations/easings with reduced-motion support; incoming dialog has explicit accept/decline and i18n `call` group mirrored in zh/en.
+
 ---
 
 ## 5. Routes & Guards

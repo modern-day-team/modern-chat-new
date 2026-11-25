@@ -87,12 +87,27 @@ type Config struct {
 	VAPIDPublicKey  string
 	VAPIDPrivateKey string
 	VAPIDSubject    string
-	Redis           RedisConfig
-	SMTP            SMTPConfig
+	// Call WebRTC ICE：STUN 默认公开地址；TURN 三项都配才下发（凭据只经 /api/site 给登录用户）。
+	Call  CallConfig
+	Redis RedisConfig
+	SMTP  SMTPConfig
 	// TLSCertFile / TLSKeyFile：可选 TLS 证书路径。两项都设置时服务端启用 HTTPS，
 	// 否则以明文 HTTP 运行（依赖前置反向代理终止 TLS）。
 	TLSCertFile string
 	TLSKeyFile  string
+}
+
+// CallConfig 一对一 WebRTC 通话的 ICE 配置；TURN 三项都配置才启用。
+type CallConfig struct {
+	STUNServer string
+	TURNServer string
+	TURNUser   string
+	TURNPass   string
+}
+
+// TurnEnabled TURN 凭据完整（credential 仅经 /api/site 下发给登录用户，不写日志）。
+func (c CallConfig) TurnEnabled() bool {
+	return c.TURNServer != "" && c.TURNUser != "" && c.TURNPass != ""
 }
 
 // RedisConfig 可选：配置后限流使用 Redis 共享配额，连接失败自动降级为内存。
@@ -200,6 +215,12 @@ func Load() (Config, error) {
 		VAPIDPublicKey:   getv("VAPID_PUBLIC_KEY", ""),
 		VAPIDPrivateKey:  getv("VAPID_PRIVATE_KEY", ""),
 		VAPIDSubject:     getv("VAPID_SUBJECT", "mailto:admin@localhost"),
+		Call: CallConfig{
+			STUNServer: getv("STUN_SERVER", "stun:stun.l.google.com:19302"),
+			TURNServer: os.Getenv("TURN_SERVER"),
+			TURNUser:   os.Getenv("TURN_USER"),
+			TURNPass:   os.Getenv("TURN_PASS"),
+		},
 		Redis: RedisConfig{
 			Addr:     os.Getenv("REDIS_ADDR"),
 			Password: os.Getenv("REDIS_PASSWORD"),

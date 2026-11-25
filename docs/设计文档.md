@@ -477,6 +477,11 @@ type ClientFrame =
   | { type:"recall"; messageId:number }
   | { type:"edit"; messageId:number; content:string } /* 仅本人、5 分钟内、未撤回的 text 消息 */
   | { type:"reaction"; messageId:number; emoji:string; action:"set"|"remove" }
+  | { type:"call.invite"; callId:string; toUserId:number; mediaType:"audio"|"video" }
+  | { type:"call.accept"|"call.reject"; callId:string }
+  | { type:"call.offer"|"call.answer"; callId:string; toSid:string; sdp:string }
+  | { type:"call.ice"; callId:string; toSid:string; candidate:string }
+  | { type:"call.hangup"; callId:string; toSid?:string }
   | { type:"ping" };
 ```
 
@@ -498,10 +503,17 @@ type ServerFrame =
   | { type:"user_change"; userId:number; nickname:string; avatar:string; avatarColor:string }
   | { type:"conv_change"; convId:number; meta?:boolean /* true=成员/群名/公告变化 */ }
   | { type:"kicked"; reason:string }
+  | { type:"call.incoming"; callId:string; fromUserId:number; nickname:string; avatar?:string; mediaType:"audio"|"video" }
+  | { type:"call.accepted"; callId:string; toSid:string }
+  | { type:"call.rejected"|"call.busy"|"call.ended"; callId:string; reason?:string }
+  | { type:"call.offer"|"call.answer"; callId:string; sdp:string }
+  | { type:"call.ice"; callId:string; candidate:string }
   | { type:"pong" } | { type:"error"; reason:string };
 ```
 
 **幂等**：上行 `chat` 带 `clientMsgId`，服务端按唯一索引去重；前端按消息 `id`（回显前按 `clientMsgId`）去重，重连不重复收发。
+
+**一对一通话（WebRTC 信令）**：服务端只中继 `call.*` 帧，媒体走浏览器 `RTCPeerConnection` 端到端，不落库不解码。`call.invite` 向对方全部在线连接响铃；被叫的 accept/reject/SDP/ICE 均带发起端的 `toSid` 精确投递，避免多端串话；`call.hangup` 向对端全部连接广播 `call.ended`。通话状态仅存 Hub 内存（带 TTL），多实例间不共享忙线状态（与 presence 同属二期边界），但媒体 P2P 与信令在单实例下完整可用；跨实例部署时两端连到不同实例仍可通过 Redis 踢线总线之外的信令中继——此项如要支持，需把 call 状态也纳入 `internal/cluster` 广播（本期未做）。ICE 配置由登录后的 `GET /api/call/config` 下发（默认公开 STUN，TURN 走环境变量；凭据绝不放公开的 `/api/site`，该接口只给 `call.enabled`）。详见后端需求规格 §3.3.1。
 **上行帧上限**：64 KB（`ws/serve.go` 的 `maxMsgSize`）。必须覆盖 `chat.maxMessageLength` 上限 5000 字符在 UTF-8 下的字节数（约 20 KB）加 JSON 开销；原 4 KB 会让管理员调大长度后的合法长消息被直接断连。
 
 ---
