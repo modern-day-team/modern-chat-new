@@ -43,7 +43,7 @@ The backend reads all config from environment variables (`server/internal/config
 | `LOG_DIR` | `logs` | no | log directory; empty = stdout only |
 | `DATA_DIR` | `data` | no | data directory; uploaded images / voice / video live in `DATA_DIR/uploads/YYYY/MM/`. **Ignored when using object storage** (files are not written locally) |
 | `LOG_RETAIN_DAYS` | `15` | no | log retention days |
-| `REDIS_ADDR` | empty | no | when set: ① REST/WS/plugin rate limiting uses a Redis shared quota (multi-instance); ② bans/single-device sign-outs are broadcast instantly to all instances via Redis Pub/Sub (channel `mc:ws:kick`). Connection failures fall back to in-memory limiting and single-instance kicks (remote instances still converge via the existing 5s per-frame check). **Editable in the admin console** (restart required) |
+| `REDIS_ADDR` | empty | no | when set: ① REST/WS/plugin rate limiting uses a Redis shared quota (multi-instance); ② bans/single-device sign-outs are broadcast instantly to all instances via Redis Pub/Sub (channel `mc:ws:kick`). Connection failures fall back to in-memory limiting and single-instance kicks (remote instances still converge via the existing 5s per-frame check); a broken subscription retries with exponential backoff (200ms–30s) without a restart. **Editable in the admin console** (restart required) |
 | `REDIS_PASSWORD` | empty | no | Redis password. **Editable in the admin console** (restart required, stored encrypted) |
 | `REDIS_DB` | `0` | no | Redis DB number. **Editable in the admin console** (restart required) |
 | `SMTP_HOST` | empty | no | when empty, recovery links only go to the server log (**users get no email**). **Editable in the admin console** |

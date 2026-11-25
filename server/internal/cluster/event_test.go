@@ -1,8 +1,10 @@
 package cluster
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
+	"time"
 )
 
 // 事件字段完整序列化，Node 由 Publish 填充以区分实例。
@@ -43,7 +45,34 @@ func TestBusNoClientIsNoop(t *testing.T) {
 	if err := bus.Publish(Event{Kind: KindKickUser, UID: 1}); err != nil {
 		t.Fatalf("nil client publish 应静默成功: %v", err)
 	}
-	if err := bus.Subscribe(nil, func(Event) {}); err != nil {
+	if err := bus.Subscribe(context.Background(), func(Event) {}); err != nil {
 		t.Fatalf("nil client subscribe 应静默成功: %v", err)
+	}
+}
+
+// sleepBackoff 必须可被 ctx 取消，否则 Hub.Close 后重连 goroutine 无法退出。
+func TestSleepBackoffCancellable(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	start := time.Now()
+	if sleepBackoff(ctx, time.Hour) {
+		t.Fatal("已取消的 ctx 应立即退出退避")
+	}
+	if elapsed := time.Since(start); elapsed > 100*time.Millisecond {
+		t.Fatalf("取消后不应等待，实际耗时 %v", elapsed)
+	}
+
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	done := make(chan bool, 1)
+	go func() { done <- sleepBackoff(ctx2, time.Hour) }()
+	time.Sleep(20 * time.Millisecond)
+	cancel2()
+	select {
+	case ok := <-done:
+		if ok {
+			t.Fatal("等待中被取消应返回 false")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("等待中的退避未被 ctx 取消")
 	}
 }

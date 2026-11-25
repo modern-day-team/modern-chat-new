@@ -50,19 +50,28 @@ func (l *RedisLimiter) key(callerKey string) string {
 	return fmt.Sprintf("%s:%s:%d", l.prefix, callerKey, time.Now().Unix()/60)
 }
 
+// incrWithTTL 原子地 INCR 并在首次访问时设置 TTL。
+// 历史实现是 Incr + 条件 Expire 两次往返：若进程在两次调用之间崩溃，键将永不过期，
+// 攻击者可用随机 key 无限堆积内存。Lua 脚本把两步合为一次原子操作消除该窗口。
+var incrWithTTL = redis.NewScript(`
+local n = redis.call("INCR", KEYS[1])
+if n == 1 then
+  redis.call("EXPIRE", KEYS[1], ARGV[1])
+end
+return n
+`)
+
+const limiterKeyTTL = 70 // 秒，略大于 60s 窗口，避免边界请求被提前清除
+
 func (l *RedisLimiter) Allow(key string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 
 	k := l.key(key)
-	n, err := l.client.Incr(ctx, k).Result()
+	n, err := incrWithTTL.Run(ctx, l.client, []string{k}, limiterKeyTTL).Int64()
 	if err != nil {
 		slog.Warn("redis limiter unavailable, allowing request", "err", err.Error())
 		return true
-	}
-	if n == 1 {
-		// 首次访问设置过期，避免键无限堆积（略大于窗口）
-		_ = l.client.Expire(ctx, k, 70*time.Second).Err()
 	}
 	return n <= int64(l.perMin)
 }

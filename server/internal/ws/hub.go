@@ -132,7 +132,8 @@ func NewHub(deps *Deps) *Hub {
 func (h *Hub) Run() {
 	cleanup := time.NewTicker(5 * time.Minute)
 	defer cleanup.Stop()
-	// 跨实例踢线订阅：单实例（未注入）时不启动；订阅失败只告警，不影响本实例运行。
+	// 跨实例踢线订阅：单实例（未注入）时不启动。首次建连失败只告警、不取消 ctx，
+	// 由总线内部指数退避自动重连；本实例始终保留 5s 连接级复核兜底。
 	if h.deps != nil && h.deps.ClusterEvents != nil {
 		ctx, cancel := context.WithCancel(context.Background())
 		h.mu.Lock()
@@ -146,8 +147,8 @@ func (h *Hub) Run() {
 				h.kickSessionLocal(ev.SID, ev.Reason)
 			}
 		}); err != nil {
-			slog.Warn("cluster kick subscription failed", "err", err.Error())
-			cancel()
+			// 不 cancel：Subscribe 内部仍在重试，ctx 只在 Hub.Close 时取消。
+			slog.Warn("cluster kick subscription initial connect failed, will retry", "err", err.Error())
 		}
 	}
 	for {

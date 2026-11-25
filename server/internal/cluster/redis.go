@@ -18,10 +18,9 @@ const kickChannel = "mc:ws:kick"
 // 实现基于 Redis Pub/Sub，连接不可用时 Publish 返回错误由调用方降级（fail-open：
 // 本实例仍踢自己的连接，其它实例靠 5s 连接级复核兜底），Subscribe 自动重连。
 type Bus struct {
-	client    *redis.Client
-	nodeID    string
-	channel   string
-	onMessage func(Event)
+	client  *redis.Client
+	nodeID  string
+	channel string
 }
 
 // NewBus 创建总线。nodeID 随机生成，用于过滤自己发布的事件；channel 为空时用默认频道。
@@ -50,45 +49,104 @@ func (b *Bus) Publish(ev Event) error {
 	return b.client.Publish(ctx, b.channel, payload).Err()
 }
 
+const (
+	subscribeRetryMin = 200 * time.Millisecond
+	subscribeRetryMax = 30 * time.Second
+)
+
 // Subscribe 订阅事件并在 ctx 取消时退出。收到自己发布的事件自动忽略，避免回声。
-// Redis 连接中断时 go-redis 的 PubSub 会自动重连并恢复订阅。
+// 首次建连同步确认后再返回（调用方可据此判断订阅是否可用）；此后连接断开会
+// 指数退避自动重连，避免 Redis 短暂抖动导致本实例永久失去跨实例踢线能力。
+// onMessage 由本 goroutine 闭包捕获，多次调用 Subscribe 互不干扰。
 func (b *Bus) Subscribe(ctx context.Context, onMessage func(Event)) error {
 	if b == nil || b.client == nil {
 		return nil
 	}
-	b.onMessage = onMessage
-	pubsub := b.client.Subscribe(ctx, b.channel)
-	// 等待订阅真正建立再返回，避免启动瞬间发布的首条事件丢失。
-	if _, err := pubsub.Receive(ctx); err != nil {
-		_ = pubsub.Close()
-		return err
-	}
-	go func() {
-		defer pubsub.Close()
-		ch := pubsub.Channel()
-		for {
-			select {
-			case <-ctx.Done():
+	ready := make(chan error, 1)
+	go b.subscribeLoop(ctx, onMessage, ready)
+	// 等待首次订阅结果：成功返回 nil，失败返回错误（调用方告警后仍由循环重试）。
+	return <-ready
+}
+
+// subscribeLoop 持有订阅生命周期：建连 → 消费 → 断线退避重连，直到 ctx 取消。
+func (b *Bus) subscribeLoop(ctx context.Context, onMessage func(Event), ready chan<- error) {
+	backoff := subscribeRetryMin
+	first := true
+	for {
+		if ctx.Err() != nil {
+			if first {
+				ready <- ctx.Err()
+			}
+			return
+		}
+		pubsub := b.client.Subscribe(ctx, b.channel)
+		// 等待订阅确认（SUBSCRIBE 的确认帧），避免订阅建立前发布的事件丢失。
+		if _, err := pubsub.Receive(ctx); err != nil {
+			_ = pubsub.Close()
+			if first {
+				ready <- err
+				first = false
+			}
+			if !sleepBackoff(ctx, backoff) {
 				return
-			case msg, ok := <-ch:
-				if !ok {
-					return
-				}
-				var ev Event
-				if err := json.Unmarshal([]byte(msg.Payload), &ev); err != nil {
-					slog.Warn("cluster event malformed", "err", err.Error())
-					continue
-				}
-				if ev.Node == b.nodeID {
-					continue // 自己发布的事件，本地已处理
-				}
-				if b.onMessage != nil {
-					b.onMessage(ev)
-				}
+			}
+			if backoff < subscribeRetryMax {
+				backoff *= 2
+			}
+			continue
+		}
+		if first {
+			ready <- nil
+			first = false
+		}
+		consumePubSub(ctx, pubsub, b.nodeID, onMessage)
+		_ = pubsub.Close()
+		// 连接中断或 ctx 取消：只有 ctx 仍在才退避重连。
+		if !sleepBackoff(ctx, backoff) {
+			return
+		}
+		if backoff < subscribeRetryMax {
+			backoff *= 2
+		}
+	}
+}
+
+// consumePubSub 消费单个连接的消息；channel 关闭或 ctx 取消时返回。
+func consumePubSub(ctx context.Context, pubsub *redis.PubSub, nodeID string, onMessage func(Event)) {
+	ch := pubsub.Channel()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case msg, ok := <-ch:
+			if !ok {
+				return
+			}
+			var ev Event
+			if err := json.Unmarshal([]byte(msg.Payload), &ev); err != nil {
+				slog.Warn("cluster event malformed", "err", err.Error())
+				continue
+			}
+			if ev.Node == nodeID {
+				continue // 自己发布的事件，本地已处理
+			}
+			if onMessage != nil {
+				onMessage(ev)
 			}
 		}
-	}()
-	return nil
+	}
+}
+
+// sleepBackoff 可取消的退避等待；ctx 已取消返回 false。
+func sleepBackoff(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
 }
 
 func randomNodeID() string {

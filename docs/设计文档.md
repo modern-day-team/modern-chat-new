@@ -727,7 +727,7 @@ cd web && npm install && npm run dev  # :5173，代理 /api 与 /ws 到 :8080
 本批在「组件可独立运行、联合时走标准契约」前提下做四项收敛，全部有单测与构建验证，REST 响应形状与状态码不变：
 
 - **REST 限流统一到共享配额**：此前 `router.go` 六个限流点（迁移 / 扫码轮询 / 公开插件 / 换邮箱码 / 上传 / AI）硬编码内存令牌桶，多实例下配额被实例数放大；`main.go` 构造的 Redis 限流器只喂给 WS 与认证。现新增 `middleware.LimiterFactory`（按用途名隔离键前缀），main 在 Redis 可用时注入共享配额工厂、否则回退内存；插件宿主发消息改用同一 `MsgLimiter`，使 WS 主链路与服务端插件共用 `u<uid>` 配额，堵住插件绕过限流的群发通道。不同用途即使限流同一 IP/UID 也不再互相挤占（如登录失败多次不再连带拖垮同 IP 的迁移接口）。
-- **跨实例踢线广播**：新增 `internal/cluster`（中立事件类型 + Redis Pub/Sub 实现），`ws` 以消费方窄接口 `EventBroadcaster`/`EventSubscriber` 接入，`main` 为唯一装配点。`KickUser`/`KickSession` 踢本实例连接后广播事件，其它实例只踢自己的匹配连接、不二次广播（靠随机 `nodeID` 过滤回声）；Redis 不可用时广播失败只告警，退化为纯单实例，远端仍由 5s 连接级复核兜底。此前封禁/单设备下线只断本进程连接，多实例部署下其它实例的用户要等最长 5s 才被复核断开，现已即时生效。
+- **跨实例踢线广播**：新增 `internal/cluster`（中立事件类型 + Redis Pub/Sub 实现），`ws` 以消费方窄接口 `EventBroadcaster`/`EventSubscriber` 接入，`main` 为唯一装配点。`KickUser`/`KickSession` 踢本实例连接后广播事件，其它实例只踢自己的匹配连接、不二次广播（靠随机 `nodeID` 过滤回声）；Redis 不可用时广播失败只告警，退化为纯单实例，远端仍由 5s 连接级复核兜底；订阅侧首次建连失败只告警不放弃，由总线内部指数退避（200ms～30s）自动重连。此前封禁/单设备下线只断本进程连接，多实例部署下其它实例的用户要等最长 5s 才被复核断开，现已即时生效。
 - **业务规则归位内核（第二批）**：新增 `service/favorite.go`（`favoriteRepo` 窄接口），消息存在校验、收藏/取消收藏、列表空数组兜底与 limit 归一化归内核；`ConversationHandler` 收藏方法改依赖消费方窄接口 `FavoriteManager`，经 `SetFavorites` 显式注入，未注入时回退 `MessageStore` 适配（保持单测兼容）。新增 `service/favorite_test.go`。
 - **前端跨端反向依赖治理**：`AvatarBadge` 原病态归属 `components/chat/` 却被 `JoinView`/`AdminView` 等非 chat 视图反向引用，已上提到 `components/common/`，12 处 import 同步更新；默认头像取色改用 `--td-brand-color` 令牌。chat 模块 README 同步记录边界治理进度。
 - **尚未纳入本批**：handler 直连 store 的大户（conversation 其余 ~70 处、auth ~41、admin ~28）、WS 在线状态的跨实例共享（当前 Presence 仍为本进程内存，多实例下在线列表不聚合）、水平扩展「拉模型」超大群——均按设计 §9.5 的二期边界继续分项推进。
