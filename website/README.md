@@ -99,7 +99,7 @@ bash website/scripts/sync-docs.sh                # Linux / macOS / Git Bash
 
 ## 插件市场
 
-- 可下载文件在 `public/content/plugins/`，对应源码在仓库 `plugins/examples/`（`weather` / `dice` / `word-count`）。
+- 可下载文件在 `public/content/plugins/`，对应源码在仓库 `plugins/examples/`（`weather` / `dice` / `word-count` / `search-kit`）。
 - 新增示例插件时三处一起改：`plugins/examples/` 源码、`public/content/plugins/` 可下载副本、`src/views/PluginsView.vue` 的列表。
 
 ## 版本号

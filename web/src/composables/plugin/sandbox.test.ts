@@ -50,10 +50,17 @@ describe('bootHtml 转义与注入', () => {
     expect(html).toContain('var HOST = "*";')
   })
 
-  it('SDK 暴露 version 与 users.search / removeSidePanel', () => {
+  it('SDK v2 暴露 users.search / removeSidePanel 与新增宿主能力', () => {
     const html = bootHtml('', [], 'tk', 'https://app.example')
-    expect(html).toContain('version: "1"')
+    expect(html).toContain('version: "2"')
     expect(html).toContain('removeSidePanel')
     expect(html).toContain('call("users.search", [kw])')
+    expect(html).toContain('call("conv.list", [])')
+    expect(html).toContain('call("messages.search", [kw, opts || {}])')
+    expect(html).toContain('call("draft.get", [])')
+    expect(html).toContain('call("draft.set", [text])')
+    expect(html).toContain('call("clipboard.writeText", [text])')
+    expect(html).toContain('call("storage.remove", [k])')
+    expect(html).toContain('call("storage.keys", [])')
   })
 })

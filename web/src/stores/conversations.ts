@@ -103,6 +103,8 @@ export const useConversationsStore = defineStore('conversations', () => {
   const draftTimers = new Map<number, ReturnType<typeof setTimeout>>()
   const pendingDrafts = new Map<number, string>()
   const DRAFT_DEBOUNCE_MS = 300
+  /** 外部（插件）写入草稿后 bump，输入框据此同步内容；普通打字不触发避免回环 */
+  const draftRevision = ref(0)
 
   /** 记录/清除草稿（空串即清除）。打字路径用，写入去抖 */
   function setDraft(convId: number, text: string) {
@@ -125,6 +127,13 @@ export const useConversationsStore = defineStore('conversations', () => {
     pendingDrafts.delete(convId)
     if (text) drafts[convId] = text
     else delete drafts[convId]
+  }
+
+  /** 插件等外部来源写草稿：立即落定并通知输入区，空串即清除 */
+  function setExternalDraft(convId: number, text: string) {
+    setDraft(convId, text)
+    flushDraft(convId)
+    draftRevision.value += 1
   }
 
   /**
@@ -1211,6 +1220,8 @@ export const useConversationsStore = defineStore('conversations', () => {
     currentConv,
     drafts,
     setDraft,
+    setExternalDraft,
+    draftRevision,
     flushDraft,
     draftOf,
     replyTarget,

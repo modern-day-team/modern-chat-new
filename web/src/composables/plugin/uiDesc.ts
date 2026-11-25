@@ -21,6 +21,11 @@ const ALLOWED_COMPONENTS = new Set([
   'table',
   'progress',
   'badge',
+  // 表单交互控件：让插件面板能收集输入，而不只是一块静态展示
+  'textarea',
+  'checkbox',
+  'switch',
+  'segmented',
 ])
 
 /** 校验 UI 描述：白名单外组件、javascript: 链接、非 plain props 一律拒绝 */

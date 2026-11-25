@@ -8,6 +8,12 @@
 
 ## [未发布]
 
+### 插件能力增强（SDK v2）
+
+- **宿主 API 扩展**：新增会话列表 `conv.list`、全局消息搜索 `messages.search`、当前会话草稿 `draft.get/set`、只写剪贴板 `clipboard.writeText`、插件存储 `storage.remove/keys`；SDK 版本升到 `v2`，旧插件无需改动。新能力全部复用既有权限名：读正文仍要求 `message:read`，草稿 / 剪贴板要求 `ui:host`，存储要求 `storage`。
+- **描述式 UI 扩展**：新增 `textarea` / `checkbox` / `switch` / `segmented` 四种交互控件，插件面板从静态展示升级为可收集输入、切换模式的轻量工具面板；继续沿用白名单与原始值 props 安全边界。
+- **示例与文档**：新增 `plugins/examples/search-kit.plugin.js`，演示消息搜索、草稿、剪贴板、存储管理与新控件；官网插件市场同步可下载副本，`docs/插件开发.md`、`README.md`、SDK 类型声明同步更新。无新增 manifest 权限名，无需后端改动。
+
 ### 安全与部署加固
 
 - **找回密码令牌哈希存储（迁移 0034）**：`password_resets` 的 `token` 列改名 `token_hash`，库中只存 SHA-256 摘要不存明文令牌；迁移会使已发出的明文令牌立即失效（15 分钟有效期，影响可忽略），需重新发起找回流程。代码、模型与迁移三处已对齐。

@@ -51,6 +51,15 @@ const PLUGINS: MarketPlugin[] = [
     en: 'Listens to message events, counts messages and characters, persisted locally.',
     perms: ['message:read', 'ui:panel', 'storage'],
   },
+  {
+    file: 'search-kit.plugin.js',
+    name: 'search-kit',
+    version: '1.0.0',
+    cat: 'demo',
+    zh: 'SDK v2 示例：会话列表、全局消息搜索、草稿/剪贴板与存储管理，使用 textarea/checkbox/switch/segmented 控件。',
+    en: 'SDK v2 demo: conversation list, global message search, draft/clipboard and storage management with textarea/checkbox/switch/segmented controls.',
+    perms: ['ui:panel', 'conv:read', 'message:read', 'ui:host', 'storage'],
+  },
 ]
 
 const keyword = ref('')

@@ -207,6 +207,47 @@ a {
   text-decoration-thickness: 2px;
 }
 
+/* 分段控件：插件面板里的轻量模式切换，选中态是唯一品牌重心 */
+.mc-dsegmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--mc-hairline);
+  border-radius: var(--mc-radius-md);
+  background: var(--td-bg-color-secondarycontainer);
+  flex-wrap: wrap;
+}
+
+.mc-dsegmented__item {
+  padding: 4px 10px;
+  border: none;
+  border-radius: var(--mc-radius-sm);
+  background: transparent;
+  color: var(--td-text-color-secondary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background-color var(--mc-dur-instant) var(--mc-ease-out),
+    color var(--mc-dur-instant) var(--mc-ease-out);
+}
+
+.mc-dsegmented__item:hover {
+  background: var(--td-bg-color-container-hover);
+  color: var(--td-text-color-primary);
+}
+
+.mc-dsegmented__item.is-active {
+  background: var(--td-brand-color);
+  color: #fff;
+  font-weight: 500;
+}
+
+.mc-dsegmented__item:focus-visible {
+  outline: 2px solid var(--td-brand-color);
+  outline-offset: 1px;
+}
+
 /* 徽标：状态/标签，颜色走语义档位（不用 /alpha，变量不支持） */
 .mc-dbadge {
   display: inline-flex;

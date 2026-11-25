@@ -19,10 +19,23 @@ interface McMessageLite {
 
 interface McConvInfo {
   id: number
-  type: 1 | 2
+  type: 1 | 2 | 3
   name: string
   peerNickname: string
   memberCount: number
+}
+
+/** 消息搜索命中（messages.search 结果） */
+interface McSearchHit {
+  messageId: number
+  conversationId: number
+  convType: 1 | 2 | 3
+  convName: string
+  senderId: number
+  senderNickname: string
+  msgType: string
+  content: string
+  createdAt: string
 }
 
 interface McMemberLite {
@@ -52,10 +65,10 @@ interface McActionMessage {
 type McPrimitive = string | number | boolean | null
 
 interface McUIDescNode {
-  /** text | image | button | input | select | card | list | divider | link | table | progress | badge */
+  /** text | image | button | input | textarea | checkbox | switch | segmented | select | card | list | divider | link | table | progress | badge */
   component: string
   props: Record<string, McPrimitive>
-  /** button / input / select 触发时回传给 on('ui:action') 的动作名 */
+  /** 交互控件触发时回传给 on('ui:action') 的动作名 */
   action?: string
   children?: McUIDescNode[]
 }
@@ -110,10 +123,24 @@ interface McApi {
   conv: {
     current(): Promise<McConvInfo | null>
     members(): Promise<McMemberLite[]>
+    /** 我的会话列表摘要（≤50 条；不含未读 / 消息预览 / 头像，需 conv:read） */
+    list(): Promise<McConvInfo[]>
   }
   messages: {
     /** 最近 n 条（1–50），按时间正序 */
     recent(n?: number): Promise<McMessageLite[]>
+    /** 全局消息搜索（需 message:read）；kw ≤50 字，limit 1–50，convId 可限定会话 */
+    search(kw: string, opts?: { convId?: number; limit?: number }): Promise<McSearchHit[]>
+  }
+
+  /** 当前会话输入框草稿（需 ui:host）；插件写入后输入区立即同步，编辑消息时写入会被拒绝 */
+  draft: {
+    get(): Promise<string>
+    set(text: string): Promise<void>
+  }
+  /** 只写剪贴板（需 ui:host）；不开放读取，保护用户复制内容 */
+  clipboard: {
+    writeText(text: string): Promise<void>
   }
   users: {
     /** 站内用户目录搜索（需 conv:read；结果不含 email，≤20 条） */
@@ -131,6 +158,9 @@ interface McApi {
   storage: {
     get(key: string): Promise<string | null>
     set(key: string, value: string): Promise<void>
+    remove(key: string): Promise<void>
+    /** 列出本插件已存的键（剥离命名空间前缀，≤500 个） */
+    keys(): Promise<string[]>
   }
   /** 经主站转发的网络请求（需 net，且域名必须在 manifest.allowedHosts 里） */
   request(url: string, opts?: McRequestOptions): Promise<McResponse>

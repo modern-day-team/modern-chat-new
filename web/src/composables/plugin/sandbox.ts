@@ -88,8 +88,8 @@ export function bootHtml(pluginCode: string, allowedHosts: string[], token: stri
     });
   }
   var sdk = {
-    // 宿主 API 级别：插件据此做特性检测（新增 SDK 能力时递增）
-    version: "1",
+    // 宿主 API 级别：插件据此做特性检测（v2 增加会话列表/消息搜索/草稿/剪贴板/存储枚举）
+    version: "2",
     on: function (ev, fn) { (handlers[ev] || (handlers[ev] = [])).push(fn); },
     send: function (convId, payload, msgType) { return call("send", [convId, payload, msgType]); },
     registerMessageRenderer: function (type, fn) { renderers.set(type, fn); return call("registerMessageRenderer", [type]); },
@@ -100,13 +100,24 @@ export function bootHtml(pluginCode: string, allowedHosts: string[], token: stri
     registerMessageAction: function (desc) { return call("registerMessageAction", [desc]); },
     // 当前用户身份（需 conv:read）：只含 id / 昵称
     me: function () { return call("me", []); },
-    // 当前会话只读数据（需 conv:read）
+    // 当前会话与会话列表只读数据（需 conv:read）
     conv: {
       current: function () { return call("conv.current", []); },
-      members: function () { return call("conv.members", []); }
+      members: function () { return call("conv.members", []); },
+      list: function () { return call("conv.list", []); }
     },
     messages: {
-      recent: function (n) { return call("messages.recent", [n]); }
+      recent: function (n) { return call("messages.recent", [n]); },
+      search: function (kw, opts) { return call("messages.search", [kw, opts || {}]); }
+    },
+    // 输入框草稿：读写当前会话（需 ui:host），插件写入后立即刷新输入区
+    draft: {
+      get: function () { return call("draft.get", []); },
+      set: function (text) { return call("draft.set", [text]); }
+    },
+    // 只写剪贴板；不开放读取，避免插件偷取用户复制的敏感内容（需 ui:host）
+    clipboard: {
+      writeText: function (text) { return call("clipboard.writeText", [text]); }
     },
     // 宿主侧动作（需 ui:host）
     nav: {
@@ -116,7 +127,9 @@ export function bootHtml(pluginCode: string, allowedHosts: string[], token: stri
     toast: function (text, kind) { return call("toast", [text, kind]); },
     storage: {
       get: function (k) { return call("storage.get", [k]); },
-      set: function (k, v) { return call("storage.set", [k, v]); }
+      set: function (k, v) { return call("storage.set", [k, v]); },
+      remove: function (k) { return call("storage.remove", [k]); },
+      keys: function () { return call("storage.keys", []); }
     },
     request: function (url, opts) { return call("request", [url, opts || {}]); },
     theme: { apply: function (vars) { return call("theme.apply", [vars]); } },

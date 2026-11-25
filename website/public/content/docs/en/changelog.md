@@ -8,6 +8,12 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Plugin capabilities (SDK v2)
+
+- **More host APIs**: conversation list (`conv.list`), global message search (`messages.search`), current-conversation draft (`draft.get/set`), write-only clipboard (`clipboard.writeText`), and plugin storage management (`storage.remove/keys`). The SDK version is now `v2`; older plugins keep working unchanged. All new APIs reuse existing permissions: reading message content still requires `message:read`, draft/clipboard require `ui:host`, and storage requires `storage`.
+- **Declarative UI expansion**: added `textarea`, `checkbox`, `switch` and `segmented`, so plugin panels can collect input and switch modes instead of only displaying static content. The whitelist and primitive-props safety boundary are unchanged.
+- **Example and docs**: added `plugins/examples/search-kit.plugin.js` demonstrating search, draft, clipboard, storage management and the new controls; the website plugin market now offers the same file. `docs/插件开发.md`, `README.md` and the SDK type declarations are updated. No new manifest permission names, so no backend change is required.
+
 ### Security & deployment hardening
 
 - **Password-reset tokens stored hashed (migration 0034)**: the `token` column of `password_resets` is renamed to `token_hash`; only a SHA-256 digest is stored instead of the plaintext token. The migration invalidates already-issued plaintext tokens immediately (15-minute validity, negligible impact) — users need to request a new reset link. Code, model and migration are aligned.

@@ -322,6 +322,11 @@ export type DeclarativeComponent =
   | 'table'
   | 'progress'
   | 'badge'
+  // 交互控件：textarea / checkbox / switch / segmented
+  | 'textarea'
+  | 'checkbox'
+  | 'switch'
+  | 'segmented'
 
 export interface UIDescNode {
   component: DeclarativeComponent

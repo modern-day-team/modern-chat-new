@@ -220,6 +220,8 @@ Each plugin is a single JS file (≤1MB), stored on the server and loaded by the
 
 > **Plugins that rely on bare `fetch` are broken and must switch to `mc.request`.** The SDK object injected by the host is named `api`, so plugin code calls `api.request(url, opts)` (typed as `McApi`); `mc.request` refers to this same method. The sandbox is an opaque origin with CSP `default-src 'none'`, and network egress is limited to `allowedHosts`. See [插件开发.md](docs/插件开发.md).
 
+SDK is now **v2**: it adds conversation list, message search, draft, write-only clipboard, storage management and richer declarative controls while keeping every v1 API compatible. Check `api.version` for feature detection.
+
 ### Entry convention
 
 Define `__mcActivate(api)` in the plugin file; the host injects an `api` object on load:
@@ -262,7 +264,10 @@ function __mcActivate(api) {
 | `api.send(convId, payload, msgType?)` | Send a message; objects are JSON-serialized automatically | `message:send` |
 | `api.registerMessageRenderer(type, fn)` | Custom message type → UI description, rendered by the host inside the bubble | `message:render` |
 | `api.addSidePanel(desc)` | Submit a side-panel UI description | `ui:panel` |
-| `api.storage.get(key)` / `set(key, value)` | Per-plugin namespaced storage (≤64KB per value) | `storage` |
+| `api.conv.list()` / `api.messages.search(kw, opts?)` | Conversation summaries / global message search | `conv:read` / `message:read` |
+| `api.draft.get()` / `set(text)` | Read / write the current conversation draft (≤8192 chars) | `ui:host` |
+| `api.clipboard.writeText(text)` | Write-only clipboard (no read API; needs a secure context) | `ui:host` |
+| `api.storage.get/set` / `remove` / `keys` | Per-plugin namespaced storage and key management (≤64KB per value) | `storage` |
 | `api.request(url, opts?)` | Host-mediated fetch; only `allowedHosts` domains pass (subject to browser CORS) | `net` |
 | `api.theme.apply(cssVars)` | Modify `--td-*` theme tokens, site-wide instant reskin | `ui:theme` |
 
@@ -294,11 +299,12 @@ UI descriptions only accept 8 components: `text / image / button / input / card 
 
 ### Try the example plugin
 
-The repo ships with three example plugins (also downloadable from the "Marketplace" page on the website):
+The repo ships with four example plugins (also downloadable from the "Marketplace" page on the website):
 
 - [`plugins/examples/weather.plugin.js`](plugins/examples/weather.plugin.js): sidebar weather panel + custom `weather` message type
 - [`plugins/examples/dice.plugin.js`](plugins/examples/dice.plugin.js): dice roller panel + custom `dice` message type
 - [`plugins/examples/word-count.plugin.js`](plugins/examples/word-count.plugin.js): conversation stats panel (`message:new` event + storage persistence)
+- [`plugins/examples/search-kit.plugin.js`](plugins/examples/search-kit.plugin.js): SDK v2 demo with message search, drafts, clipboard, storage management and new declarative controls
 
 1. After login, click the "Plugins" icon in the sidebar → upload the file → confirm the permission list and enable it
 2. The right detail panel shows a "Weather (example plugin)" card: click "Refresh data" to see the panel update, and "Send to current chat" to send it to the open conversation

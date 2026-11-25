@@ -22,10 +22,19 @@ export const API_PERMISSION: Record<string, string> = {
   'conv.current': 'conv:read',
   'conv.members': 'conv:read',
   'messages.recent': 'conv:read',
+  // 全局搜索会跨会话返回正文，按正文门槛收敛
+  'messages.search': 'message:read',
+  'conv.list': 'conv:read',
   'users.search': 'conv:read',
+  // 草稿与剪贴板都是宿主 UI 动作，复用 ui:host，不引入新权限名
+  'draft.get': 'ui:host',
+  'draft.set': 'ui:host',
+  'clipboard.writeText': 'ui:host',
   'nav.openConversation': 'ui:host',
   'nav.jumpToMessage': 'ui:host',
   toast: 'ui:host',
+  'storage.remove': 'storage',
+  'storage.keys': 'storage',
 }
 
 /**

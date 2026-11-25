@@ -99,6 +99,16 @@ watch(text, (v) => {
   if (convStore.currentConvId && !editing.value) convStore.setDraft(convStore.currentConvId, v)
 })
 
+// 插件写草稿后同步输入区；编辑态跳过，避免覆盖正在编辑的消息正文
+watch(
+  () => convStore.draftRevision,
+  () => {
+    if (!convStore.currentConvId || editing.value) return
+    text.value = convStore.draftOf(convStore.currentConvId)
+    void nextTick(resize)
+  },
+)
+
 /** 进入编辑态前的正文：取消编辑要还原它，而不是把用户的草稿清空 */
 const draftBackup = ref('')
 

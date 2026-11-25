@@ -15,7 +15,7 @@ import { reactive, readonly } from 'vue'
 import { MessagePlugin } from '@/components/ui/feedback'
 
 import type { Plugin, PanelDesc, ServerFrame } from '@/types/proto'
-import { convApi, pluginApi, userApi } from '@/core/network/endpoints'
+import { convApi, pluginApi, searchApi, userApi } from '@/core/network/endpoints'
 import { useAuthStore } from '@/stores/auth'
 import { useConversationsStore } from '@/stores/conversations'
 import { usePluginsStore } from '@/stores/plugins'
@@ -99,6 +99,22 @@ interface PluginHostState {
 
 function storageKey(pluginId: number, key: string) {
   return `mc_plug_${pluginId}_${key}`
+}
+
+const STORAGE_PREFIX = 'mc_plug_'
+function storagePrefix(pluginId: number) {
+  return `${STORAGE_PREFIX}${pluginId}_`
+}
+
+/** 插件可见的会话摘要：只给定位字段，不带未读 / 预览正文 / 头像等隐私数据。 */
+function convBrief(c: { id: number; type: number; name?: string | null; peer?: { nickname?: string } | null; memberCount: number }) {
+  return {
+    id: c.id,
+    type: c.type,
+    name: c.name ?? '',
+    peerNickname: c.peer?.nickname ?? '',
+    memberCount: c.memberCount,
+  }
 }
 
 function createHost() {
@@ -216,6 +232,21 @@ function createHost() {
           reply(runtime, callId, true)
           break
         }
+        case 'storage.remove': {
+          localStorage.removeItem(storageKey(runtime.plugin.id, String(args[0] ?? '')))
+          reply(runtime, callId, true)
+          break
+        }
+        case 'storage.keys': {
+          const prefix = storagePrefix(runtime.plugin.id)
+          const keys: string[] = []
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i)
+            if (k?.startsWith(prefix)) keys.push(k.slice(prefix.length))
+          }
+          reply(runtime, callId, true, keys.sort().slice(0, 500))
+          break
+        }
         case 'request': {
           const url = String(args[0])
           const opts = (args[1] ?? {}) as { method?: string; headers?: Record<string, string>; body?: string }
@@ -323,20 +354,12 @@ function createHost() {
         }
         case 'conv.current': {
           const c = useConversationsStore().currentConv
-          reply(
-            runtime,
-            callId,
-            true,
-            c
-              ? {
-                  id: c.id,
-                  type: c.type,
-                  name: c.name ?? '',
-                  peerNickname: c.peer?.nickname ?? '',
-                  memberCount: c.memberCount,
-                }
-              : null,
-          )
+          reply(runtime, callId, true, c ? convBrief(c) : null)
+          break
+        }
+        case 'conv.list': {
+          const rows = await convApi.list()
+          reply(runtime, callId, true, (rows ?? []).slice(0, 50).map(convBrief))
           break
         }
         case 'conv.members': {
@@ -406,6 +429,85 @@ function createHost() {
               recalled: m.isRecalled,
             })),
           )
+          break
+        }
+        case 'messages.search': {
+          const kw = String(args[0] ?? '').trim().slice(0, 50)
+          const opts = (args[1] ?? {}) as { convId?: unknown; limit?: unknown }
+          const convId = Number(opts.convId)
+          const limit = Math.max(1, Math.min(50, Number(opts.limit ?? 20) || 20))
+          if (!kw) {
+            reply(runtime, callId, true, [])
+            return
+          }
+          const rows = await searchApi.messages(kw, Number.isFinite(convId) && convId > 0 ? convId : undefined, limit)
+          reply(
+            runtime,
+            callId,
+            true,
+            (rows ?? []).map((h) => ({
+              messageId: h.messageId,
+              conversationId: h.conversationId,
+              convType: h.convType,
+              convName: h.convName,
+              senderId: h.senderId,
+              senderNickname: h.senderNickname,
+              msgType: h.msgType,
+              content: h.content,
+              createdAt: h.createdAt,
+            })),
+          )
+          break
+        }
+        case 'draft.get': {
+          const convStore = useConversationsStore()
+          const convId = convStore.currentConvId
+          if (!convId) {
+            reply(runtime, callId, true, '')
+            return
+          }
+          // pendingDrafts 是去抖写入，先落定再读，避免刚输入的内容读不到
+          convStore.flushDraft(convId)
+          reply(runtime, callId, true, convStore.draftOf(convId))
+          break
+        }
+        case 'draft.set': {
+          const convStore = useConversationsStore()
+          const convId = convStore.currentConvId
+          const text = String(args[0] ?? '')
+          if (!convId) {
+            reply(runtime, callId, false, undefined, 'no current conversation')
+            return
+          }
+          if (text.length > 8192) {
+            reply(runtime, callId, false, undefined, 'draft too large (max 8192)')
+            return
+          }
+          // 编辑模式下输入区被消息正文占用，插件写草稿会互相覆盖，明确拒绝
+          if (convStore.editingMessage) {
+            reply(runtime, callId, false, undefined, 'composer is editing a message')
+            return
+          }
+          convStore.setExternalDraft(convId, text)
+          reply(runtime, callId, true)
+          break
+        }
+        case 'clipboard.writeText': {
+          const text = String(args[0] ?? '')
+          if (!text) {
+            reply(runtime, callId, true)
+            return
+          }
+          if (text.length > 8192) {
+            reply(runtime, callId, false, undefined, 'text too large (max 8192)')
+            return
+          }
+          try {
+            await navigator.clipboard.writeText(text)
+            reply(runtime, callId, true)
+          } catch {
+            reply(runtime, callId, false, undefined, 'clipboard write failed (requires secure context)')
+          }
           break
         }
         case 'nav.openConversation': {

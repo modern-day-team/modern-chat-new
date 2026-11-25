@@ -1,11 +1,19 @@
 /**
  * 描述式 UI 白名单渲染器（§8.2）。
- * 白名单组件：text / image / button / input / card / list / divider / link
- * + 数据展示类 table / progress / badge；
+ * 白名单组件：text / image / button / input / textarea / checkbox / switch / segmented
+ * / card / list / divider / link + 数据展示类 table / progress / badge；
  * props 仅接受原始值；链接/图片仅 http(s)（双保险，桥接层已校验过）。
  */
 import { defineComponent, h, type PropType, type VNode } from 'vue'
-import { Button as TButton, Divider as TDivider, Input as TInput, Select as TSelect } from 'tdesign-vue-next'
+import {
+  Button as TButton,
+  Checkbox as TCheckbox,
+  Divider as TDivider,
+  Input as TInput,
+  Select as TSelect,
+  Switch as TSwitch,
+  Textarea as TTextarea,
+} from 'tdesign-vue-next'
 
 import i18n from '@/i18n'
 import type { UIDescNode } from '@/types/proto'
@@ -84,6 +92,64 @@ export const DeclarativeNodes = defineComponent({
             options: options.map((o) => ({ label: o, value: o })),
             onChange: (v: unknown) => props.onAction?.(String(node.action ?? 'select'), v === null ? '' : String(v)),
           })
+        }
+        case 'textarea': {
+          const rows = Math.max(2, Math.min(8, Number(p.rows ?? 3) || 3))
+          return h(TTextarea, {
+            placeholder: str('placeholder'),
+            value: str('value'),
+            maxlength: Math.max(1, Math.min(4000, Number(p.maxlength ?? 1000) || 1000)),
+            autosize: { minRows: rows, maxRows: rows },
+            onChange: (v: unknown) => props.onAction?.(String(node.action ?? 'textarea'), v),
+          })
+        }
+        case 'checkbox': {
+          const checked = p.checked === true || p.checked === 'true'
+          return h(
+            TCheckbox,
+            {
+              checked,
+              onChange: (v: unknown) => props.onAction?.(String(node.action ?? 'checkbox'), v === true),
+            },
+            { default: () => str('text', '选项') },
+          )
+        }
+        case 'switch': {
+          const value = p.value === true || p.value === 'true'
+          return h(
+            TSwitch,
+            {
+              value,
+              onChange: (v: unknown) => props.onAction?.(String(node.action ?? 'switch'), v === true),
+            },
+            str('text') ? { label: () => str('text') } : undefined,
+          )
+        }
+        case 'segmented': {
+          // options='["甲","乙"]'；最多 8 项，避免插件把面板挤爆
+          let options: string[] = []
+          try {
+            const parsed: unknown = JSON.parse(str('options', '[]'))
+            if (Array.isArray(parsed)) options = parsed.slice(0, 8).map((o) => String(o ?? ''))
+          } catch {
+            options = []
+          }
+          const current = str('value')
+          return h(
+            'div',
+            { class: 'mc-dsegmented', role: 'group' },
+            options.map((o) =>
+              h(
+                'button',
+                {
+                  type: 'button',
+                  class: ['mc-dsegmented__item', o === current ? 'is-active' : ''],
+                  onClick: () => props.onAction?.(String(node.action ?? 'segmented'), o),
+                },
+                o,
+              ),
+            ),
+          )
         }
         case 'card':
           return h(

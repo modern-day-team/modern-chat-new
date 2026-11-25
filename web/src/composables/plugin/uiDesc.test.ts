@@ -13,6 +13,14 @@ describe('validateUIDesc 白名单', () => {
     expect(node?.props.content).toBe('hi')
   })
 
+  it('SDK v2 交互控件进入白名单，且布尔 props 保留', () => {
+    for (const component of ['textarea', 'checkbox', 'switch', 'segmented']) {
+      const node = validateUIDesc({ component, props: { value: true, checked: true, options: '["a","b"]' }, action: 'change' })
+      expect(node?.component).toBe(component)
+      expect(node?.props.checked).toBe(true)
+    }
+  })
+
   it('白名单外组件（如 script）拒绝', () => {
     expect(validateUIDesc({ component: 'script', props: { content: 'x' } })).toBeNull()
     expect(validateUIDesc({ component: 'iframe', props: {} })).toBeNull()

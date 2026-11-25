@@ -37,6 +37,16 @@ describe('API_PERMISSION 完整性', () => {
     expect(bad).toEqual([])
   })
 
+  it('SDK v2 新增 API 权限门槛符合数据敏感度', () => {
+    expect(API_PERMISSION['conv.list']).toBe('conv:read')
+    expect(API_PERMISSION['messages.search']).toBe('message:read')
+    expect(API_PERMISSION['draft.get']).toBe('ui:host')
+    expect(API_PERMISSION['draft.set']).toBe('ui:host')
+    expect(API_PERMISSION['clipboard.writeText']).toBe('ui:host')
+    expect(API_PERMISSION['storage.remove']).toBe('storage')
+    expect(API_PERMISSION['storage.keys']).toBe('storage')
+  })
+
   it('on 不进 API_PERMISSION：api.on 是沙箱内本地注册，不走 RPC', () => {
     expect('on' in API_PERMISSION).toBe(false)
   })
