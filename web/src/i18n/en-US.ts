@@ -381,6 +381,8 @@ export default {
     empty: 'Mentions and friend requests will show up here',
   },
   call: {
+    startAudio: 'Voice call',
+    startVideo: 'Video call',
     incoming: 'Incoming call',
     incomingVideo: 'Incoming video call',
     incomingAudio: 'Incoming voice call',

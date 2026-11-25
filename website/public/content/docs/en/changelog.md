@@ -8,6 +8,12 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Voice calls
+- Added a "Voice call" entry next to the video button in single-chat view, using the same `call.*` signaling with `mediaType:'audio'`.
+- Voice mode requests only microphone permission (no camera), shows the peer's avatar instead of a blank video area, and plays the remote audio track through a hidden `<audio>` element; `ontrack` dispatches by track kind.
+- Backend now normalizes `mediaType` to audio/video (unknown values fall back to audio), with an end-to-end test covering voice invites.
+- Added zh/en `call.startAudio` / `call.startVideo` strings.
+
 ### Video call review fixes
 
 Review found four high-severity defects in the first version (including "calls could never be established"); all fixed with regression tests:

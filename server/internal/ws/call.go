@@ -239,9 +239,14 @@ func (h *Hub) handleCallInvite(c *Client, f *clientFrame) {
 		c.trySend(mustJSON(ginH{"type": "call.busy", "callId": id}))
 		return
 	}
+	// mediaType 只接受 video / audio，未知值归一为 audio（避免客户端按异常值渲染）
+	mediaType := f.MediaType
+	if mediaType != "video" && mediaType != "audio" {
+		mediaType = "audio"
+	}
 	frame := ginH{
 		"type": "call.incoming", "callId": id,
-		"fromUserId": c.UserID, "fromSid": c.sid, "mediaType": f.MediaType,
+		"fromUserId": c.UserID, "fromSid": c.sid, "mediaType": mediaType,
 	}
 	if h.deps != nil && h.deps.Users != nil {
 		if u, err := h.deps.Users.ByID(c.UserID); err == nil && u != nil {

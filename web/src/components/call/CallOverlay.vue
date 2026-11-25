@@ -10,6 +10,7 @@ import {
   CallIcon, CallOffIcon, MicrophoneIcon, SoundMuteIcon, CameraIcon, CameraOffIcon,
 } from 'tdesign-icons-vue-next'
 import UiButton from '@/components/ui/UiButton.vue'
+import AvatarBadge from '@/components/common/AvatarBadge.vue'
 import { useAppI18n } from '@/composables/useAppI18n'
 import type { ClientFrame, ServerFrame } from '@/types/proto'
 
@@ -38,6 +39,8 @@ const isCaller = ref(false)
 const localStream = ref<MediaStream | null>(null)
 const localVideo = ref<HTMLVideoElement | null>(null)
 const remoteVideo = ref<HTMLVideoElement | null>(null)
+// 语音通话用隐藏 audio 元素播放远端声音（video 元素在语音模式下不渲染）
+const remoteAudio = ref<HTMLAudioElement | null>(null)
 const micOn = ref(true)
 const camOn = ref(true)
 const elapsed = ref(0)
@@ -96,9 +99,13 @@ function createPC(): boolean {
     }
   }
   pc.ontrack = (e) => {
-    if (!remoteVideo.value) return
     const stream = e.streams[0] ?? new MediaStream([e.track])
-    remoteVideo.value.srcObject = stream
+    if (e.track.kind === 'audio') {
+      // 语音通话：远端音轨绑到隐藏 audio；视频通话时 video 元素自带声音，不重复绑定
+      if (mediaType.value === 'audio' && remoteAudio.value) remoteAudio.value.srcObject = stream
+      return
+    }
+    if (remoteVideo.value) remoteVideo.value.srcObject = stream
   }
   pc.onconnectionstatechange = () => {
     if (pc?.connectionState === 'failed' || pc?.connectionState === 'disconnected') {
@@ -146,6 +153,7 @@ function cleanup() {
   localStream.value = null
   if (localVideo.value) localVideo.value.srcObject = null
   if (remoteVideo.value) remoteVideo.value.srcObject = null
+  if (remoteAudio.value) remoteAudio.value.srcObject = null
   pc?.close()
   pc = null
   pendingIce.length = 0
@@ -316,7 +324,10 @@ defineExpose({ handleFrame, startCall, onWsDisconnect })
     <!-- 来电弹窗 -->
     <div v-if="state === 'incoming'" class="call-overlay" role="dialog" aria-modal="true" :aria-label="t('call.incoming')">
       <div class="call-card mc-elev-3">
-        <div class="call-card__icon"><CallIcon size="32px" /></div>
+        <div class="call-card__icon">
+          <CameraIcon v-if="mediaType === 'video'" size="32px" />
+          <CallIcon v-else size="32px" />
+        </div>
         <p class="call-card__label">{{ statusText }}</p>
         <h3 class="call-card__name">{{ peerName || `用户 ${peerId}` }}</h3>
         <div class="call-card__actions">
@@ -332,10 +343,18 @@ defineExpose({ handleFrame, startCall, onWsDisconnect })
 
     <!-- 通话中悬浮窗 -->
     <div v-else-if="state === 'connecting' || state === 'active'" class="call-float mc-elev-3">
-      <div class="call-float__videos">
+      <!-- 视频通话：远端 + 本地预览 -->
+      <div v-if="mediaType === 'video'" class="call-float__videos">
         <video ref="remoteVideo" class="call-float__remote" autoplay playsinline />
         <video ref="localVideo" class="call-float__local" autoplay playsinline muted />
       </div>
+      <!-- 语音通话：无视频画面，展示对方头像 + 状态 -->
+      <div v-else class="call-float__voice">
+        <AvatarBadge :name="peerName || `用户 ${peerId}`" :src="peerAvatar" :color="'var(--td-brand-color)'" :size="64" />
+        <span class="call-float__voice-label">{{ t('call.incomingAudio') }}</span>
+      </div>
+      <!-- 语音模式下播放远端声音 -->
+      <audio v-if="mediaType === 'audio'" ref="remoteAudio" autoplay />
       <div class="call-float__bar">
         <span class="call-float__status">{{ statusText }}</span>
         <UiButton variant="text" shape="circle" size="small" :aria-label="micOn ? t('call.micOff') : t('call.micOn')" @click="toggleMic">
@@ -402,6 +421,20 @@ defineExpose({ handleFrame, startCall, onWsDisconnect })
   animation: mc-fade-up var(--mc-dur-base) var(--mc-ease-out);
 }
 .call-float__videos { position: relative; width: 100%; aspect-ratio: 4 / 3; background: #101216; }
+.call-float__voice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 26px 16px;
+  background: var(--td-bg-color-container);
+}
+.call-float__voice-label {
+  font-size: var(--mc-fs-sm);
+  color: var(--td-text-color-secondary);
+  font-variant-numeric: tabular-nums;
+}
 .call-float__remote { width: 100%; height: 100%; object-fit: cover; }
 .call-float__local {
   position: absolute;

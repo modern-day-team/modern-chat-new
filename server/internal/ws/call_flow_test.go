@@ -99,6 +99,31 @@ func TestCallFlowInviteAnswerHangup(t *testing.T) {
 	}
 }
 
+// 语音通话：mediaType=audio 原样下发；未知值归一为 audio（安全边界）。
+func TestCallMediaTypeNormalization(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"audio", "audio"},
+		{"video", "video"},
+		{"", "audio"},
+		{"evil", "audio"},
+	} {
+		hub := NewHub(&Deps{})
+		caller := newTestClient(hub, 1, 8)
+		caller.sid = "sid-caller"
+		callee := newTestClient(hub, 2, 8)
+		callee.sid = "sid-callee"
+		hub.Register(caller)
+		hub.Register(callee)
+		hub.handleCallInvite(caller, &clientFrame{
+			Type: "call.invite", CallID: "mt-" + tc.in, ToUserID: 2, MediaType: tc.in,
+		})
+		frame := frameOf(t, callee)
+		if frame["mediaType"] != tc.want {
+			t.Errorf("mediaType %q → %q, want %q", tc.in, frame["mediaType"], tc.want)
+		}
+	}
+}
+
 // 未接听时主叫发 offer 必须被丢弃（不能投给未接听设备）。
 func TestCallOfferBeforeAcceptDropped(t *testing.T) {
 	hub := NewHub(&Deps{})

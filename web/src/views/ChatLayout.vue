@@ -3,7 +3,7 @@ import UiButton from '@/components/ui/UiButton.vue'
 import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { MessagePlugin } from '@/components/ui/feedback'
-import { CameraIcon, UsergroupIcon } from 'tdesign-icons-vue-next'
+import { CallIcon, CameraIcon, UsergroupIcon } from 'tdesign-icons-vue-next'
 
 import AddFriendDialog from '@/components/chat/AddFriendDialog.vue'
 import AppRail from '@/components/chat/AppRail.vue'
@@ -346,14 +346,25 @@ onUnmounted(() => {
           </div>
         </div>
       </Transition>
-      <!-- 单聊视频通话入口（浮在主区右上角，与详情入口并排） -->
+      <!-- 单聊语音/视频通话入口（浮在主区右上角，与详情入口并排） -->
+      <UiButton
+        v-if="callPeerId"
+        class="mc-layout__call-toggle mc-layout__call-toggle--audio"
+        variant="text"
+        size="small"
+        :aria-label="t('call.startAudio')"
+        :title="t('call.startAudio')"
+        @click="startCallWithPeer(callPeerId, 'audio')"
+      >
+        <CallIcon size="16px" />
+      </UiButton>
       <UiButton
         v-if="callPeerId"
         class="mc-layout__call-toggle"
         variant="text"
         size="small"
-        :aria-label="t('call.incomingVideo')"
-        :title="t('call.incomingVideo')"
+        :aria-label="t('call.startVideo')"
+        :title="t('call.startVideo')"
         @click="startCallWithPeer(callPeerId, 'video')"
       >
         <CameraIcon size="16px" />
@@ -509,6 +520,9 @@ onUnmounted(() => {
   top: 10px;
   right: 52px;
   z-index: 12;
+}
+.mc-layout__call-toggle--audio {
+  right: 90px;
 }
 
 @keyframes mc-drawer-in {

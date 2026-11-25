@@ -383,6 +383,8 @@ export default {
     empty: "有人{'@'}你或收到好友申请时会出现在这里",
   },
   call: {
+    startAudio: '语音通话',
+    startVideo: '视频通话',
     incoming: '来电',
     incomingVideo: '视频通话邀请',
     incomingAudio: '语音通话邀请',
