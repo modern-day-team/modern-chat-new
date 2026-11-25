@@ -75,11 +75,13 @@ volumes:
   mysql-data:
 
 # 若要把已构建的前端也放进容器（cd web && npm run build 后）：
+# 注意 web 的 vite base 固定为 /app/，产物必须挂到 html/app/ 子目录，
+# 挂到 html 根会导致 /app/assets/* 全部 404（详见 deploy/nginx.compose.conf 顶部注释）。
 #
 #  web:
 #    image: nginx:alpine
 #    volumes:
-#      - ./web/dist:/usr/share/nginx/html:ro
+#      - ./web/dist:/usr/share/nginx/html/app:ro
 #      - ./deploy/nginx.compose.conf:/etc/nginx/conf.d/default.conf:ro
 #    ports: ["80:80"]
 #    depends_on: [server]

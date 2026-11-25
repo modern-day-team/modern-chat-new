@@ -79,6 +79,15 @@ const PLUGINS: MarketPlugin[] = [
     perms: ['ui:page', 'ai'],
   },
   {
+    file: 'conv-stats.plugin.ts',
+    name: 'conv-stats',
+    version: '1.0.0',
+    cat: 'demo',
+    zh: 'TypeScript 示例：当前会话消息统计面板 + 消息右键菜单动作，演示 table/progress/badge 控件（.ts 可直接上传，服务端自动转译）。',
+    en: 'TypeScript demo: per-conversation message statistics panel plus a message context-menu action using table/progress/badge controls (.ts uploads directly; the server transpiles it).',
+    perms: ['ui:panel', 'conv:read', 'ui:actions', 'ui:host'],
+  },
+  {
     file: 'power-kit.plugin.js',
     name: 'power-kit',
     version: '1.0.0',

@@ -8,6 +8,14 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Functionality gap fixes
+
+- **SDK v5 permission allowlist**: the backend `ValidPermissions` was missing `conv:write` / `file:upload`, so the official power-kit example (which declares them) failed to install with HTTP 400, and SDK v5 conversation-write and file-upload capabilities were unusable. Added both with a regression test for the power-kit manifest.
+- **nginx examples adapted to `/app/`**: the web build has a fixed `/app/` vite base, but the deploy examples and install.sh generated config still assumed the frontend owned the root path, so following them produced 404s. All three are now consistent: site at root, chat at `/app/` with SPA fallback, regex asset caching, no-cache service worker, and a 210m upload limit. The compose mount now maps `web/dist → html/app`, and install.sh creates an `app/` symlink.
+- **Docs site broken links**: `DocsView.vue` matched links by basename, so `server/README.md` and `web/README.md` both jumped to the project overview; four documents were not synced to the website at all. Link resolution now uses repo-root-relative paths, all four docs have directory entries and Chinese/English mirrors, and unknown links no longer silently redirect. Both sync scripts were updated.
+- **Plugin market**: added the missing `conv-stats` TypeScript example with a downloadable copy.
+- **WS contract alignment**: `ServerFrame.message.from.nickname` is now optional (regular message frames carry only `id`; system notices carry `nickname`), and `pluginPayload` is declared for server-plugin messages.
+
 ### Architecture decoupling and horizontal-scaling groundwork
 
 - **Unified REST rate limiting on shared quotas**: the migration / QR poll / public plugin / email-code / upload / AI limit points previously used in-memory token buckets, so quotas were multiplied by instance count. They now use a purpose-scoped limiter factory: Redis-backed shared quotas when Redis is available, in-memory fallback otherwise. Keys are isolated per purpose (failed logins no longer throttle unrelated endpoints from the same IP), and server-plugin message sending shares the WS per-user quota, closing a plugin bypass for mass sending.

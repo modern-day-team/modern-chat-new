@@ -260,10 +260,13 @@ export type ServerFrame =
       type: 'message'
       id: number
       convId: number
-      from: { id: number; nickname: string }
+      /** 发送者。普通消息帧只带 id；系统公告帧额外带 nickname，故 nickname 可选 */
+      from: { id: number; nickname?: string }
       content: string
       /** 'text' 或插件注册的自定义类型 */
       msgType: string
+      /** 服务端插件（handler: true）通过 message.send 附带的自定义载荷，普通消息没有 */
+      pluginPayload?: unknown
       clientMsgId?: string
       /** 引用摘要（服务端随帧下发，无需回查） */
       replyToId?: number

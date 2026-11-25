@@ -40,6 +40,24 @@ func TestParseSDKV3Permissions(t *testing.T) {
 	}
 }
 
+// SDK v5 权限必须与前端权限表、官方 power-kit 示例同步，否则示例插件安装即 400。
+func TestParseSDKV5Permissions(t *testing.T) {
+	for _, p := range []string{"conv:write", "file:upload"} {
+		if !ValidPermissions[p] {
+			t.Fatalf("SDK v5 权限 %q 未登记", p)
+		}
+		code := `/* {"name":"v5","version":"1.0.0","permissions":["` + p + `"]} */`
+		if _, err := Parse(code); err != nil {
+			t.Fatalf("权限 %q 应可安装: %v", p, err)
+		}
+	}
+	// power-kit 实际 manifest：多权限组合必须整体验证通过。
+	powerKit := `/* {"name":"power-kit","version":"1.0.0","permissions":["ui:panel","ui:page","conv:read","conv:write","message:send","file:upload"]} */`
+	if _, err := Parse(powerKit); err != nil {
+		t.Fatalf("power-kit 示例 manifest 应可安装: %v", err)
+	}
+}
+
 func TestParseErrors(t *testing.T) {
 	cases := []struct {
 		name   string

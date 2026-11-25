@@ -98,6 +98,20 @@ const DOCS: DocItem[] = [
     descZh: '结构、状态管理、WS 链路、性能约定与踩坑',
     descEn: 'Structure, state, WS, performance notes & pitfalls',
   },
+  {
+    file: 'ui-design.md',
+    zh: 'UI 设计方案',
+    en: 'UI design',
+    descZh: '设计令牌、动效规范、组件手感与验收标准',
+    descEn: 'Design tokens, motion, component feel and acceptance criteria',
+  },
+  {
+    file: 'plugin-guide.md',
+    zh: '插件开发',
+    en: 'Plugin development',
+    descZh: '用户插件 / 服务端 WASM 插件的 manifest、权限、沙箱与宿主 API',
+    descEn: 'Manifests, permissions, sandbox and host APIs for user and WASM plugins',
+  },
   { group: true, zh: '运维与子项目', en: 'Ops & subprojects' },
   {
     file: 'ops-guide.md',
@@ -134,6 +148,20 @@ const DOCS: DocItem[] = [
     descZh: '目录、命令、聊天界面与设计约定',
     descEn: 'Layout, commands, chat UI & design conventions',
   },
+  {
+    file: 'website-readme.md',
+    zh: '官网运行手册',
+    en: 'Website runbook',
+    descZh: '官网结构、命令、文档同步与插件市场维护',
+    descEn: 'Website structure, commands, docs sync and plugin market upkeep',
+  },
+  {
+    file: 'legal-readme.md',
+    zh: '协议维护说明',
+    en: 'Legal docs maintenance',
+    descZh: '用户协议 / 隐私协议的合规提示与运营主体替换',
+    descEn: 'Compliance notes and operator details for Terms / Privacy',
+  },
 ]
 
 const items = DOCS.filter((d) => !!d.file)
@@ -161,17 +189,40 @@ const html = ref('')
 const loading = ref(true)
 const failed = ref(false)
 
-/** 仓库内相对链接 → 站内文档路由 */
+/**
+ * 仓库内相对链接 → 站内文档路由。
+ * key 用「仓库根相对路径」而非 basename：server/README.md 与 web/README.md
+ * 同名，按 basename 映射会把两者都跳到 getting-started.md。
+ */
 const LINK_MAP: Record<string, string> = {
   'README.md': 'getting-started.md',
   'CHANGELOG.md': 'changelog.md',
-  '客户端接入指南.md': 'client-guide.md',
-  '设计文档.md': 'design.md',
-  '后端需求规格.md': 'api-spec.md',
-  '前端技术方案.md': 'frontend-guide.md',
-  '运维手册.md': 'ops-guide.md',
-  '安全与迁移指南.md': 'security-migration-guide.md',
-  'storage-providers.md': 'storage-providers.md',
+  'docs/客户端接入指南.md': 'client-guide.md',
+  'docs/设计文档.md': 'design.md',
+  'docs/后端需求规格.md': 'api-spec.md',
+  'docs/API文档.md': 'api-reference.md',
+  'docs/前端技术方案.md': 'frontend-guide.md',
+  'docs/运维手册.md': 'ops-guide.md',
+  'docs/安全与迁移指南.md': 'security-migration-guide.md',
+  'docs/storage-providers.md': 'storage-providers.md',
+  'docs/UI设计方案.md': 'ui-design.md',
+  'docs/插件开发.md': 'plugin-guide.md',
+  'docs/legal/README.md': 'legal-readme.md',
+  'server/README.md': 'server-readme.md',
+  'web/README.md': 'web-readme.md',
+  'website/README.md': 'website-readme.md',
+}
+
+/** 把仓库内 md 链接解析为站内文档文件名；未知链接返回 null（不静默跳错页）。 */
+function resolveDocLink(href: string): string | null {
+  // href 形如 docs/设计文档.md、server/README.md、../web/README.md 或裸 filename.md
+  const clean = href.replace(/^\.?\//, '').split('#')[0]
+  if (LINK_MAP[clean]) return LINK_MAP[clean]
+  // 兼容只写文件名的旧链接：在映射表里按后缀再找一次（仅当唯一时安全）
+  const base = clean.split('/').pop() ?? clean
+  if (base === clean) return null
+  const candidates = Object.entries(LINK_MAP).filter(([key]) => key.endsWith('/' + base))
+  return candidates.length === 1 ? candidates[0][1] : null
 }
 
 async function loadDoc() {
@@ -217,11 +268,11 @@ async function renderMd(md: string, fallbackNote: boolean) {
     // 表格套一层滚动容器：宽表（环境变量全表）在窄屏上横向滚动，而不是把页面撑宽
     .replace(/<table>/g, '<div class="md-table"><table>')
     .replace(/<\/table>/g, '</table></div>')
-  // 仓库内 md 链接改写为站内路由，避免 404（点击由 onBodyClick 走前端路由）
+  // 仓库内 md 链接改写为站内路由（点击由 onBodyClick 走前端路由）。
+  // 未收录的文档不改写：留在原地可看出是外部/相对链接，而不是静默跳回「项目总览」。
   const rewritten = body.replace(/href="([^"]+\.md)(#[^"]*)?"/g, (_m, file: string, hash = '') => {
-    const base = file.split('/').pop() ?? file
-    const mapped = LINK_MAP[base] ?? base
-    return `href="/docs/${mapped}${hash ?? ''}"`
+    const mapped = resolveDocLink(file)
+    return mapped ? `href="/docs/${mapped}${hash ?? ''}"` : `href="${file}${hash ?? ''}"`
   })
   // 净化：marked 不净化输出 HTML，用 DOMPurify 去除 <script>、javascript: 链接、
   // 事件处理器等危险内容，防止文档被篡改后的存储型 XSS

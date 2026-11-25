@@ -20,8 +20,12 @@ declare -A MAP=(
   ["docs/运维手册.md"]="ops-guide.md"
   ["docs/安全与迁移指南.md"]="security-migration-guide.md"
   ["docs/storage-providers.md"]="storage-providers.md"
+  ["docs/UI设计方案.md"]="ui-design.md"
+  ["docs/插件开发.md"]="plugin-guide.md"
+  ["docs/legal/README.md"]="legal-readme.md"
   ["server/README.md"]="server-readme.md"
   ["web/README.md"]="web-readme.md"
+  ["website/README.md"]="website-readme.md"
 )
 
 DST="website/public/content/docs"

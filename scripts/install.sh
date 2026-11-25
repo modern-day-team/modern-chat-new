@@ -617,7 +617,12 @@ stage_done nginx && ! [ "$FORCE" = "1" ] && { skip_stage "nginx" nginx; } || {
 
   if [ -x "$NGINX_BIN" ] || command -v nginx >/dev/null 2>&1; then
     NGINX_SERVER_NAME="${DOMAIN:-_}"
-    NGINX_ROOT="$INSTALL_DIR/web/dist"
+    # web 的 vite base 固定为 /app/：站点根下建 app/ 软链指向 web/dist，
+    # 这样 nginx 配置与 nginx.conf.example 同构（root 指向站点根，聊天在 /app/）。
+    NGINX_ROOT="$INSTALL_DIR"
+    if [ -d "$INSTALL_DIR/web/dist" ] && [ ! -e "$INSTALL_DIR/app" ]; then
+      ln -s web/dist "$INSTALL_DIR/app"
+    fi
     NGINX_TARGET="$NGINX_CONF_DIR/$NGINX_CONF_NAME"
     save_state "PARAM_NGINX_CONF" "$NGINX_TARGET"
 
@@ -650,14 +655,35 @@ server {
     add_header Referrer-Policy "no-referrer" always;
     add_header Permissions-Policy "geolocation=(), camera=(), microphone=()" always;
 
-    # 前端 SPA（history 路由回退）
-    location / {
-        try_files \$uri \$uri/ /index.html;
+    # 只部署聊天（无官网）：根路径重定向到 /app/
+    location = / {
+        return 302 /app/;
     }
 
-    location /assets/ {
+    # 聊天前端（web/dist 已在安装时软链到 \$NGINX_ROOT/app/）
+    location /app/ {
+        try_files \$uri \$uri/ /app/index.html;
+        add_header Cache-Control "no-cache" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header Permissions-Policy "geolocation=(), camera=(), microphone=()" always;
+    }
+
+    # 带指纹的静态资源长缓存
+    location ~* ^/app/assets/ {
         expires 30d;
         add_header Cache-Control "public, immutable";
+        add_header X-Frame-Options "DENY" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header Permissions-Policy "geolocation=(), camera=(), microphone=()" always;
+    }
+
+    # Service Worker 必须禁用缓存
+    location = /app/sw.js {
+        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+        add_header X-Content-Type-Options "nosniff" always;
     }
 
     # REST API

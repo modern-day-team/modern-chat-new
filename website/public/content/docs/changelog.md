@@ -8,6 +8,14 @@
 
 ## [未发布]
 
+### 功能缺失修复
+
+- **SDK v5 权限白名单补齐**：后端 `ValidPermissions` 此前漏登记 `conv:write` / `file:upload`，导致官方 power-kit 示例（已声明这两个权限）安装即 400、SDK v5 会话写与文件上传能力实际不可用。已补齐并加 power-kit manifest 回归测试。
+- **nginx 部署示例适配 `/app/`**：web 的 vite base 固定 `/app/`，但 `deploy/nginx.conf.example`、`nginx.compose.conf` 与 `install.sh` 生成的配置仍按"前端独占根路径"编写，按示例部署会 404。现已统一为「官网在根 + 聊天在 `/app/index.html` 回退 + 静态资源正则缓存 + SW 禁缓存 + 媒体上传 210m」，compose 挂载改为 `web/dist → html/app`，install.sh 建 `app/` 软链。
+- **官网文档站错链修复**：`DocsView.vue` 的链接映射按 basename 匹配，导致 `server/README.md` 与 `web/README.md` 都跳回项目总览；`UI设计方案.md`/`插件开发.md`/`legal/README.md`/`website/README.md` 未同步到官网。现已改为按仓库根相对路径映射、新增四篇文档的目录条目与中英镜像，未知链接不再静默跳错页。两个 sync 脚本映射表同步补齐。
+- **插件市场补收 conv-stats**：TypeScript 插件示例此前未上架，现已在市场列表登记并提供可下载副本。
+- **WS 契约字段校准**：`ServerFrame.message.from.nickname` 改为可选（普通消息帧只带 id，系统公告帧才带 nickname），并补声明 `pluginPayload`（服务端插件附带载荷）。
+
 ### 架构解耦与水平扩展准备
 
 - **REST 限流统一到共享配额**：迁移 / 扫码轮询 / 公开插件 / 换邮箱码 / 上传 / AI 六处限流点此前走内存令牌桶，多实例下配额被实例数放大；现统一按用途注入限流工厂，Redis 可用时共享配额、否则回退内存。不同用途键前缀隔离，登录失败不再连带限流同 IP 的其它接口；服务端插件发消息与 WS 主链路共用同一用户配额，堵住插件绕过限流群发。

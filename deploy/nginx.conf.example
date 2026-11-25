@@ -1,6 +1,12 @@
-# ModernChat Nginx 配置示例
-# 前端：npm run build 产物部署到 /var/www/modernchat
+# ModernChat Nginx 配置示例（官网 + 聊天室同域部署）
+# 前端构建产物：
+#   website/dist → /var/www/modernchat/            （官网，站点根）
+#   web/dist     → /var/www/modernchat/app/        （聊天前端，web 的 vite base 固定为 /app/）
 # 后端：Go 服务监听 127.0.0.1:8080
+#
+# ⚠️ web/dist 必须放在站点根的 app/ 子目录：web 构建时 base='/app/'，
+#    index.html 里的 /app/assets/*、/app/sw.js 都是绝对路径，放错位置会全部 404。
+#    若只部署聊天室、不要官网：把 website 的 location / 段删掉，root 仍指向包含 app/ 的目录。
 #
 # TLS 证书：将证书文件放到指定路径（或改 ssl_certificate / ssl_certificate_key 的路径），
 # 生成自签名证书（仅本地测试）：
@@ -65,13 +71,25 @@ server {
     # 修改插件运行机制（如改为外链沙箱页）之后再启用下面这行：
     # add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: wss:; frame-src 'self' blob: data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
 
-    # 前端静态资源（SPA history 路由回退）
+    # ===== 官网（history 路由回退）=====
     location / {
         try_files $uri $uri/ /index.html;
     }
 
-    # 带指纹的静态资源长缓存
-    location /assets/ {
+    # ===== 聊天前端（web/dist 部署在站点根的 app/ 子目录）=====
+    # /app/ 用普通前缀（非 ^~），让下面的 /app/assets/ 正则缓存规则优先生效。
+    location /app/ {
+        try_files $uri $uri/ /app/index.html;
+        # index.html / sw.js 不缓存：升级后必须立即加载新版本并清理旧 SW
+        add_header Cache-Control "no-cache" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header Permissions-Policy "geolocation=(), camera=(), microphone=()" always;
+    }
+
+    # 带指纹的静态资源长缓存（正则同时命中官网 /assets/ 和聊天 /app/assets/）
+    location ~* ^/(app/)?assets/ {
         expires 30d;
         add_header Cache-Control "public, immutable";
         # nginx add_header 不跨层级继承：此 location 定义了 add_header 后，
@@ -82,6 +100,18 @@ server {
         add_header Permissions-Policy "geolocation=(), camera=(), microphone=()" always;
     }
 
+    # Service Worker 必须禁用缓存，否则升级后旧 SW 继续生效（web/public/sw.js）
+    location = /app/sw.js {
+        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+        add_header X-Content-Type-Options "nosniff" always;
+    }
+
+    # ===== 对象存储私有空间反代（可选，如启用七牛私有空间）=====
+    # location /qiniu/ {
+    #     resolver 8.8.8.8 valid=30s;   # 不要写死 proxy_pass 域名，见运维手册 §1.1
+    #     proxy_pass https://your-bucket.qiniudn.com/;
+    # }
+
     # REST API
     location /api/ {
         proxy_pass http://127.0.0.1:8080;
@@ -89,6 +119,16 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         client_max_body_size 2m;   # 插件上传 1MB + 余量
+    }
+
+    # 媒体上传（multipart）：应用侧 200 MB 天花板 + 余量，nginx 不放宽会先回 413
+    location /api/upload {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        client_max_body_size 210m;
+        proxy_request_buffering off;
     }
 
     # WebSocket（/ws 握手 + 升级）

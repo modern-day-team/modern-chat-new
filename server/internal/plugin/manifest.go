@@ -35,6 +35,9 @@ var ValidPermissions = map[string]bool{
 	"ui:page": true, "data": true,
 	// 服务端统一 AI 代理（密钥不下发到浏览器）
 	"ai": true,
+	// SDK v5：会话写操作 + 宿主文件上传。前端权限表（web/src/composables/plugin/permissions.ts）
+	// 与官方 power-kit 示例已使用这两个权限名，白名单必须同步，否则示例安装即 400。
+	"conv:write": true, "file:upload": true,
 }
 
 var (
