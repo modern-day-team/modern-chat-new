@@ -84,7 +84,10 @@ curl https://site/api/conversations -H 'Authorization: Bearer <token>'
 | POST `/api/me/2fa/email/code` | — | `{ok:true, cooldownSeconds}`; emails the enabling code to the user (60s cooldown, SMTP required) |
 | POST `/api/me/2fa/email/enable` | `{code}` | `{ok:true, recoveryCodes[]}`; verifies the email code, enables |
 | POST `/api/me/2fa/disable` | `{password}` | `{ok:true}`; disables (password re-auth), clearing the secret and recovery codes |
+| GET `/api/me/sessions` | — | `{sessions: SessionView[]}`; list the account's active devices (platform, client type, version, IP, current-device flag) |
+| DELETE `/api/me/sessions/:id` | session ID in path | `{ok:true}`; revoke the session and kick that device's WS (with a `kicked` frame) |
 | GET `/api/version` | — | `{version, commit, buildTime}`; **no auth** |
+| GET `/api/client/version` | `?platform=&clientType=&appVersion=` | `{latestVersion, upgradeRequired, message?}`; **no auth**. Desktop / mobile clients probe on startup; `MIN_CLIENT_VERSION` only warns, never blocks |
 
 ---
 
@@ -206,6 +209,16 @@ The sandbox model and SDK are described in the plugin dev guide; below is the RE
 | POST `/api/plugins/from-url` | `{url}` | `Plugin`; SSRF checks run before the server-side fetch; upgrade semantics as upload (headers and audit included) |
 | PATCH `/api/plugins/:id` | `{enabled}` | updated `Plugin` |
 | DELETE `/api/plugins/:id` | — | `{ok:true}` |
+| GET `/api/server-plugins/pages` | — | `ServerPluginPage[]`; pages registered by server plugins (login required) |
+| ANY `/api/ext/:plugin/*path` | defined by plugin manifest | dynamic endpoints of server plugins for signed-in users; only enabled plugins |
+| ANY `/api/ext-public/:plugin/*path` | defined by plugin manifest | **no auth**; only routes marked `public:true`, separate 120/min limit |
+
+### 8.1 Server-side AI proxy
+
+| Method & path | Request | Notes |
+|---|---|---|
+| GET `/api/ai/status` | — | `{enabled, model?}`; whether the AI proxy is configured |
+| POST `/api/ai/chat` | `{messages:[{role,content}], temperature?}` | `{content}`; API key stays server-side, 20/min per user; disabled→422 |
 
 ---
 
@@ -243,6 +256,8 @@ The sandbox model and SDK are described in the plugin dev guide; below is the RE
 |---|---|---|
 | GET `/api/admin/storage/stats` | — | `{files, bytes, referenced, orphans, orphanBytes}`; local storage only |
 | POST `/api/admin/storage/gc` | `{dryRun?}` | `{ok:true, dryRun, deleted, freedBytes}`; cleans orphan attachments |
+| GET `/api/admin/settings/storage/providers` | — | list of provider presets (AWS S3 / MinIO / OSS / …) for the admin dropdown |
+| POST `/api/admin/settings/storage/test` | current storage config | `{ok:true}`; read-only `HEAD Bucket` check, no object writes; 400 without leaking secrets |
 | GET `/api/admin/backups` | — | `{backups: BackupFile[], dir}` |
 | POST `/api/admin/backups` | — | `{ok:true, file}`; requires mysqldump |
 | GET `/api/admin/update/status` | — | `{available, busy, phase, lines, error?, version, commit, mode?, repo?, auto}`; `auto` = automatic-update state `{enabled, available, intervalMin, lastCheck?, lastTag?, upToDate, result?, lastError?, nextCheck?, triggeredTag?, skipReason?}` |
@@ -251,6 +266,24 @@ The sandbox model and SDK are described in the plugin dev guide; below is the RE
 | GET `/api/admin/plugins` | `?page=&pageSize=` | aggregated by name: `{name, version, installCount, enabledCount, globalDisabled, createdAt}` |
 | POST `/api/admin/plugins/global-disable` | `{name, disabled}` | `{ok:true, affected}`; effective for every user immediately |
 | POST `/api/admin/plugins/purge` | `{name, userId?:0}` | `{ok:true, affected}`; physically deletes install records |
+
+### 9.4 Server plugins (site-wide WASM / JSON manifests)
+
+| Method & path | Request | Notes |
+|---|---|---|
+| GET `/api/admin/server-plugins` | — | site-wide plugin list, aggregated by name |
+| POST `/api/admin/server-plugins` | JSON manifest `{runtime:"json", ...}` | install a JSON-manifest plugin; external URLs require HTTPS + `allowedHosts` + SSRF protection |
+| POST `/api/admin/server-plugins/wasm` | byte stream `.wasm` (≤8MB) + manifest | install a WASM plugin (wazero WASI sandbox) |
+| PATCH `/api/admin/server-plugins/:id` | `{enabled}` | enable / disable site-wide plugin |
+| DELETE `/api/admin/server-plugins/:id` | — | `{ok:true}` |
+
+### 9.5 Group management (read-only; see `旧站迁移方案.md` §8)
+
+| Method & path | Notes |
+|---|---|
+| GET `/api/admin/groups` | paginated site-wide group list |
+| GET `/api/admin/groups/:id` | group details (members / announcement / stats) |
+| GET `/api/admin/groups/:id/messages` | group messages (read-only, paginated) |
 
 ---
 
@@ -261,6 +294,18 @@ The sandbox model and SDK are described in the plugin dev guide; below is the RE
 | GET `/api/health` | `{"status":"ok"}`; liveness probe |
 | GET `/api/site` | public site config: `{name, allowRegister, maintenanceMode, maintenanceMessage, requireInviteCode, requireEmail, requireEmailVerify, maxMessageLength, recallMinutes, maxGroupMembers, maxImageMB, maxAudioMB, maxFileMB, maxVideoMB}`; still available in maintenance mode |
 | GET `/api/metrics` | Prometheus text format; requires a Bearer token when `METRICS_TOKEN` is set |
+
+### 10.1 Legacy-site migration (no auth, one-time tickets)
+
+| Method & path | Request | Notes |
+|---|---|---|
+| POST `/api/migrate/preview` | exported legacy JSON | preview parse result (user / conversation / message counts and conflicts), no writes |
+| POST `/api/migrate/start` | `{...}` | start migration, returns a ticket |
+| POST `/api/migrate/tick` | `{ticket}` | advance a batch, returns progress |
+| POST `/api/migrate/complete` | `{ticket}` | finish and create accounts; mutually exclusive with `complete-existing` |
+| POST `/api/migrate/complete-existing` | `{ticket, username, password}` | finish and link to an existing account |
+
+These endpoints have their own rate limit (120/min). See `旧站迁移方案.md` for details.
 
 ---
 

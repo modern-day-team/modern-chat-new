@@ -542,9 +542,23 @@ type ServerFrame =
 | `api.registerMessageAction({id,label})` | 消息右键菜单项：点开后收到 `message:action`（只投递给注册者） | `ui:actions` |
 | `api.me()` / `api.conv.current()` / `api.conv.members()` / `api.messages.recent(n)` | 只读上下文：本人身份、会话概览、成员、最近 n 条消息摘要 | `conv:read` |
 | `api.nav.openConversation(id)` / `api.nav.jumpToMessage(id)` / `api.toast(text, kind?)` | 宿主侧动作：切会话、定位消息、轻提示 | `ui:host` |
-| `api.storage.get/set` | 每插件独立命名空间存储 | `storage` |
+| `api.storage.get/set/remove/keys` | 每插件独立命名空间存储 | `storage` |
 | `api.request(url, opts)` | **客户端桥接执行**：主站按 `allowed_hosts` 白名单校验后用 fetch 转发，受浏览器 CORS 天然约束，服务端不出站 | `net` |
 | `api.theme.apply(cssVars)` | 改主题 | `ui:theme` |
+| `api.addPage/setPage/removePage` | 注册带描述式 UI 的完整插件页面（`/plugin/:pluginId/:pageId`） | `ui:page` |
+| `api.data.get/set/remove/keys` | 用户级服务端数据（「用户+插件+key」，换设备不丢） | `data` |
+| `api.ai.status` / `api.ai.chat` | 服务端统一 AI 代理（密钥只在服务端） | `ai` |
+| `api.conv.createSingle/createGroup/rename/invite/leave/join/setPrefs/remove/clear` / `api.conv.files/addFile/removeFile/setAnnouncement/kick/setAdmin/mute/transfer/createInviteLink` | 会话写操作（SDK v5） | `conv:write` |
+| `api.message.history` / `api.messages.search` / `api.draft.get/set` | 消息历史 / 全局搜索 / 草稿 | `conv:read`（搜索与草稿为 `ui:host`） |
+| `api.message.delete/recall/edit/react/favorite/report` | 消息写动作 | `message:send` |
+| `api.users.blockStatus/block/unblock` | 拉黑关系查询与变更 | `ui:host` |
+| `api.file.upload` | 宿主读文件（≤1MB）并上传，插件拿不到 DOM File | `file:upload` |
+
+**权限全集**（后端 `server/internal/plugin/manifest.go` 的 `ValidPermissions` 为安装校验真源，前端 `web/src/composables/plugin/permissions.ts` 为调用映射真源，二者必须同步）：`message:read` / `message:send` / `message:render` / `ui:panel` / `storage` / `net` / `ui:theme` / `conv:read` / `conv:write` / `ui:actions` / `ui:host` / `ui:page` / `data` / `ai` / `file:upload`。
+
+**两套插件事件总线（勿混用）**：用户插件（浏览器沙箱）经 `usePluginHost` 派发 `message:new` / `message:recall` / `presence` / `ui:action` / `message:action` / `conv:open`，payload 是浏览器侧 WS 帧（`from` 为 `{id, nickname}` 对象）；服务端插件（WASM / webhook）只有 `message:new`，由 `ws/dispatch.go` 发出，`from` 是数字 uid（`msg.SenderID`），且 manifest 订阅类型被硬限制为 `message:new`。同名不同形状，跨端复用的插件不得假设同一 payload 结构。`presence` 只在用户插件侧存在；`conv_change` 是客户端 WS 帧，不是插件事件。
+
+**描述式 UI 白名单**（SDK v5 增补）：`text / image / button / input / textarea / checkbox / switch / segmented / card / list / divider / link / table / progress / badge / tabs / steps / empty / loading / upload`。
 
 ### 8.4 安全
 - 沙箱 `iframe.srcdoc` 注入引导脚本；CSP 为 `default-src 'none'`，仅 `script-src/style-src 'unsafe-inline'`、`img-src data:`，`connect-src` 收敛到 manifest 的 `allowedHosts`（未声明即 `'none'`），并禁用 `base-uri/form-action/frame-src/object-src/worker-src`。`</script` 与 `<script` 在注入前转义，防止提前闭合引导脚本。

@@ -8,6 +8,12 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Docs and contract alignment
+
+- **`API文档.md` adds 8 implemented endpoint groups**: multi-device sessions (`/api/me/sessions`, `/api/client/version`), server plugins (`/api/server-plugins/*`, `/api/ext*`, `/api/ai/*`), legacy-site migration (`/api/migrate/*`), admin group management (`/api/admin/groups/*`) and storage provider presets/test. All were already registered in `router.go` but undocumented, easy to mistake for missing features.
+- **Design doc §8.3 SDK permission table updated to v5**: added ui:page / data / ai / conv:write / file:upload and their APIs, clarified that backend `ValidPermissions` and frontend `permissions.ts` must stay in sync, and distinguished the two plugin event buses with the same `message:new` name but different payload shapes.
+- **Frontend contract fields added**: `Message.adminDeletedAt` / `adminDeletedBy`, `User.createdAt`, and optional `ServerFrame.from.nickname` plus `pluginPayload`.
+
 ### Functionality gap fixes
 
 - **SDK v5 permission allowlist**: the backend `ValidPermissions` was missing `conv:write` / `file:upload`, so the official power-kit example (which declares them) failed to install with HTTP 400, and SDK v5 conversation-write and file-upload capabilities were unusable. Added both with a regression test for the power-kit manifest.

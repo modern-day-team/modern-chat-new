@@ -18,6 +18,8 @@ export interface User {
   role: 'user' | 'admin'
   bannedUntil?: string | null
   banReason?: string | null
+  /** 仅本人详情（GET /api/me）返回，UserBrief 不含 */
+  createdAt?: string
 }
 
 export interface AuthPayload {
@@ -158,6 +160,10 @@ export interface Message {
   mentions?: number[]
   /** 是否是转发来的消息（气泡上标注「转发」） */
   forwarded?: boolean
+  /** 站点管理员删除时间：非 null 表示对全体成员不可见（前端一般不直接渲染） */
+  adminDeletedAt?: string | null
+  /** 执行管理员删除的用户 id */
+  adminDeletedBy?: number | null
   createdAt: string
   /** 前端本地状态：已发出未确认 */
   pending?: boolean

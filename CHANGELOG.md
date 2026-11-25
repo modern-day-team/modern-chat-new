@@ -8,6 +8,12 @@
 
 ## [未发布]
 
+### 文档与契约校准
+
+- **`API文档.md` 补齐 8 类已实现端点**：多端会话管理（`/api/me/sessions`、`/api/client/version`）、服务端插件（`/api/server-plugins/*`、`/api/ext*`、`/api/ai/*`）、旧站迁移（`/api/migrate/*`）、站长后台群聊管理（`/api/admin/groups/*`）与存储服务商预设/自检。此前这些端点已在 `router.go` 注册但文档未记载，联调时容易误判为缺失。
+- **`设计文档.md` §8.3 SDK 权限表升至 v5**：补齐 ui:page / data / ai / conv:write / file:upload 等权限与对应 API，明确「后端 ValidPermissions 与前端 permissions.ts 两处真源必须同步」，并区分用户插件与服务端插件两套同名不同形状的 `message:new` 事件总线。
+- **前端契约字段补齐**：`Message` 增加 `adminDeletedAt` / `adminDeletedBy`、`User` 增加 `createdAt`（后端已返回但前端类型缺失），`ServerFrame.from.nickname` 改可选并补 `pluginPayload`。
+
 ### 功能缺失修复
 
 - **SDK v5 权限白名单补齐**：后端 `ValidPermissions` 此前漏登记 `conv:write` / `file:upload`，导致官方 power-kit 示例（已声明这两个权限）安装即 400、SDK v5 会话写与文件上传能力实际不可用。已补齐并加 power-kit manifest 回归测试。

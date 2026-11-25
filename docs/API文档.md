@@ -84,7 +84,10 @@ curl https://站点/api/conversations -H 'Authorization: Bearer <token>'
 | POST `/api/me/2fa/email/code` | — | `{ok:true, cooldownSeconds}`；向本人邮箱发开启用验证码（60s 冷却，需 SMTP） |
 | POST `/api/me/2fa/email/enable` | `{code}` | `{ok:true, recoveryCodes[]}`；校验邮箱码后开启 |
 | POST `/api/me/2fa/disable` | `{password}` | `{ok:true}`；关闭（需密码再认证），密钥与恢复码一并清除 |
+| GET `/api/me/sessions` | — | `{sessions: SessionView[]}`；列出本人各端登录设备（平台 / 客户端类型 / 版本 / IP / 当前设备标记） |
+| DELETE `/api/me/sessions/:id` | 路径参数=会话 ID | `{ok:true}`；撤销指定会话并踢该设备 WS（含 `kicked` 帧） |
 | GET `/api/version` | — | `{version, commit, buildTime}`；**免鉴权** |
+| GET `/api/client/version` | `?platform=&clientType=&appVersion=` | `{latestVersion, upgradeRequired, message?}`；**免鉴权**。非 Web 端（桌面 / 移动）启动时探测，配合 `MIN_CLIENT_VERSION` 只提示不阻断 |
 
 ---
 
@@ -206,6 +209,16 @@ curl https://站点/api/conversations -H 'Authorization: Bearer <token>'
 | POST `/api/plugins/from-url` | `{url}` | `Plugin`；服务端拉取前做 SSRF 检查；升级语义同 upload（含响应头与审计） |
 | PATCH `/api/plugins/:id` | `{enabled}` | 更新后 `Plugin` |
 | DELETE `/api/plugins/:id` | — | `{ok:true}` |
+| GET `/api/server-plugins/pages` | — | `ServerPluginPage[]`；全站插件注册的页面（需登录） |
+| ANY `/api/ext/:plugin/*path` | 由插件 manifest 定义 | 登录用户经服务端插件的动态接口；仅已启用的插件 |
+| ANY `/api/ext-public/:plugin/*path` | 由插件 manifest 定义 | **免鉴权**；仅 `public:true` 的插件路由，独立限流 120/min |
+
+### 8.1 服务端 AI 代理
+
+| 方法 路径 | 请求 | 说明 |
+|---|---|---|
+| GET `/api/ai/status` | — | `{enabled, model?}`；是否配置 AI 代理 |
+| POST `/api/ai/chat` | `{messages:[{role,content}], temperature?}` | `{content}`；密钥只在服务端，按用户限流 20/min；未启用→422 |
 
 ---
 
@@ -243,6 +256,8 @@ curl https://站点/api/conversations -H 'Authorization: Bearer <token>'
 |---|---|---|
 | GET `/api/admin/storage/stats` | — | `{files, bytes, referenced, orphans, orphanBytes}`；仅本地存储 |
 | POST `/api/admin/storage/gc` | `{dryRun?}` | `{ok:true, dryRun, deleted, freedBytes}`；清理孤儿附件 |
+| GET `/api/admin/settings/storage/providers` | — | 服务商预设列表（AWS S3 / MinIO / 阿里云 OSS 等），供后台下拉 |
+| POST `/api/admin/settings/storage/test` | 当前存储配置 | `{ok:true}`；`HEAD Bucket` 只读自检，不写对象；失败 400 不外泄密钥 |
 | GET `/api/admin/backups` | — | `{backups: BackupFile[], dir}` |
 | POST `/api/admin/backups` | — | `{ok:true, file}`；依赖 mysqldump |
 | GET `/api/admin/update/status` | — | `{available, busy, phase, lines, error?, version, commit, mode?, repo?, auto}`；`auto` = 自动更新运行态 `{enabled, available, intervalMin, lastCheck?, lastTag?, upToDate, result?, lastError?, nextCheck?, triggeredTag?, skipReason?}` |
@@ -251,6 +266,24 @@ curl https://站点/api/conversations -H 'Authorization: Bearer <token>'
 | GET `/api/admin/plugins` | `?page=&pageSize=` | 按 name 聚合 `{name, version, installCount, enabledCount, globalDisabled, createdAt}` |
 | POST `/api/admin/plugins/global-disable` | `{name, disabled}` | `{ok:true, affected}`；立即对所有用户生效 |
 | POST `/api/admin/plugins/purge` | `{name, userId?:0}` | `{ok:true, affected}`；物理删除安装记录 |
+
+### 9.4 服务端插件（全站 WASM / JSON manifest）
+
+| 方法 路径 | 请求 | 说明 |
+|---|---|---|
+| GET `/api/admin/server-plugins` | — | 全站插件列表（按 name 聚合） |
+| POST `/api/admin/server-plugins` | JSON manifest `{runtime:"json", ...}` | 安装 JSON manifest 插件；外部地址强制 HTTPS + `allowedHosts` + SSRF 防护 |
+| POST `/api/admin/server-plugins/wasm` | 字节流 `.wasm`（≤8MB）+ manifest | 安装 WASM 插件（wazero WASI 沙箱） |
+| PATCH `/api/admin/server-plugins/:id` | `{enabled}` | 启停全站插件 |
+| DELETE `/api/admin/server-plugins/:id` | — | `{ok:true}` |
+
+### 9.5 群聊管理（只读；详见 `docs/旧站迁移方案.md` §8）
+
+| 方法 路径 | 说明 |
+|---|---|
+| GET `/api/admin/groups` | 全站群列表（分页） |
+| GET `/api/admin/groups/:id` | 群详情（成员 / 公告 / 统计） |
+| GET `/api/admin/groups/:id/messages` | 群消息（只读分页） |
 
 ---
 
@@ -261,6 +294,18 @@ curl https://站点/api/conversations -H 'Authorization: Bearer <token>'
 | GET `/api/health` | `{"status":"ok"}`；探活 |
 | GET `/api/site` | 站点公开配置：`{name, allowRegister, maintenanceMode, maintenanceMessage, requireInviteCode, requireEmail, requireEmailVerify, maxMessageLength, recallMinutes, maxGroupMembers, maxImageMB, maxAudioMB, maxFileMB, maxVideoMB}`；维护模式下仍可用 |
 | GET `/api/metrics` | Prometheus 文本格式；`METRICS_TOKEN` 非空时需 Bearer |
+
+### 10.1 旧站数据迁移（免鉴权，一次性票据）
+
+| 方法 路径 | 请求 | 说明 |
+|---|---|---|
+| POST `/api/migrate/preview` | 旧站导出的 JSON | 预览解析结果（用户 / 会话 / 消息数量与冲突），不落库 |
+| POST `/api/migrate/start` | `{...}` | 开始迁移，返回票据 |
+| POST `/api/migrate/tick` | `{ticket}` | 分批推进，返回进度 |
+| POST `/api/migrate/complete` | `{ticket}` | 完成并建号；与 `complete-existing` 二选一 |
+| POST `/api/migrate/complete-existing` | `{ticket, username, password}` | 完成并关联已有账号 |
+
+以上端点独立限流（120/min）。详见 `docs/旧站迁移方案.md`。
 
 ---
 
