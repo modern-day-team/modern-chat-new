@@ -15,7 +15,7 @@ import { reactive, readonly } from 'vue'
 import { MessagePlugin } from '@/components/ui/feedback'
 
 import type { PageDesc, Plugin, PanelDesc, ServerFrame } from '@/types/proto'
-import { convApi, pluginApi, pluginDataApi, searchApi, userApi } from '@/core/network/endpoints'
+import { aiApi, convApi, pluginApi, pluginDataApi, searchApi, userApi, type AIMessage } from '@/core/network/endpoints'
 import { useAuthStore } from '@/stores/auth'
 import { useConversationsStore } from '@/stores/conversations'
 import { usePluginsStore } from '@/stores/plugins'
@@ -616,6 +616,42 @@ function createHost() {
         case 'data.keys': {
           const r = await pluginDataApi.keys(runtime.plugin.id)
           reply(runtime, callId, true, (r.keys ?? []).slice(0, 500))
+          break
+        }
+        case 'ai.status': {
+          const r = await aiApi.status()
+          reply(runtime, callId, true, { enabled: r.enabled === true, model: String(r.model ?? '') })
+          break
+        }
+        case 'ai.chat': {
+          const raw = Array.isArray(args[0]) ? (args[0] as unknown[]) : []
+          if (!raw.length || raw.length > 40) {
+            reply(runtime, callId, false, undefined, 'messages 数量需为 1-40')
+            return
+          }
+          const messages: AIMessage[] = []
+          let total = 0
+          for (const item of raw) {
+            const m = item as { role?: unknown; content?: unknown }
+            const role = String(m?.role ?? '')
+            const content = String(m?.content ?? '')
+            if (role !== 'system' && role !== 'user' && role !== 'assistant') {
+              reply(runtime, callId, false, undefined, '非法消息角色')
+              return
+            }
+            if (content.length > 32 * 1024) {
+              reply(runtime, callId, false, undefined, '单条消息超过 32KB')
+              return
+            }
+            total += content.length
+            messages.push({ role, content })
+          }
+          if (total > 96 * 1024) {
+            reply(runtime, callId, false, undefined, '上下文超过 96KB')
+            return
+          }
+          const r = await aiApi.chat(messages)
+          reply(runtime, callId, true, { content: String(r.content ?? '') })
           break
         }
         case 'nav.openPluginPage': {

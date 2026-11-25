@@ -92,6 +92,28 @@ func TestParseManifestInvalid(t *testing.T) {
 	}
 }
 
+func TestParseManifestWASM(t *testing.T) {
+	raw := `{
+	  "name":"qr-kit","version":"1.0.0","runtime":"wasm","permissions":["auth:qr"],
+	  "pages":[],"events":[],"jobs":[],"allowedHosts":[],
+	  "routes":[
+	    {"method":"POST","path":"/qr/start","handler":true,"public":true},
+	    {"method":"POST","path":"/qr/confirm","handler":true}
+	  ]
+	}`
+	m, err := ParseManifest([]byte(raw))
+	if err != nil {
+		t.Fatalf("WASM manifest 应合法: %v", err)
+	}
+	if m.Runtime != "wasm" || len(m.Routes) != 2 || !m.Routes[0].Handler || !m.Routes[0].Public {
+		t.Fatalf("WASM 字段解析错误: %+v", m.Routes)
+	}
+	bad := strings.Replace(raw, `"runtime":"wasm"`, `"runtime":"declarative"`, 1)
+	if _, err := ParseManifest([]byte(bad)); err == nil {
+		t.Fatal("declarative 运行时不能使用 handler 路由")
+	}
+}
+
 func TestParseManifestWildcardHost(t *testing.T) {
 	raw := strings.Replace(validManifestJSON,
 		`"allowedHosts": ["example.com"]`,

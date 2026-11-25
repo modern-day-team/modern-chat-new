@@ -598,6 +598,13 @@ const serverPlugins = ref<ServerPluginRow[]>([])
 const serverPluginsLoading = ref(false)
 const manifestText = ref('')
 const manifestInstalling = ref(false)
+/** WASM 插件安装时选中的二进制；可留空用于声明式插件 */
+const wasmFile = ref<File | null>(null)
+
+function onWasmFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  wasmFile.value = input.files?.[0] ?? null
+}
 
 // 当前构建版本（升级后刷新本页即可确认是否生效）
 const buildInfo = ref<VersionInfo | null>(null)
@@ -699,6 +706,7 @@ function buildColumns() {
   serverPluginColumns.value = [
     { colKey: 'name', title: t('admin.serverColName'), width: 200 },
     { colKey: 'version', title: t('admin.serverColVersion'), width: 100 },
+    { colKey: 'runtime', title: t('admin.serverColRuntime'), width: 100 },
     { colKey: 'enabled', title: t('admin.serverColEnabled'), width: 100 },
     { colKey: 'pages', title: t('admin.serverColPages'), width: 90 },
     { colKey: 'routes', title: t('admin.serverColRoutes'), width: 90 },
@@ -1022,9 +1030,11 @@ async function installServerPlugin() {
   }
   manifestInstalling.value = true
   try {
-    await adminApi.serverPlugins.install(raw)
+    const row = await adminApi.serverPlugins.install(raw)
+    if (wasmFile.value) await adminApi.serverPlugins.uploadWasm(row.id, wasmFile.value)
     void MessagePlugin.success(t('admin.serverInstallOk'))
     manifestText.value = ''
+    wasmFile.value = null
     await fetchServerPlugins()
     refreshAfterWrite()
   } catch (e) {
@@ -1437,6 +1447,10 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
               rows="8"
               spellcheck="false"
             />
+          </label>
+          <label class="mc-serverplugins__field">
+            <span>{{ t('admin.serverWasmLabel') }}</span>
+            <input type="file" accept=".wasm,application/wasm" @change="onWasmFileChange" />
           </label>
           <UiButton theme="primary" :loading="manifestInstalling" @click="installServerPlugin">
             {{ t('admin.serverInstall') }}

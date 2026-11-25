@@ -201,6 +201,13 @@ func main() {
 	// 启动期加载一次，之后管理员安装/启停/删除时会 Reload。
 	serverPluginStore := store.NewServerPluginStore(db)
 	serverPluginRuntime := serverplugin.NewRuntime(cfg.JWTSecret, serverPluginStore)
+	serverPluginRuntime.SetKVStore(store.NewServerPluginKVStore(db))
+	if cfg.AIEnabled() {
+		serverPluginRuntime.SetAIConfig(serverplugin.AIConfig{
+			BaseURL: cfg.AIBaseURL, APIKey: cfg.AIAPIKey, Model: cfg.AIModel,
+			Timeout: time.Duration(cfg.AITimeoutSeconds) * time.Second, AllowPrivate: cfg.AIAllowPrivate,
+		})
+	}
 	if err := serverPluginRuntime.Reload(); err != nil {
 		slog.Warn("server plugin reload failed", "err", err.Error())
 	}

@@ -1,0 +1,27 @@
+{
+  "name": "qr-kit",
+  "version": "1.0.0",
+  "description": "扫码登录服务端插件示例：复用本站二维码会话，演示 WASM 宿主 auth.qr.*",
+  "runtime": "wasm",
+  "permissions": ["auth:qr"],
+  "pages": [
+    {
+      "id": "qr-kit",
+      "title": "扫码服务端示例",
+      "icon": "QR",
+      "scope": "user",
+      "body": [
+        { "component": "badge", "props": { "text": "WASM 服务端插件", "tone": "success" } },
+        { "component": "text", "props": { "content": "该插件通过宿主 auth.qr.* 生成一次性扫码票据；确认页复用本站 /qr/<token>。" } },
+        { "component": "button", "props": { "text": "说明：先在后台启用插件", "theme": "primary" } }
+      ]
+    }
+  ],
+  "routes": [
+    { "method": "POST", "path": "/qr/start", "handler": true, "public": true },
+    { "method": "POST", "path": "/qr/confirm", "handler": true }
+  ],
+  "events": [],
+  "jobs": [],
+  "allowedHosts": []
+}

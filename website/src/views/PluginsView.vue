@@ -69,6 +69,15 @@ const PLUGINS: MarketPlugin[] = [
     en: 'SDK v3 demo: register a full plugin page with a form and persist notes in account-level server data.',
     perms: ['ui:panel', 'ui:page', 'ui:host', 'data'],
   },
+  {
+    file: 'ai-chat.plugin.js',
+    name: 'ai-chat',
+    version: '1.0.0',
+    cat: 'demo',
+    zh: 'SDK v4 示例：全站 AI 对话页面，密钥由服务端代理保管，插件只收发消息。',
+    en: 'SDK v4 demo: a full AI chat page using the server-side proxy, so the API key never reaches the browser.',
+    perms: ['ui:page', 'ai'],
+  },
 ]
 
 const keyword = ref('')

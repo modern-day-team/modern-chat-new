@@ -1,6 +1,9 @@
 package handler
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -97,6 +100,53 @@ func (h *ServerPluginHandler) Install(c *gin.Context) {
 	c.JSON(http.StatusOK, viewOf(row))
 }
 
+// UploadWASM POST /api/admin/server-plugins/wasm?id=:id —— 原始 WASM 二进制。
+// 先安装 manifest，再上传 wasm；两者分离，避免把二进制塞进 JSON。
+func (h *ServerPluginHandler) UploadWASM(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Query("id"), 10, 64)
+	if err != nil || id == 0 {
+		fail(c, http.StatusBadRequest, "插件 id 不合法")
+		return
+	}
+	row, err := h.store.ByID(uint(id))
+	if err != nil {
+		internal(c, err)
+		return
+	}
+	if row == nil {
+		fail(c, http.StatusNotFound, "插件不存在")
+		return
+	}
+	data, err := io.ReadAll(io.LimitReader(c.Request.Body, (8<<20)+1))
+	if err != nil {
+		fail(c, http.StatusBadRequest, "读取 WASM 失败")
+		return
+	}
+	if len(data) > 8<<20 {
+		fail(c, http.StatusRequestEntityTooLarge, "WASM 超过 8MB")
+		return
+	}
+	if len(data) < 4 || string(data[:4]) != "\x00asm" {
+		fail(c, http.StatusBadRequest, "不是有效的 WASM 文件")
+		return
+	}
+	if err := serverplugin.ValidateWASM(c.Request.Context(), data); err != nil {
+		fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	sum := sha256.Sum256(data)
+	row.WasmData = data
+	row.WasmHash = hex.EncodeToString(sum[:])
+	row.UpdatedAt = time.Now()
+	if err := h.store.Save(row); err != nil {
+		internal(c, err)
+		return
+	}
+	h.audit(c, "server_plugin_wasm_upload", row.ID, row.Name, "size="+strconv.Itoa(len(data)))
+	h.reload()
+	c.JSON(http.StatusOK, viewOf(row))
+}
+
 // SetEnabled PATCH /api/admin/server-plugins/:id body {enabled:bool}
 func (h *ServerPluginHandler) SetEnabled(c *gin.Context) {
 	row, ok := h.byID(c)
@@ -108,6 +158,17 @@ func (h *ServerPluginHandler) SetEnabled(c *gin.Context) {
 	}
 	if !bind(c, &req) {
 		return
+	}
+	if req.Enabled {
+		m, err := serverplugin.ParseManifest([]byte(row.ManifestJSON))
+		if err != nil {
+			fail(c, http.StatusBadRequest, err.Error())
+			return
+		}
+		if m.Runtime == "wasm" && len(row.WasmData) == 0 {
+			fail(c, http.StatusBadRequest, "WASM 插件尚未上传 wasm 文件")
+			return
+		}
 	}
 	row.Enabled = req.Enabled
 	row.UpdatedAt = time.Now()
@@ -130,6 +191,11 @@ func (h *ServerPluginHandler) Delete(c *gin.Context) {
 		internal(c, err)
 		return
 	}
+	if h.runtime != nil {
+		if err := h.runtime.ClearKV(row.ID); err != nil {
+			slog.Warn("server plugin kv cleanup failed", "plugin", row.Name, "err", err.Error())
+		}
+	}
 	h.audit(c, "server_plugin_delete", row.ID, row.Name, "")
 	h.reload()
 	c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -144,9 +210,19 @@ func (h *ServerPluginHandler) Pages(c *gin.Context) {
 	c.JSON(http.StatusOK, h.runtime.Pages())
 }
 
-// Dynamic 处理 /api/ext/:plugin/*path：静态响应或 HTTPS 代理转发。
+// Dynamic 处理 /api/ext/:plugin/*path：静态响应、HTTPS 代理或 WASM。
 // 只透传 Content-Type 与请求体，绝不转发用户 JWT / Cookie。
 func (h *ServerPluginHandler) Dynamic(c *gin.Context) {
+	h.dynamic(c, false)
+}
+
+// DynamicPublic 处理 /api/ext-public/:plugin/*path：只允许 manifest 标记 public 的路由。
+// 扫码首屏、第三方回调等免登录场景使用；未标记 public 的插件路由一律 404。
+func (h *ServerPluginHandler) DynamicPublic(c *gin.Context) {
+	h.dynamic(c, true)
+}
+
+func (h *ServerPluginHandler) dynamic(c *gin.Context, public bool) {
 	if h.runtime == nil {
 		fail(c, http.StatusNotFound, "接口不存在")
 		return
@@ -157,8 +233,12 @@ func (h *ServerPluginHandler) Dynamic(c *gin.Context) {
 		path = "/"
 	}
 	res, ok := h.runtime.MatchRoute(name, c.Request.Method, path)
-	if !ok {
+	if !ok || (public && !res.Public) || (!public && res.Public && middleware.UserFrom(c) == nil) {
 		fail(c, http.StatusNotFound, "接口不存在")
+		return
+	}
+	if res.Handler {
+		h.wasm(c, name, path, public)
 		return
 	}
 	if res.Response != nil {
@@ -195,6 +275,54 @@ func (h *ServerPluginHandler) Dynamic(c *gin.Context) {
 	c.Data(status, ct, resp)
 }
 
+// wasm 把请求交给管理员安装的 WASM 沙箱处理。
+func (h *ServerPluginHandler) wasm(c *gin.Context, name, path string, public bool) {
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, (1<<20)+1))
+	if err != nil {
+		fail(c, http.StatusBadRequest, "读取请求体失败")
+		return
+	}
+	if len(body) > 1<<20 {
+		fail(c, http.StatusRequestEntityTooLarge, "请求体超过 1MB")
+		return
+	}
+	headers := map[string]string{}
+	for _, k := range []string{"Content-Type", "Accept"} {
+		if v := c.GetHeader(k); v != "" && !strings.ContainsAny(v, "\r\n") {
+			headers[k] = v
+		}
+	}
+	req := serverplugin.WASMRequest{
+		Kind: "http", Method: c.Request.Method, Path: path,
+		Query: c.Request.URL.RawQuery, Headers: headers,
+	}
+	if len(body) > 0 {
+		req.Body = json.RawMessage(body)
+	}
+	if !public {
+		if u := middleware.UserFrom(c); u != nil {
+			req.User = &serverplugin.WASMUser{ID: u.ID, Username: u.Username, Role: u.Role}
+		}
+	}
+	resp, err := h.runtime.HandleWASM(c.Request.Context(), name, req)
+	if err != nil {
+		slog.Warn("server plugin wasm call failed", "plugin", name, "path", path, "err", err.Error())
+		fail(c, http.StatusBadGateway, "插件执行失败")
+		return
+	}
+	contentType := "application/json; charset=utf-8"
+	for k, v := range resp.Headers {
+		if strings.EqualFold(k, "Content-Type") && v != "" && !strings.ContainsAny(v, "\r\n") {
+			contentType = v
+		}
+	}
+	payload := resp.Body
+	if len(payload) == 0 {
+		payload = json.RawMessage("null")
+	}
+	c.Data(resp.Status, contentType, payload)
+}
+
 // byID 解析并查找插件。
 func (h *ServerPluginHandler) byID(c *gin.Context) (*model.ServerPlugin, bool) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
@@ -220,6 +348,7 @@ func viewOf(row *model.ServerPlugin) model.ServerPluginView {
 	if m, err := serverplugin.ParseManifest([]byte(row.ManifestJSON)); err == nil {
 		v.Pages, v.Routes = len(m.Pages), len(m.Routes)
 		v.Events, v.Jobs = len(m.Events), len(m.Jobs)
+		v.Runtime = m.Runtime
 	}
 	return v
 }

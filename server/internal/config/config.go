@@ -73,6 +73,16 @@ type Config struct {
 	SSOHubURL       string
 	SSOClientID     string
 	SSOClientSecret string
+	// 服务端统一 AI 代理（OpenAI 兼容 /chat/completions）：
+	// BaseURL 填完整端点，APIKey 只存在服务端，Model 为默认模型。
+	AIBaseURL        string
+	AIAPIKey         string
+	AIModel          string
+	AITimeoutSeconds int
+	// AIAllowPrivate 允许 AI 端点访问私网（本地 Ollama 等）；默认关闭。
+	AIAllowPrivate bool
+	// AIEnabled 是否已配置可用的服务端 AI 代理。
+
 	// Web Push（VAPID）；两项都配置才启用
 	VAPIDPublicKey  string
 	VAPIDPrivateKey string
@@ -133,6 +143,13 @@ func (c Config) SSOEnabled() bool {
 		strings.TrimSpace(c.SSOClientSecret) != ""
 }
 
+// AIEnabled 是否配置了完整的服务端 AI 代理。
+func (c Config) AIEnabled() bool {
+	return strings.TrimSpace(c.AIBaseURL) != "" &&
+		strings.TrimSpace(c.AIAPIKey) != "" &&
+		strings.TrimSpace(c.AIModel) != ""
+}
+
 // Load 读取环境变量。JWT_SECRET 规则：
 //   - 生产（GIN_MODE=release）必须显式设置且 ≥32 字节，否则拒绝启动；
 //   - 开发模式缺省时生成随机值并告警（重启即全端失效）。
@@ -170,14 +187,19 @@ func Load() (Config, error) {
 		ReleaseRepoGithub: os.Getenv("RELEASE_REPO_GITHUB"),
 		GithubToken:       os.Getenv("GITHUB_TOKEN"),
 		// 统一登录（聚合登录中心）：全部配置才启用，见 SSOEnabled
-		SSOSiteURL:      os.Getenv("SSO_SITE_URL"),
-		SSOAppBase:      getv("SSO_APP_BASE", "/app"),
-		SSOHubURL:       os.Getenv("SSO_HUB_URL"),
-		SSOClientID:     os.Getenv("SSO_CLIENT_ID"),
-		SSOClientSecret: os.Getenv("SSO_CLIENT_SECRET"),
-		VAPIDPublicKey:  getv("VAPID_PUBLIC_KEY", ""),
-		VAPIDPrivateKey: getv("VAPID_PRIVATE_KEY", ""),
-		VAPIDSubject:    getv("VAPID_SUBJECT", "mailto:admin@localhost"),
+		SSOSiteURL:       os.Getenv("SSO_SITE_URL"),
+		SSOAppBase:       getv("SSO_APP_BASE", "/app"),
+		SSOHubURL:        os.Getenv("SSO_HUB_URL"),
+		SSOClientID:      os.Getenv("SSO_CLIENT_ID"),
+		SSOClientSecret:  os.Getenv("SSO_CLIENT_SECRET"),
+		AIBaseURL:        os.Getenv("AI_BASE_URL"),
+		AIAPIKey:         os.Getenv("AI_API_KEY"),
+		AIModel:          getv("AI_MODEL", "gpt-4o-mini"),
+		AITimeoutSeconds: int(geti("AI_TIMEOUT_SECONDS", 60)),
+		AIAllowPrivate:   getBool("AI_ALLOW_PRIVATE", false),
+		VAPIDPublicKey:   getv("VAPID_PUBLIC_KEY", ""),
+		VAPIDPrivateKey:  getv("VAPID_PRIVATE_KEY", ""),
+		VAPIDSubject:     getv("VAPID_SUBJECT", "mailto:admin@localhost"),
 		Redis: RedisConfig{
 			Addr:     os.Getenv("REDIS_ADDR"),
 			Password: os.Getenv("REDIS_PASSWORD"),

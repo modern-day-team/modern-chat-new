@@ -33,10 +33,12 @@ type PageView struct {
 	Body     json.RawMessage `json:"body"`
 }
 
-// RouteResult MatchRoute 的结果：静态响应或代理 URL（二选一）。
+// RouteResult MatchRoute 的结果：静态响应、代理 URL 或 WASM 处理器。
 type RouteResult struct {
 	Response *RouteResponse `json:"response,omitempty"`
 	Proxy    string         `json:"proxy,omitempty"`
+	Handler  bool           `json:"handler,omitempty"`
+	Public   bool           `json:"public,omitempty"`
 }
 
 type routeKey struct {
@@ -50,9 +52,20 @@ type subscription struct {
 	endpoint string
 }
 
+type wasmPlugin struct {
+	id          uint
+	name        string
+	manifest    *Manifest
+	wasm        []byte
+	kv          *store.ServerPluginKVStore
+	ai          AIConfig
+	permissions map[string]bool
+}
+
 type snapshot struct {
 	pages  []PageView
 	routes map[routeKey]RouteResult
+	wasm   map[string]*wasmPlugin
 	events map[string][]subscription
 }
 
@@ -65,14 +78,42 @@ type scheduledJob struct {
 	nextAt   time.Time
 }
 
+// AIConfig 服务端统一 AI 代理配置（OpenAI 兼容 /chat/completions）。
+type AIConfig struct {
+	BaseURL      string
+	APIKey       string
+	Model        string
+	Timeout      time.Duration
+	AllowPrivate bool
+}
+
+// Enabled 是否配置了可用的 AI 代理。
+func (c AIConfig) Enabled() bool { return c.BaseURL != "" && c.APIKey != "" && c.Model != "" }
+
 // Runtime 服务端插件运行时：从 DB 加载启用插件，提供页面/路由查询、事件广播与定时任务。
 // 所有出站均为异步，失败只记日志，不影响主流程。
 type Runtime struct {
 	secret string
 	store  *store.ServerPluginStore
+	kv     *store.ServerPluginKVStore
+	ai     AIConfig
 	snap   atomic.Value // *snapshot
 	jobsMu sync.Mutex
 	jobs   []scheduledJob
+}
+
+// SetKVStore 注入服务端插件 KV（WASM 宿主 kv.*）。
+func (r *Runtime) SetKVStore(kv *store.ServerPluginKVStore) { r.kv = kv }
+
+// SetAIConfig 注入服务端统一 AI 代理配置（WASM 宿主 ai.chat）。
+func (r *Runtime) SetAIConfig(ai AIConfig) { r.ai = ai }
+
+// ClearKV 删除插件全部 KV（卸载时调用）。
+func (r *Runtime) ClearKV(pluginID uint) error {
+	if r.kv == nil {
+		return nil
+	}
+	return r.kv.Clear(pluginID)
 }
 
 // NewRuntime 构造运行时。secret 用 JWT_SECRET（HMAC 签名用），store 可为 nil（测试）。
@@ -86,6 +127,7 @@ func emptySnapshot() *snapshot {
 	return &snapshot{
 		pages:  make([]PageView, 0),
 		routes: make(map[routeKey]RouteResult),
+		wasm:   make(map[string]*wasmPlugin),
 		events: make(map[string][]subscription),
 	}
 }
@@ -109,6 +151,20 @@ func (r *Runtime) Reload() error {
 					"id", row.ID, "name", row.Name, "err", err.Error())
 				continue
 			}
+			wp := &wasmPlugin{
+				id: row.ID, name: row.Name, manifest: m, wasm: row.WasmData, kv: r.kv, ai: r.ai,
+				permissions: make(map[string]bool, len(m.Permissions)),
+			}
+			for _, p := range m.Permissions {
+				wp.permissions[p] = true
+			}
+			if m.Runtime == "wasm" {
+				if len(row.WasmData) == 0 {
+					slog.Warn("server plugin wasm missing, skipped", "id", row.ID, "name", row.Name)
+					continue
+				}
+				snap.wasm[row.Name] = wp
+			}
 			for _, p := range m.Pages {
 				snap.pages = append(snap.pages, PageView{
 					PluginID: row.Name, Plugin: row.Name, Version: row.Version,
@@ -118,7 +174,7 @@ func (r *Runtime) Reload() error {
 			for _, rt := range m.Routes {
 				method := strings.ToUpper(rt.Method)
 				snap.routes[routeKey{plugin: row.Name, method: method, path: rt.Path}] =
-					RouteResult{Response: rt.Response, Proxy: rt.Proxy}
+					RouteResult{Response: rt.Response, Proxy: rt.Proxy, Handler: rt.Handler, Public: rt.Public}
 			}
 			for _, ev := range m.Events {
 				snap.events[ev.Event] = append(snap.events[ev.Event], subscription{

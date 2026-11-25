@@ -33,6 +33,8 @@ var ValidPermissions = map[string]bool{
 	"ui:host": true,
 	// SDK v3：完整页面 + 用户级服务端数据
 	"ui:page": true, "data": true,
+	// 服务端统一 AI 代理（密钥不下发到浏览器）
+	"ai": true,
 }
 
 var (

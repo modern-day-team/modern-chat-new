@@ -44,6 +44,9 @@ export const API_PERMISSION: Record<string, string> = {
   'data.remove': 'data',
   'data.keys': 'data',
   'nav.openPluginPage': 'ui:host',
+  // SDK v4：服务端统一 AI 代理（密钥不下发，插件只拿到回答）
+  'ai.status': 'ai',
+  'ai.chat': 'ai',
 }
 
 /**

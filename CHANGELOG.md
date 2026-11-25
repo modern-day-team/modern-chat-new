@@ -8,6 +8,13 @@
 
 ## [未发布]
 
+### 服务端 WASM 插件与 AI 代理
+
+- **WASM 服务端运行时（迁移 0036）**：新增 `runtime: "wasm"` 服务端插件，使用 `wazero` 在受限 WASI 沙箱中执行；支持管理员上传 8MB 内的 `.wasm`，路由通过 `handler: true` 交给插件，`public: true` 可匿名访问。
+- **宿主能力**：新增插件专属 KV、受控 HTTP、`ai.chat` 与 `auth.qr.*`；扫码票据复用本站手机确认与一次性登录态，不复制认证逻辑。
+- **服务端统一 AI 代理**：新增 `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL`（可选 `AI_ALLOW_PRIVATE`），用户插件通过 `api.ai.chat()` 使用，密钥只存在服务端；新增 AI 对话示例 `ai-chat.plugin.js`。
+- **示例与文档**：新增 `server-examples/qr-kit` WASM 扫码插件源码、manifest 与构建脚本；SDK 升到 v4，插件开发文档补 WASM ABI、宿主 API 与 AI 配置。
+
 ### 插件体系（双层架构）
 
 - **用户插件完整页面（SDK v3）**：新增 `ui:page` 权限与 `api.addPage/setPage/removePage`，插件可向主站注册带标题、图标和描述式 UI 的完整页面；新增 `/plugin/:pluginId/:pageId` 路由、页面动作回传与插件抽屉入口。

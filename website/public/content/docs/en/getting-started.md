@@ -220,9 +220,9 @@ Each plugin is a single JS file (≤1MB), stored on the server and loaded by the
 
 > **Plugins that rely on bare `fetch` are broken and must switch to `mc.request`.** The SDK object injected by the host is named `api`, so plugin code calls `api.request(url, opts)` (typed as `McApi`); `mc.request` refers to this same method. The sandbox is an opaque origin with CSP `default-src 'none'`, and network egress is limited to `allowedHosts`. See [插件开发.md](docs/插件开发.md).
 
-There are two plugin layers. **User plugins** are single JS/TS files installed by each user and sandboxed in the browser. **Server plugins** are JSON manifests installed by admins and interpreted by the server to add site-wide pages, APIs, event hooks and jobs.
+There are two plugin layers. **User plugins** are single JS/TS files installed by each user and sandboxed in the browser. **Server plugins** are installed by admins and may be declarative manifests or WASM modules executed in a restricted WASI sandbox, adding site-wide pages, APIs, event hooks and jobs.
 
-User-plugin SDK is now **v3**: v2 added conversation list, message search, drafts, write-only clipboard, storage management and richer declarative controls; v3 adds full plugin pages and account-level server data. Every v1/v2 API remains compatible. Check `api.version` for feature detection.
+User-plugin SDK is now **v4**: v2 added conversation search/drafts/clipboard, v3 added full plugin pages and account-level data, and v4 adds the server-side AI proxy (`api.ai.*`) so API keys never reach the browser. Every v1–v3 API remains compatible. Check `api.version` for feature detection.
 
 ### Entry convention
 
@@ -271,6 +271,7 @@ function __mcActivate(api) {
 | `api.clipboard.writeText(text)` | Write-only clipboard (no read API; needs a secure context) | `ui:host` |
 | `api.addPage/setPage/removePage` | Register a full plugin page with a declarative body | `ui:page` |
 | `api.data.get/set/remove/keys` | Account-level server KV, surviving device and cache changes | `data` |
+| `api.ai.status()` / `api.ai.chat(messages)` | Server-side AI proxy; non-streaming, 1–40 messages, ≤96KB context | `ai` |
 | `api.storage.get/set` / `remove` / `keys` | Per-plugin namespaced storage and key management (≤64KB per value) | `storage` |
 | `api.request(url, opts?)` | Host-mediated fetch; only `allowedHosts` domains pass (subject to browser CORS) | `net` |
 | `api.theme.apply(cssVars)` | Modify `--td-*` theme tokens, site-wide instant reskin | `ui:theme` |
@@ -303,14 +304,16 @@ UI descriptions only accept 8 components: `text / image / button / input / card 
 
 ### Try the example plugin
 
-The repo ships with six plugin examples / manifests (user plugins are also downloadable from the "Marketplace" page on the website):
+The repo ships with eight plugin examples / manifests, including a WASM server plugin (user plugins are also downloadable from the "Marketplace" page on the website):
 
 - [`plugins/examples/weather.plugin.js`](plugins/examples/weather.plugin.js): sidebar weather panel + custom `weather` message type
 - [`plugins/examples/dice.plugin.js`](plugins/examples/dice.plugin.js): dice roller panel + custom `dice` message type
 - [`plugins/examples/word-count.plugin.js`](plugins/examples/word-count.plugin.js): conversation stats panel (`message:new` event + storage persistence)
 - [`plugins/examples/search-kit.plugin.js`](plugins/examples/search-kit.plugin.js): SDK v2 demo with message search, drafts, clipboard, storage management and new declarative controls
 - [`plugins/examples/page-kit.plugin.js`](plugins/examples/page-kit.plugin.js): SDK v3 demo with a full plugin page and account-level server data
+- [`plugins/examples/ai-chat.plugin.js`](plugins/examples/ai-chat.plugin.js): SDK v4 AI chat page using the server-side proxy
 - [`plugins/examples/server-hello.plugin.json`](plugins/examples/server-hello.plugin.json): admin server-plugin manifest with a site-wide page and a static API
+- [`server-examples/qr-kit`](server-examples/qr-kit): WASM server plugin using the host QR-login capability
 
 1. After login, click the "Plugins" icon in the sidebar → upload the file → confirm the permission list and enable it
 2. The right detail panel shows a "Weather (example plugin)" card: click "Refresh data" to see the panel update, and "Send to current chat" to send it to the open conversation

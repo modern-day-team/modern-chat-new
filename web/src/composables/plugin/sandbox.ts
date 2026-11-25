@@ -88,8 +88,8 @@ export function bootHtml(pluginCode: string, allowedHosts: string[], token: stri
     });
   }
   var sdk = {
-    // 宿主 API 级别：插件据此做特性检测（v2 会话列表/消息搜索/草稿/剪贴板/存储枚举；v3 全站页面 + 服务端用户数据）
-    version: "3",
+    // 宿主 API 级别：v4 增加服务端统一 AI 代理（v3 全站页面 + 用户数据）
+    version: "4",
     on: function (ev, fn) { (handlers[ev] || (handlers[ev] = [])).push(fn); },
     send: function (convId, payload, msgType) { return call("send", [convId, payload, msgType]); },
     registerMessageRenderer: function (type, fn) { renderers.set(type, fn); return call("registerMessageRenderer", [type]); },
@@ -108,6 +108,11 @@ export function bootHtml(pluginCode: string, allowedHosts: string[], token: stri
       set: function (key, value) { return call("data.set", [key, value]); },
       remove: function (key) { return call("data.remove", [key]); },
       keys: function () { return call("data.keys", []); }
+    },
+    // SDK v4：服务端统一 AI 代理；密钥只在后端，插件只收发消息
+    ai: {
+      status: function () { return call("ai.status", []); },
+      chat: function (messages) { return call("ai.chat", [messages || []]); }
     },
     // 当前用户身份（需 conv:read）：只含 id / 昵称
     me: function () { return call("me", []); },

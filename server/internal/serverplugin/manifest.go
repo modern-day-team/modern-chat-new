@@ -34,6 +34,8 @@ type Manifest struct {
 	Name         string   `json:"name"`
 	Version      string   `json:"version"`
 	Description  string   `json:"description"`
+	Runtime      string   `json:"runtime"`     // declarative（默认）| wasm
+	Permissions  []string `json:"permissions"` // host 能力：auth:qr / ai:chat
 	Pages        []Page   `json:"pages"`
 	Routes       []Route  `json:"routes"`
 	Events       []Event  `json:"events"`
@@ -56,6 +58,8 @@ type Route struct {
 	Path     string         `json:"path"`
 	Response *RouteResponse `json:"response,omitempty"`
 	Proxy    string         `json:"proxy,omitempty"`
+	Handler  bool           `json:"handler,omitempty"` // runtime=wasm：交给 WASM 处理
+	Public   bool           `json:"public,omitempty"`  // 免登录（扫码首屏/第三方回调）
 }
 
 // RouteResponse 静态响应规范。
@@ -100,6 +104,19 @@ func (m *Manifest) Validate() error {
 	}
 	if len([]rune(m.Description)) > 255 {
 		return fmt.Errorf("%w: description 过长", ErrInvalid)
+	}
+	if m.Runtime == "" {
+		m.Runtime = "declarative"
+	}
+	if m.Runtime != "declarative" && m.Runtime != "wasm" {
+		return fmt.Errorf("%w: runtime 只能是 declarative 或 wasm", ErrInvalid)
+	}
+	for _, p := range m.Permissions {
+		switch p {
+		case "auth:qr", "ai:chat":
+		default:
+			return fmt.Errorf("%w: 未知服务端宿主权限 %q", ErrInvalid, p)
+		}
 	}
 	if len(m.Pages) > maxItems || len(m.Routes) > maxItems ||
 		len(m.Events) > maxItems || len(m.Jobs) > maxItems {
@@ -146,8 +163,21 @@ func (m *Manifest) Validate() error {
 		if !routePathRe.MatchString(rt.Path) || strings.Contains(rt.Path, "..") || strings.Contains(rt.Path, "//") {
 			return fmt.Errorf("%w: routes[%d].path 需以 / 开头且只含安全字符", ErrInvalid, i)
 		}
-		if (rt.Response == nil) == (rt.Proxy == "") {
-			return fmt.Errorf("%w: routes[%d] 必须且只能配置 response 或 proxy 之一", ErrInvalid, i)
+		handlers := 0
+		if rt.Response != nil {
+			handlers++
+		}
+		if rt.Proxy != "" {
+			handlers++
+		}
+		if rt.Handler {
+			handlers++
+		}
+		if handlers != 1 {
+			return fmt.Errorf("%w: routes[%d] 必须且只能配置 response / proxy / handler 之一", ErrInvalid, i)
+		}
+		if rt.Handler && m.Runtime != "wasm" {
+			return fmt.Errorf("%w: routes[%d].handler 仅 runtime=wasm 可用", ErrInvalid, i)
 		}
 		if rt.Response != nil {
 			if rt.Response.Status < 100 || rt.Response.Status > 599 {

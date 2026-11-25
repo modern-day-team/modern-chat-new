@@ -32,6 +32,7 @@ describe('API_PERMISSION 完整性', () => {
       'ui:theme',
       'ui:page',
       'data',
+      'ai',
     ])
     const bad = Object.entries(API_PERMISSION)
       .concat(Object.entries(EVENT_PERMISSION))
@@ -60,6 +61,11 @@ describe('API_PERMISSION 完整性', () => {
     expect(API_PERMISSION['data.keys']).toBe('data')
     // 跳页面是宿主 UI 动作，沿用 ui:host，不新造权限名
     expect(API_PERMISSION['nav.openPluginPage']).toBe('ui:host')
+  })
+
+  it('SDK v4 AI 代理需要 ai 权限', () => {
+    expect(API_PERMISSION['ai.status']).toBe('ai')
+    expect(API_PERMISSION['ai.chat']).toBe('ai')
   })
 
   it('on 不进 API_PERMISSION：api.on 是沙箱内本地注册，不走 RPC', () => {

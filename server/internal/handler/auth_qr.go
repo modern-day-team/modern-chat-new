@@ -1,17 +1,15 @@
 package handler
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"log/slog"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/modern-day-team/modern-chat-new/server/internal/middleware"
+	"github.com/modern-day-team/modern-chat-new/server/internal/service/qrsession"
 )
 
 // ---- 扫码登录（桌面展示二维码，手机端已登录会话确认）----
@@ -31,81 +29,13 @@ import (
 //
 // 会话态存进程内（单实例部署；重启后未完成登录自然作废，与 ssoTickets 同口径）。
 
-const qrSessionTTL = 5 * time.Minute
-
-// qrSessionState：0=待确认 1=手机已确认 2=已消费/失效
-type qrLoginSession struct {
-	status  int
-	userID  uint
-	expires time.Time
-}
-
-var qrSessions = struct {
-	sync.Mutex
-	m map[string]*qrLoginSession
-}{m: map[string]*qrLoginSession{}}
-
-// qrIssueSession 生成扫码会话，返回 token 与过期时间。
-func qrIssueSession() (string, time.Time, error) {
-	raw := make([]byte, 32)
-	if _, err := rand.Read(raw); err != nil {
-		return "", time.Time{}, err
-	}
-	token := base64.RawURLEncoding.EncodeToString(raw)
-	expires := time.Now().Add(qrSessionTTL)
-	qrSessions.Lock()
-	defer qrSessions.Unlock()
-	now := time.Now()
-	for k, v := range qrSessions.m {
-		if now.After(v.expires) || v.status == 2 {
-			delete(qrSessions.m, k)
-		}
-	}
-	qrSessions.m[token] = &qrLoginSession{expires: expires}
-	return token, expires, nil
-}
-
-// qrConfirmSession 手机端确认：待确认 → 标记已确认并绑定用户；其余（不存在/过期/已消费）返回 false。
+// 兼容旧代码与测试：具体状态机在 service/qrsession，serverplugin 也使用同一实例。
+func qrIssueSession() (string, time.Time, error) { return qrsession.Default().Issue() }
 func qrConfirmSession(token string, userID uint) bool {
-	qrSessions.Lock()
-	defer qrSessions.Unlock()
-	s, ok := qrSessions.m[token]
-	if !ok || s.status != 0 || time.Now().After(s.expires) {
-		return false
-	}
-	s.status = 1
-	s.userID = userID
-	return true
+	return qrsession.Default().Confirm(token, userID)
 }
-
-// qrTakeSession 桌面轮询取走登录态（一次性）：0=待确认 1=已确认 2=过期/不存在。
-func qrTakeSession(token string) (state int, userID uint) {
-	qrSessions.Lock()
-	defer qrSessions.Unlock()
-	s, ok := qrSessions.m[token]
-	if !ok {
-		return 2, 0
-	}
-	if time.Now().After(s.expires) {
-		delete(qrSessions.m, token)
-		return 2, 0
-	}
-	if s.status == 0 {
-		return 0, 0
-	}
-	if s.status == 1 {
-		s.status = 2 // 一次性消费：桌面首读即取走，重试拿不到
-		return 1, s.userID
-	}
-	return 2, 0
-}
-
-// qrInvalidateSession 使会话立即失效（确认人被封禁等异常收尾）。
-func qrInvalidateSession(token string) {
-	qrSessions.Lock()
-	defer qrSessions.Unlock()
-	delete(qrSessions.m, token)
-}
+func qrTakeSession(token string) (int, uint) { return qrsession.Default().Take(token) }
+func qrInvalidateSession(token string)       { qrsession.Default().Invalidate(token) }
 
 // QRStart 桌面端发起扫码登录。
 func (h *AuthHandler) QRStart(c *gin.Context) {

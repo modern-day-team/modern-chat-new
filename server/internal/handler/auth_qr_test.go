@@ -3,6 +3,8 @@ package handler
 import (
 	"testing"
 	"time"
+
+	"github.com/modern-day-team/modern-chat-new/server/internal/service/qrsession"
 )
 
 // 扫码登录会话状态机回归：状态流转（待确认→已确认→已消费）与过期/未知票据。
@@ -50,10 +52,7 @@ func TestQRSessionExpired(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 直接把会话改过期（同包测试，允许操作内部状态）
-	qrSessions.Lock()
-	qrSessions.m[token].expires = time.Now().Add(-time.Minute)
-	qrSessions.Unlock()
+	qrsession.Default().ExpireForTest(token)
 
 	if state, _ := qrTakeSession(token); state != 2 {
 		t.Fatalf("过期会话应为 2，got %d", state)
@@ -68,9 +67,7 @@ func TestQRConfirmThenExpire(t *testing.T) {
 	if !qrConfirmSession(token, 7) {
 		t.Fatal("确认应成功")
 	}
-	qrSessions.Lock()
-	qrSessions.m[token].expires = time.Now().Add(-time.Minute)
-	qrSessions.Unlock()
+	qrsession.Default().ExpireForTest(token)
 	// 已确认但过期：桌面轮询同样拿不到（防止过期窗口内换走登录态）
 	if state, _ := qrTakeSession(token); state != 2 {
 		t.Fatalf("已确认但过期应为 2，got %d", state)

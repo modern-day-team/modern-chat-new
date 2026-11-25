@@ -29,7 +29,7 @@ func TestParseValid(t *testing.T) {
 }
 
 func TestParseSDKV3Permissions(t *testing.T) {
-	for _, p := range []string{"ui:page", "data"} {
+	for _, p := range []string{"ui:page", "data", "ai"} {
 		if !ValidPermissions[p] {
 			t.Fatalf("SDK v3 权限 %q 未登记", p)
 		}

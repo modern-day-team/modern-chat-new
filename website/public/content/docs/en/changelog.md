@@ -8,6 +8,13 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Server-side WASM plugins and AI proxy
+
+- **WASM server runtime (migration 0036)**: added `runtime: "wasm"` server plugins executed in a restricted WASI sandbox via `wazero`. Admins can upload a `.wasm` up to 8 MB; routes with `handler: true` are dispatched to the plugin, and `public: true` allows anonymous access.
+- **Host capabilities**: added per-plugin KV, guarded outbound HTTP, `ai.chat`, and `auth.qr.*`. QR tickets reuse the existing mobile confirmation flow and one-time login state.
+- **Server-side AI proxy**: added `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` (optional `AI_ALLOW_PRIVATE`). User plugins call `api.ai.chat()` and never receive the key. Added the `ai-chat.plugin.js` example.
+- **Examples and docs**: added `server-examples/qr-kit` WASM source, manifest and build script; SDK is now v4 and the plugin guide documents the WASM ABI, host APIs and AI configuration.
+
 ### Two-layer plugin system
 
 - **Full pages for user plugins (SDK v3)**: added `ui:page` permission and `api.addPage/setPage/removePage`; plugins can register complete pages with titles, icons and declarative UI bodies. Added the `/plugin/:pluginId/:pageId` route, page action callbacks and plugin-drawer entries.

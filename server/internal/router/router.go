@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-contrib/gzip"
 	"gorm.io/gorm"
@@ -78,6 +79,8 @@ func New(d Deps) *gin.Engine {
 	r.Use(middleware.SecurityHeaders())
 	r.Use(middleware.BodyLimit(1<<20, map[string]int64{
 		"/api/plugins/upload": d.Cfg.PluginMaxSize + 64*1024,
+		// 管理员上传 WASM：二进制单独放宽到 8MB + 1。
+		"/api/admin/server-plugins/wasm": 8<<20 + 1,
 		// 上传走 multipart，单独放宽。这里用「配置允许的最大值」而不是当前值：
 		// 站长随时可能在后台调大上限，中间件在启动时构造，用当前值会立刻卡住。
 		// 真正的逐类型限额由 UploadHandler 用 MaxBytesReader 在读之前卡住。
@@ -92,7 +95,7 @@ func New(d Deps) *gin.Engine {
 		gzip.DefaultCompression,
 		// /api/ext 的插件响应可能只有几十字节；gzip 中间件会给小响应错误地打上
 		// Content-Encoding: gzip（浏览器解压失败），统一排除动态插件接口。
-		gzip.WithExcludedPaths([]string{"/ws", "/uploads", "/api/ext"}),
+		gzip.WithExcludedPaths([]string{"/ws", "/uploads", "/api/ext", "/api/ext-public"}),
 		gzip.WithMinLength(1024),
 	))
 	if d.Notifier != nil {
@@ -119,6 +122,13 @@ func New(d Deps) *gin.Engine {
 	spRuntime := d.ServerPlugins
 	if spRuntime == nil {
 		spRuntime = serverplugin.NewRuntime(d.Cfg.JWTSecret, serverPluginStore)
+	}
+	spRuntime.SetKVStore(store.NewServerPluginKVStore(d.DB))
+	if d.Cfg.AIEnabled() {
+		spRuntime.SetAIConfig(serverplugin.AIConfig{
+			BaseURL: d.Cfg.AIBaseURL, APIKey: d.Cfg.AIAPIKey, Model: d.Cfg.AIModel,
+			Timeout: time.Duration(d.Cfg.AITimeoutSeconds) * time.Second, AllowPrivate: d.Cfg.AIAllowPrivate,
+		})
 	}
 	resets := store.NewPasswordResetStore(d.DB)
 	audits := store.NewAuditStore(d.DB)
@@ -157,6 +167,7 @@ func New(d Deps) *gin.Engine {
 	pluginH.SetPluginData(pluginData)
 	pluginDataH := handler.NewPluginDataHandler(plugins, pluginData)
 	serverPluginH := handler.NewServerPluginHandler(serverPluginStore, audits, spRuntime)
+	aiH := handler.NewAIHandler(d.Cfg)
 	adminH := handler.NewAdminHandler(d.Cfg, users, convs, msgs, plugins, audits, settings, d.Mailer)
 	opsH := handler.NewOpsHandler(d.Cfg, d.DB, d.Backup)
 	pushH := handler.NewPushHandler(d.Push, pushSubs)
@@ -257,6 +268,10 @@ func New(d Deps) *gin.Engine {
 	qrLimit := middleware.RateLimit(middleware.NewLimiterStore(60, 20), middleware.KeyByIP)
 	api.POST("/auth/qr/start", authLimit, authH.QRStart)
 	api.POST("/auth/qr/status", qrLimit, authH.QRStatus)
+	// 服务端插件的公开动态接口：只放行 manifest 标记 public 的路由（扫码首屏/回调）。
+	// 独立限流，避免匿名脚本打爆 WASM 实例。
+	extPublicLimit := middleware.RateLimit(middleware.NewLimiterStore(120, 30), middleware.KeyByIP)
+	api.Any("/ext-public/:plugin/*path", extPublicLimit, serverPluginH.DynamicPublic)
 
 	// 两步验证（handler/auth_2fa.go，默认关闭）：登录密码正确后若开了 2FA，
 	// 只发短寿命票据，verify 通过才签 JWT。verify/email-code 免鉴权靠票据，
@@ -371,6 +386,10 @@ func New(d Deps) *gin.Engine {
 		authed.PUT("/plugins/:id/data", pluginDataH.Set)
 		authed.DELETE("/plugins/:id/data", pluginDataH.Delete)
 		authed.GET("/plugins/:id/data/keys", pluginDataH.Keys)
+		// 服务端统一 AI 代理：密钥只在服务端；按用户限流，避免用户插件刷爆上游
+		aiLimit := middleware.RateLimit(middleware.NewLimiterStore(20, 5), middleware.KeyByUID)
+		authed.GET("/ai/status", aiH.Status)
+		authed.POST("/ai/chat", aiLimit, aiH.Chat)
 		// 服务端插件：页面声明与动态接口（仍需登录）
 		authed.GET("/server-plugins/pages", serverPluginH.Pages)
 		authed.Any("/ext/:plugin/*path", serverPluginH.Dynamic)
@@ -393,6 +412,7 @@ func New(d Deps) *gin.Engine {
 		// 服务端声明式插件（manifest 安装 / 启停 / 删除）
 		admin.GET("/server-plugins", serverPluginH.List)
 		admin.POST("/server-plugins", serverPluginH.Install)
+		admin.POST("/server-plugins/wasm", serverPluginH.UploadWASM)
 		admin.PATCH("/server-plugins/:id", serverPluginH.SetEnabled)
 		admin.DELETE("/server-plugins/:id", serverPluginH.Delete)
 		admin.POST("/users/:id/role", adminH.SetRole)

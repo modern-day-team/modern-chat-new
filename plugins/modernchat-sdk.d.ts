@@ -113,8 +113,13 @@ type McEvent =
   | 'ui:action'
   | 'message:action'
 
+interface McAIMessage {
+  role: 'system' | 'user' | 'assistant'
+  content: string
+}
+
 interface McApi {
-  /** 宿主 API 级别，插件据此做特性检测：'3' = 全站页面 + 服务端用户数据 */
+  /** 宿主 API 级别：'4' = 服务端统一 AI 代理（'3' 为全站页面 + 用户数据） */
   version: string
   /** 监听事件。门槛按事件而定：message:new/recall、presence 需 message:read；ui:action / message:action 只投递给注册者本身（见 docs/插件开发.md §5） */
   on(event: McEvent, fn: (payload: unknown) => void): void
@@ -192,6 +197,14 @@ interface McApi {
     set(key: string, value: string): Promise<void>
     remove(key: string): Promise<void>
     keys(): Promise<string[]>
+  }
+  /**
+   * SDK v4：服务端统一 AI 代理（需 ai）。API Key 只存在服务端，插件不接触密钥。
+   * messages 1–40 条，单条 ≤32KB，上下文 ≤96KB；当前为非流式响应。
+   */
+  ai: {
+    status(): Promise<{ enabled: boolean; model: string }>
+    chat(messages: McAIMessage[]): Promise<{ content: string }>
   }
   /** 经主站转发的网络请求（需 net，且域名必须在 manifest.allowedHosts 里） */
   request(url: string, opts?: McRequestOptions): Promise<McResponse>

@@ -91,7 +91,7 @@ func (h *AuthHandler) issueLoginToken(c *gin.Context, u *model.User) (string, er
 		}
 		return middleware.IssueTokenWithSID(u.ID, u.TokenVersion, h.cfg.JWTSecret, sid)
 	}
-	return h.issueLoginToken(c, u)
+	return middleware.IssueToken(u.ID, u.TokenVersion, h.cfg.JWTSecret)
 }
 
 func firstNonEmpty(values ...string) string {

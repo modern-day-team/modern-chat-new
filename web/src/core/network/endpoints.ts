@@ -376,6 +376,17 @@ export const pluginDataApi = {
   keys: (pluginId: number) => http.get<{ keys: string[] }>(`/plugins/${pluginId}/data/keys`),
 }
 
+/** 服务端统一 AI 代理（密钥只在后端，用户插件不接触 API Key） */
+export interface AIMessage {
+  role: 'system' | 'user' | 'assistant'
+  content: string
+}
+
+export const aiApi = {
+  status: () => http.get<{ enabled: boolean; model: string }>('/ai/status'),
+  chat: (messages: AIMessage[]) => http.post<{ content: string }>('/ai/chat', { messages }),
+}
+
 /** 服务端插件清单里声明的全站页面（pluginId = manifest.name） */
 export interface ServerPluginPage {
   pluginId: string
@@ -402,6 +413,8 @@ export interface ServerPluginRow {
   routes: number
   events: number
   jobs: number
+  runtime?: 'declarative' | 'wasm' | string
+  wasmSize?: number
 }
 
 /** 全站服务端插件页面（登录用户可读） */
@@ -522,6 +535,17 @@ export const adminApi = {
       }).then(async (res) => {
         const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
         if (!res.ok) throw new ApiError(res.status, typeof data.error === 'string' ? data.error : '安装失败')
+        return data as unknown as ServerPluginRow
+      }),
+    /** 上传 WASM 二进制（先 install manifest，再用返回 id 上传） */
+    uploadWasm: (id: string | number, file: File) =>
+      rawFetch(`/api/admin/server-plugins/wasm?id=${encodeURIComponent(String(id))}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/wasm' },
+        body: file,
+      }).then(async (res) => {
+        const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
+        if (!res.ok) throw new ApiError(res.status, typeof data.error === 'string' ? data.error : 'WASM 上传失败')
         return data as unknown as ServerPluginRow
       }),
     toggle: (id: string | number, enabled: boolean) =>

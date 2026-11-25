@@ -37,6 +37,24 @@ func SafePostJSONWithHeaders(rawURL string, body []byte, headers map[string]stri
 
 // SafeRequest 是 SafePostJSON 的通用版本，动态路由代理用它透传方法 / 请求体。
 func SafeRequest(method, rawURL string, body []byte, headers map[string]string, maxBytes int64) (int, []byte, error) {
+	return safeRequest(method, rawURL, body, headers, maxBytes, false, false, outboundTimeout)
+}
+
+// SafeRequestWithAuth 仅供管理员配置的 AI 代理使用：允许显式 Authorization 头，
+// 但仍然拒绝 Cookie / Host 等身份或连接级头，并保留完整 SSRF 防护。
+func SafeRequestWithAuth(method, rawURL string, body []byte, headers map[string]string, maxBytes int64) (int, []byte, error) {
+	return safeRequest(method, rawURL, body, headers, maxBytes, true, false, outboundTimeout)
+}
+
+// SafeRequestWithAuthTimeout 同 SafeRequestWithAuth，但允许 AI 长响应使用更长超时。
+func SafeRequestWithAuthTimeout(method, rawURL string, body []byte, headers map[string]string, maxBytes int64, timeout time.Duration, allowPrivate bool) (int, []byte, error) {
+	if timeout <= 0 {
+		timeout = outboundTimeout
+	}
+	return safeRequest(method, rawURL, body, headers, maxBytes, true, allowPrivate, timeout)
+}
+
+func safeRequest(method, rawURL string, body []byte, headers map[string]string, maxBytes int64, allowAuth, allowPrivate bool, timeout time.Duration) (int, []byte, error) {
 	u, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
 		return 0, nil, fmt.Errorf("%w: 仅支持 http/https 链接且不能携带用户名密码", ErrInvalid)
@@ -53,6 +71,10 @@ func SafeRequest(method, rawURL string, body []byte, headers map[string]string, 
 	transport := &http.Transport{
 		// 不继承环境代理：否则请求可能交给内网代理，绕过地址校验。
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			// AI_ALLOW_PRIVATE 只对管理员配置的 AI 端点生效，且不经过用户输入。
+			if allowPrivate {
+				return dialer.DialContext(ctx, network, addr)
+			}
 			host, port, e := net.SplitHostPort(addr)
 			if e != nil {
 				return nil, e
@@ -81,7 +103,7 @@ func SafeRequest(method, rawURL string, body []byte, headers map[string]string, 
 		},
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), outboundTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	var reader io.Reader
 	if len(body) > 0 {
@@ -95,7 +117,7 @@ func SafeRequest(method, rawURL string, body []byte, headers map[string]string, 
 		req.Header.Set("Content-Type", "application/json")
 	}
 	for k, v := range headers {
-		if !safeOutboundHeader(k) {
+		if !safeOutboundHeader(k, allowAuth) {
 			continue
 		}
 		req.Header.Set(k, v)
@@ -117,9 +139,13 @@ func SafeRequest(method, rawURL string, body []byte, headers map[string]string, 
 
 // safeOutboundHeader 过滤禁止透传的请求头：身份凭据与连接级头一律丢弃，
 // 防止用户 JWT / Cookie 被转发到第三方端点。
-func safeOutboundHeader(k string) bool {
-	switch strings.ToLower(strings.TrimSpace(k)) {
-	case "host", "authorization", "cookie", "proxy-authorization",
+func safeOutboundHeader(k string, allowAuth bool) bool {
+	lower := strings.ToLower(strings.TrimSpace(k))
+	if lower == "authorization" && !allowAuth {
+		return false
+	}
+	switch lower {
+	case "host", "cookie", "proxy-authorization",
 		"connection", "content-length", "transfer-encoding":
 		return false
 	}

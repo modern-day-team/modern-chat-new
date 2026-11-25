@@ -50,9 +50,9 @@ describe('bootHtml 转义与注入', () => {
     expect(html).toContain('var HOST = "*";')
   })
 
-  it('SDK v3 暴露页面注册 / 用户数据 / 页面跳转，且保留 v2 能力', () => {
+  it('SDK v4 暴露页面注册 / 用户数据 / AI 代理 / 页面跳转，且保留 v2 能力', () => {
     const html = bootHtml('', [], 'tk', 'https://app.example')
-    expect(html).toContain('version: "3"')
+    expect(html).toContain('version: "4"')
     expect(html).toContain('removeSidePanel')
     expect(html).toContain('call("users.search", [kw])')
     expect(html).toContain('call("conv.list", [])')
@@ -71,5 +71,8 @@ describe('bootHtml 转义与注入', () => {
     expect(html).toContain('call("data.remove", [key])')
     expect(html).toContain('call("data.keys", [])')
     expect(html).toContain('call("nav.openPluginPage", [pluginId, pageId])')
+    // v4 新增：服务端统一 AI 代理
+    expect(html).toContain('call("ai.status", [])')
+    expect(html).toContain('call("ai.chat", [messages || []])')
   })
 })
