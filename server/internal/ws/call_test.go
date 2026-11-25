@@ -30,23 +30,66 @@ func TestCallManagerGetRemove(t *testing.T) {
 	if !m.add("c1", 1, 2, "sid-a", timer) {
 		t.Fatal("add failed")
 	}
-	info, ok := m.get("c1")
+	info, ok := m.snapshot("c1")
 	if !ok || info.fromUID != 1 || info.toUID != 2 || info.fromSID != "sid-a" {
 		t.Fatalf("unexpected call info: %+v %v", info, ok)
 	}
-	m.setToSID("c1", "sid-b")
-	info, _ = m.get("c1")
+	if !m.setToSID("c1", "sid-b") {
+		t.Fatal("first setToSID should succeed")
+	}
+	if m.setToSID("c1", "sid-c") {
+		t.Fatal("duplicate setToSID should be ignored")
+	}
+	info, _ = m.snapshot("c1")
 	if info.toSID != "sid-b" {
 		t.Fatalf("toSID not recorded: %+v", info)
 	}
 	m.remove("c1")
-	if _, ok := m.get("c1"); ok {
+	if _, ok := m.snapshot("c1"); ok {
 		t.Fatal("removed call should not be found")
 	}
 	select {
 	case <-timer.C:
 		t.Fatal("timer should be stopped")
 	default:
+	}
+}
+
+// 重复 callId 不得覆盖已有通话（H2：否则忙线永久泄漏）。
+func TestCallManagerDuplicateIDRejected(t *testing.T) {
+	m := newCallManager()
+	if !m.add("same", 1, 2, "sid-a", nil) {
+		t.Fatal("first add failed")
+	}
+	if m.add("same", 3, 4, "sid-c", nil) {
+		t.Fatal("duplicate callId should be rejected")
+	}
+	if _, ok := m.snapshot("same"); !ok {
+		t.Fatal("original call should remain")
+	}
+	if !m.add("other", 3, 4, "sid-c", nil) {
+		t.Fatal("different callId with free users should succeed")
+	}
+}
+
+// 断线设备查找：主叫设备与非接听的被叫设备不影响通话（H4）。
+func TestCallManagerFindByDevice(t *testing.T) {
+	m := newCallManager()
+	if !m.add("c1", 1, 2, "sid-caller", nil) {
+		t.Fatal("add failed")
+	}
+	if got := m.findByDevice(1, "sid-caller"); len(got) != 1 || got[0] != "c1" {
+		t.Fatalf("caller device should find call: %v", got)
+	}
+	if got := m.findByDevice(2, "sid-other"); len(got) != 0 {
+		t.Fatalf("callee's non-answering device should not find call: %v", got)
+	}
+	m.setToSID("c1", "sid-answer")
+	if got := m.findByDevice(2, "sid-answer"); len(got) != 1 || got[0] != "c1" {
+		t.Fatalf("answering device should find call: %v", got)
+	}
+	if got := m.findByDevice(2, "sid-other"); len(got) != 0 {
+		t.Fatalf("unrelated device should not find call: %v", got)
 	}
 }
 

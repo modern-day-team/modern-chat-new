@@ -295,7 +295,7 @@ The sandbox model and SDK are described in the plugin dev guide; below is the RE
 | GET `/api/site` | public site config: `{name, allowRegister, maintenanceMode, maintenanceMessage, requireInviteCode, requireEmail, requireEmailVerify, maxMessageLength, recallMinutes, maxGroupMembers, maxImageMB, maxAudioMB, maxFileMB, maxVideoMB, call:{enabled}}`; `call.enabled` only drives UI entry visibility, **no TURN credentials**; still available in maintenance mode |
 | GET `/api/metrics` | Prometheus text format; requires a Bearer token when `METRICS_TOKEN` is set |
 
-**One-to-one calls** (signaling over WS, media P2P): `GET /api/call/config` (auth required) → `{enabled, iceServers:[{urls,username?,credential?}]}`. Uplink frames `call.invite / accept / reject / offer / answer / ice / hangup`, downlink `call.incoming / accepted / rejected / busy / offer / answer / ice / ended`; see backend spec §3.3.1. The server never handles media or stores calls.
+**One-to-one calls** (signaling over WS, media P2P): `GET /api/call/config` (auth required, listed under §3) → `{enabled, iceServers:[{urls,username?,credential?}]}`. Uplink frames `call.invite / accept / reject / offer / answer / ice / hangup` (15 total including the 8 message frames), downlink `call.incoming / accepted / rejected / busy / offer / answer / ice / ended` (21 total). Offer/answer/ICE carry **no `toSid`** — the server derives the target from `callId` + sender identity. See backend spec §3.3.1. The server never handles media or stores calls.
 
 ### 10.1 Legacy-site migration (no auth, one-time tickets)
 

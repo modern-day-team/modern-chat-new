@@ -8,6 +8,15 @@
 
 ## [未发布]
 
+### 视频通话审查修复
+
+审查发现首版通话存在 4 个高危缺陷（含「通话根本无法建立」），已全部修复并补回归测试：
+- **H1 被叫无法回 answer**：原设计要求客户端传 `toSid`，但被叫无从得知主叫 sid，answer/ICE 全被后端丢弃。改为服务端按 `callId` 与发送方身份推导目标设备，客户端不再传 `toSid`；`call.incoming` 带 `fromSid` 仅作展示。
+- **H2 重复 callId**：`callManager.add` 增加 ID 去重，避免覆盖通话状态造成永久忙线。
+- **H3 timer 竞态**：`snapshot()` 在锁内读取状态副本供 timer/信令路径使用；`setToSID()` 加锁且幂等（多端重复接听只有第一台生效），消除 data race 与「刚接听就被 timeout 误杀」。
+- **H4 断线残留**：`Hub.Unregister` 结束该设备参与的通话并向对端下发 `call.ended{reason:"disconnect"}`；前端 `cleanup` 重置状态、`connecting` 加 30s 兜底超时、关键帧发送失败立即回滚。
+- 契约与文档同步：`proto.ts` 帧定义、后端需求规格 §3.3.1、设计文档 §7、API 文档 §11.2/11.3、前端技术方案 §4.1、README 与官网中英镜像全部对齐。
+
 ### 一对一视频通话（WebRTC）
 - **端到端音视频通话**：新增 `call.*` WS 信令帧（invite / accept / reject / offer / answer / ice / hangup），后端只做中继 + 在线与好友/会话成员校验 + 内存态忙线控制（60s 未接自动超时），不处理媒体流、不落库；媒体由浏览器 `RTCPeerConnection` 端到端传输。
 - **来电弹窗 + 通话悬浮窗**：新增 `components/call/CallOverlay.vue`，自包含 Teleport、接听/拒接/挂断、麦克风与摄像头开关、远端视频、状态提示；在 `ChatLayout` 以 `ws.onFrame()` 旁路监听驱动，与消息状态机解耦。i18n 新增 `call` 分组（中英）。

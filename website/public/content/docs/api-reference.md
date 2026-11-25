@@ -86,6 +86,7 @@ curl https://站点/api/conversations -H 'Authorization: Bearer <token>'
 | POST `/api/me/2fa/disable` | `{password}` | `{ok:true}`；关闭（需密码再认证），密钥与恢复码一并清除 |
 | GET `/api/me/sessions` | — | `{sessions: SessionView[]}`；列出本人各端登录设备（平台 / 客户端类型 / 版本 / IP / 当前设备标记） |
 | DELETE `/api/me/sessions/:id` | 路径参数=会话 ID | `{ok:true}`；撤销指定会话并踢该设备 WS（含 `kicked` 帧） |
+| GET `/api/call/config` | — | `{enabled, iceServers:[{urls,username?,credential?}]}`；WebRTC ICE 配置，含可选 TURN（凭据只经此接口下发，不写日志、不放公开接口） |
 | GET `/api/version` | — | `{version, commit, buildTime}`；**免鉴权** |
 | GET `/api/client/version` | `?platform=&clientType=&appVersion=` | `{latestVersion, upgradeRequired, message?}`；**免鉴权**。非 Web 端（桌面 / 移动）启动时探测，配合 `MIN_CLIENT_VERSION` 只提示不阻断 |
 
@@ -293,7 +294,6 @@ curl https://站点/api/conversations -H 'Authorization: Bearer <token>'
 |---|---|
 | GET `/api/health` | `{"status":"ok"}`；探活 |
 | GET `/api/site` | 站点公开配置：`{name, allowRegister, maintenanceMode, maintenanceMessage, requireInviteCode, requireEmail, requireEmailVerify, maxMessageLength, recallMinutes, maxGroupMembers, maxImageMB, maxAudioMB, maxFileMB, maxVideoMB, call:{enabled}}`；`call.enabled` 只用于前端判断是否显示通话入口，**不含 TURN 凭据**；维护模式下仍可用 |
-| GET `/api/call/config` | — | `{enabled, iceServers:[{urls,username?,credential?}]}`；**需登录**。WebRTC ICE 配置，含可选 TURN（凭据只经此接口下发，不写日志、不放公开接口） |
 | GET `/api/metrics` | Prometheus 文本格式；`METRICS_TOKEN` 非空时需 Bearer |
 
 ### 10.1 旧站数据迁移（免鉴权，一次性票据）
@@ -320,7 +320,7 @@ curl https://站点/api/conversations -H 'Authorization: Bearer <token>'
 - **每一帧**路由前统一复核封禁与 tv（不通过回 `error` 帧并断开）
 - 上行帧字节上限 64 KB；tv 变化 / 封禁 / 站长重置密码 → 推 `kicked` 后关闭
 
-### 11.2 上行帧（客户端 → 服务端，8 种）
+### 11.2 上行帧（客户端 → 服务端，15 种；含 7 类通话信令）
 
 | type | 载荷 | 说明 |
 |---|---|---|
@@ -331,9 +331,14 @@ curl https://站点/api/conversations -H 'Authorization: Bearer <token>'
 | `edit` | `{messageId, content}` | 编辑；仅本人、创建后 5 分钟内、未撤回的 `text`；敏感词与长度同发消息 |
 | `reaction` | `{messageId, emoji, action:"set"\|"remove"}` | 每人每条最多一个表情；广播增量 |
 | `delivered` | `{messageId}` | 单聊送达回执（只转发给发送者） |
+| `call.invite` | `{callId, toUserId, mediaType, convId?}` | 发起通话（在线+好友/同会话校验；忙线回 `call.busy`） |
+| `call.accept` / `call.reject` | `{callId}` | 被叫接听（幂等）/拒绝 |
+| `call.offer` / `call.answer` | `{callId, sdp}` | SDP 交换；**不带 toSid**，服务端按 callId 推导目标设备 |
+| `call.ice` | `{callId, candidate}` | trickle ICE（单 candidate 一帧） |
+| `call.hangup` | `{callId}` | 挂断；双方收 `call.ended` |
 | `ping` | — | 心跳 |
 
-### 11.3 下行帧（服务端 → 客户端，13 种）
+### 11.3 下行帧（服务端 → 客户端，21 种；含 8 类通话信令）
 
 | type | 载荷 | 时机 |
 |---|---|---|
@@ -349,6 +354,12 @@ curl https://站点/api/conversations -H 'Authorization: Bearer <token>'
 | `presence` | `{userId, online}` | 好友上下线 |
 | `user_change` | `{userId, nickname, avatar, avatarColor}` | 资料变更（就地更新，无需刷新） |
 | `kicked` | `{reason}` | 强制下线（封禁/重置密码/登出其他设备） |
+| `call.incoming` | `{callId, fromUserId, fromSid, nickname?, avatar?, mediaType}` | 来电（响铃 60s）；`fromSid` 仅供展示，回信令不需要它 |
+| `call.accepted` | `{callId, fromSid}` | 被叫已接听（主叫据此发 offer） |
+| `call.rejected` / `call.busy` | `{callId}` | 被拒 / 对方忙 |
+| `call.offer` / `call.answer` | `{callId, sdp}` | 对端 SDP |
+| `call.ice` | `{callId, candidate}` | 对端 ICE candidate |
+| `call.ended` | `{callId, reason?}` | 通话结束（`hangup` / `timeout` / `disconnect` / `error`） |
 | `error` | `{reason, clientMsgId?}` | 业务拒绝（校验失败等；带 clientMsgId 时前端把乐观消息标失败） |
 
 ---

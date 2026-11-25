@@ -219,6 +219,9 @@ func (h *Hub) Unregister(c *Client) {
 	// 注册表摘除，不会再有新的投递落到这个已关闭的 channel 上。
 	c.sendOnce.Do(func() { close(c.send) })
 	s.mu.Unlock()
+	// 断线（含被踢）结束该设备参与的通话并通知对端。必须在分片锁外调用：
+	// endCallForDevice 内部会取其它分片锁做广播，锁内调用会死锁。
+	h.endCallForDevice(c.UserID, c.sid, "disconnect")
 }
 
 // KickUser 强制断开某用户的全部既有连接（封禁 / 重置密码后 tv 已失效）。

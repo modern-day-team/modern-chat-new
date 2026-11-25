@@ -59,7 +59,7 @@ A **frontend-backend separated, plugin-first** web chat platform. It works out o
 | Mail | Password recovery email (SMTP, 465 implicit TLS / 587 STARTTLS, QQ / 163 auth codes); link printed to server log when SMTP is not configured |
 | Ops | Structured logs (rotation + retention days), health check `/api/health`, version `/api/version`, Prometheus `/api/metrics` (`METRICS_TOKEN` optional protection), three-tier rate limiting, WS Origin whitelist, database backup (manual in the console / scheduled), orphan attachment cleanup, one-command install & online update for release builds (**auto-upgrade on new Release tags**, `AUTO_UPDATE`-gated, release + systemd only), coverage script (unit + integration merged) |
 
-**Not in this phase (v2)**: video calls, advanced permissions beyond group-admin muting, plugin marketplace (manual install only in this phase), horizontal scaling (Redis rate limiting is already supported), multi-select image preview & send, voice waveform and seek, the default entry for emoji reactions (implemented in code, disabled by default).
+**Not in this phase (v2)**: advanced permissions beyond group-admin muting, plugin marketplace (manual install only in this phase), horizontal scaling (Redis shared rate limiting and cross-instance kicks are supported; presence/call state remains in-process), multi-select image preview & send, voice waveform and seek, the default entry for emoji reactions (implemented in code, disabled by default). One-to-one WebRTC video calls are implemented (signaling relayed by the server; call state in-process).
 
 ## Tech Stack
 

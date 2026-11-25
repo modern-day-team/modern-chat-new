@@ -34,7 +34,7 @@ const peerName = ref('')
 const peerAvatar = ref('')
 const mediaType = ref<MediaType>('video')
 const isCaller = ref(false)
-const remoteSid = ref('')
+// 对端设备 sid 由服务端从 callId 推导，前端不再需要保存/发送 toSid（修复被叫无法回 answer）
 const localStream = ref<MediaStream | null>(null)
 const localVideo = ref<HTMLVideoElement | null>(null)
 const remoteVideo = ref<HTMLVideoElement | null>(null)
@@ -45,6 +45,7 @@ const iceServers = ref<IceServer[]>([])
 let pc: RTCPeerConnection | null = null
 let elapsedTimer: ReturnType<typeof setInterval> | null = null
 let incomingTimer: ReturnType<typeof setTimeout> | null = null
+let connectingTimer: ReturnType<typeof setTimeout> | null = null
 const pendingIce: RTCIceCandidateInit[] = []
 
 const statusText = computed(() => {
@@ -62,8 +63,11 @@ function formatDuration(sec: number) {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
-function post(frame: ClientFrame) {
-  if (!props.send(frame)) emit('error', t('chat.reconnecting'))
+/** 返回是否发送成功；关键帧发送失败由调用方回滚状态（避免前后端状态分叉）。 */
+function post(frame: ClientFrame): boolean {
+  const ok = props.send(frame)
+  if (!ok) emit('error', t('chat.reconnecting'))
+  return ok
 }
 
 async function loadIceConfig() {
@@ -88,16 +92,19 @@ function createPC(): boolean {
   pc = new RTCPeerConnection({ iceServers: iceServers.value })
   pc.onicecandidate = (e) => {
     if (e.candidate && state.value !== 'idle') {
-      post({ type: 'call.ice', callId: callId.value, toSid: remoteSid.value, candidate: JSON.stringify(e.candidate) })
+      post({ type: 'call.ice', callId: callId.value, candidate: JSON.stringify(e.candidate) })
     }
   }
   pc.ontrack = (e) => {
-    if (remoteVideo.value && e.streams[0]) remoteVideo.value.srcObject = e.streams[0]
+    if (!remoteVideo.value) return
+    const stream = e.streams[0] ?? new MediaStream([e.track])
+    remoteVideo.value.srcObject = stream
   }
   pc.onconnectionstatechange = () => {
     if (pc?.connectionState === 'failed' || pc?.connectionState === 'disconnected') {
       finish('error')
     } else if (pc?.connectionState === 'connected' && state.value === 'connecting') {
+      if (connectingTimer) { clearTimeout(connectingTimer); connectingTimer = null }
       state.value = 'active'
       elapsed.value = 0
       elapsedTimer = setInterval(() => { elapsed.value += 1 }, 1000)
@@ -134,6 +141,7 @@ async function flushPendingIce() {
 function cleanup() {
   if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null }
   if (incomingTimer) { clearTimeout(incomingTimer); incomingTimer = null }
+  if (connectingTimer) { clearTimeout(connectingTimer); connectingTimer = null }
   localStream.value?.getTracks().forEach((track) => track.stop())
   localStream.value = null
   if (localVideo.value) localVideo.value.srcObject = null
@@ -141,6 +149,20 @@ function cleanup() {
   pc?.close()
   pc = null
   pendingIce.length = 0
+  peerId.value = 0
+  peerName.value = ''
+  peerAvatar.value = ''
+  isCaller.value = false
+  micOn.value = true
+  camOn.value = true
+}
+
+/** connecting 兜底：30s 未建立连接则自动结束（后端 accept 后会停 60s timer）。 */
+function armConnectingTimer() {
+  if (connectingTimer) clearTimeout(connectingTimer)
+  connectingTimer = setTimeout(() => {
+    if (state.value === 'connecting') finish('error')
+  }, 30_000)
 }
 
 function finish(reason: string) {
@@ -154,7 +176,7 @@ function finish(reason: string) {
 }
 
 /** 主叫发起通话（由会话侧「视频通话」按钮调用）。 */
-async function startCall(toUserId: number, type: MediaType = 'video') {
+async function startCall(toUserId: number, type: MediaType = 'video', convId = 0) {
   if (state.value !== 'idle') return
   await loadIceConfig()
   callId.value = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -163,7 +185,10 @@ async function startCall(toUserId: number, type: MediaType = 'video') {
   mediaType.value = type
   isCaller.value = true
   state.value = 'connecting'
-  post({ type: 'call.invite', callId: callId.value, toUserId, mediaType: type })
+  armConnectingTimer()
+  const frame: ClientFrame = { type: 'call.invite', callId: callId.value, toUserId, mediaType: type }
+  if (convId > 0) frame.convId = convId
+  if (!post(frame)) { cleanup(); state.value = 'idle'; callId.value = '' }
 }
 
 /** 被叫接听。 */
@@ -172,7 +197,12 @@ async function accept() {
   await loadIceConfig()
   if (!createPC() || !(await getMedia())) return
   state.value = 'connecting'
-  post({ type: 'call.accept', callId: callId.value })
+  armConnectingTimer()
+  if (!post({ type: 'call.accept', callId: callId.value })) {
+    cleanup()
+    state.value = 'idle'
+    callId.value = ''
+  }
 }
 
 function reject() {
@@ -198,6 +228,8 @@ async function handleFrame(frame: ServerFrame) {
   if (!('type' in frame) || !frame.type.startsWith('call.')) return
   switch (frame.type) {
     case 'call.incoming': {
+      // 忽略自己发起的来电回环（selfId 仅用于此防御性校验）
+      if (props.selfId && frame.fromUserId === props.selfId) break
       if (state.value !== 'idle') {
         post({ type: 'call.reject', callId: frame.callId })
         return
@@ -221,26 +253,29 @@ async function handleFrame(frame: ServerFrame) {
     case 'call.accepted': {
       if (frame.callId !== callId.value || !isCaller.value) break
       if (incomingTimer) { clearTimeout(incomingTimer); incomingTimer = null }
-      remoteSid.value = frame.fromSid
       if (!createPC() || !(await getMedia())) break
       state.value = 'connecting'
+      armConnectingTimer()
       const offer = await pc!.createOffer()
       await pc!.setLocalDescription(offer)
-      post({ type: 'call.offer', callId: callId.value, toSid: remoteSid.value, sdp: JSON.stringify(offer) })
+      // 目标设备由服务端按 callId 推导，不再传 toSid
+      if (!post({ type: 'call.offer', callId: callId.value, sdp: JSON.stringify(offer) })) finish('error')
       break
     }
     case 'call.offer': {
-      if (frame.callId !== callId.value || isCaller.value) break
+      // offer 只应发给被叫；主叫端忽略
+      if (frame.callId !== callId.value || isCaller.value || state.value !== 'connecting') break
       if (!pc) break
       await pc.setRemoteDescription(JSON.parse(frame.sdp) as RTCSessionDescriptionInit)
       await flushPendingIce()
       const answer = await pc.createAnswer()
       await pc.setLocalDescription(answer)
-      post({ type: 'call.answer', callId: callId.value, toSid: remoteSid.value, sdp: JSON.stringify(answer) })
+      if (!post({ type: 'call.answer', callId: callId.value, sdp: JSON.stringify(answer) })) finish('error')
       break
     }
     case 'call.answer': {
-      if (frame.callId !== callId.value || !pc) break
+      // answer 只应发给主叫
+      if (frame.callId !== callId.value || !isCaller.value || !pc) break
       await pc.setRemoteDescription(JSON.parse(frame.sdp) as RTCSessionDescriptionInit)
       await flushPendingIce()
       break
@@ -257,7 +292,9 @@ async function handleFrame(frame: ServerFrame) {
         cleanup()
         state.value = 'idle'
         callId.value = ''
-        if (frame.reason && frame.reason !== 'hangup') emit('error', t(`call.${frame.reason}` as 'call.rejected'))
+        if (frame.reason && frame.reason !== 'hangup' && frame.reason !== 'disconnect') {
+          emit('error', t(`call.${frame.reason}` as 'call.rejected'))
+        }
       }
       break
   }

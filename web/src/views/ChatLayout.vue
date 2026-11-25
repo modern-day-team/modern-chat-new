@@ -180,7 +180,7 @@ function onCallError(message: string) {
 }
 /** 会话侧「视频通话」按钮调用：对当前单聊对象发起通话 */
 function startCallWithPeer(peerId: number, mediaType: 'audio' | 'video' = 'video') {
-  void callRef.value?.startCall(peerId, mediaType)
+  void callRef.value?.startCall(peerId, mediaType, convStore.currentConv?.id ?? 0)
 }
 const callPeerId = computed(() => convStore.currentConv?.peer?.id ?? 0)
 

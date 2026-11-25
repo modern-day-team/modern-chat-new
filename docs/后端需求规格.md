@@ -221,14 +221,14 @@ AdminPluginRow  { name, version, installCount, enabledCount, globalDisabled, cre
 
 #### 3.3.1 一对一通话信令（WebRTC）
 - **后端只做信令中继，不处理媒体流**：音视频由浏览器 `RTCPeerConnection` 端到端传输，服务端不落库、不解码、不记录通话内容；本功能不需要新增数据库表。
-- 上行帧（均带 `callId` 128 位随机串；SDP/ICE 单帧仍受 64KB 上限）：
-  - `{"type":"call.invite","callId","toUserId","mediaType":"audio"|"video","convId?"}` —— 发起前校验目标在线（`Hub.Online`）且双方是好友或同会话成员；向目标**全部在线连接**下发 `call.incoming`；同一时刻每个用户最多一路通话，忙线回 `{"type":"call.busy","callId"}`
-  - `{"type":"call.accept","callId"}` / `{"type":"call.reject","callId"}` —— 被叫应答/拒绝；服务端用连接自身的 `sid` 精确投递到发起端（前端无需知道自己的 sid）；超时 60s 未应答自动按拒绝处理
-  - `{"type":"call.offer","callId","toSid","sdp"}` / `{"type":"call.answer","callId","toSid","sdp"}` —— SDP 交换，服务端原样转发，只校验帧归属
-  - `{"type":"call.ice","callId","toSid","candidate"}` —— trickle ICE，单条 candidate 一帧；高频但受控制帧令牌桶约束
-  - `{"type":"call.hangup","callId","toSid?"}` —— 任一方挂断，向对端（全部设备）下发 `call.ended`，释放通话状态
-- 下行帧：`call.incoming {callId,fromUserId,nickname,avatar,mediaType}`、`call.accepted {callId,toSid}`、`call.rejected {callId}`、`call.busy {callId}`、`call.offer/answer {callId,sdp}`、`call.ice {callId,candidate}`、`call.ended {callId,reason?}`（`reason` 为中文：`rejected` / `busy` / `hangup` / `timeout` / `error`）
-- 通话状态仅在 Hub 内存维护（`callId → {fromUid, fromSid, toUid, startedAt}`），带 5 分钟 TTL 兜底清理；**多实例部署下通话状态不跨实例共享**，媒体 P2P 本身不受影响，跨实例忙线判定属二期边界（与 presence 一致）。
+- 上行帧（均带 `callId` 128 位随机串，服务端去重；SDP/ICE 单帧仍受 64KB 上限）：
+  - `{"type":"call.invite","callId","toUserId","mediaType":"audio"|"video","convId?"}` —— 发起前校验目标在线（`Hub.Online`）且双方是好友或同会话成员；向目标**全部在线连接**下发 `call.incoming`；同一时刻每个用户最多一路通话，忙线或 callId 重复回 `{"type":"call.busy","callId"}`
+  - `{"type":"call.accept","callId"}` / `{"type":"call.reject","callId"}` —— 被叫应答/拒绝；服务端用连接自身的 `sid` 精确投递到发起端（前端无需知道自己的 sid）；多端重复接听只有第一条生效；超时 60s 未应答自动按拒绝处理
+  - `{"type":"call.offer","callId","sdp"}` / `{"type":"call.answer","callId","sdp"}` —— SDP 交换。**客户端不传 `toSid`**：服务端按 `callId` 与发送方身份推导目标设备（主叫→被叫接听设备，被叫→发起设备），避免被叫不知道主叫 sid 导致 answer 全丢
+  - `{"type":"call.ice","callId","candidate"}` —— trickle ICE，单条 candidate 一帧；目标设备同样由服务端推导；高频但受控制帧令牌桶约束
+  - `{"type":"call.hangup","callId"}` —— 任一方挂断，向双方全部连接下发 `call.ended`，释放通话状态
+- 下行帧：`call.incoming {callId,fromUserId,fromSid,nickname?,avatar?,mediaType}`（`fromSid` 供客户端展示/调试，回信令**不需要**它）、`call.accepted {callId,fromSid}`、`call.rejected {callId}`、`call.busy {callId}`、`call.offer/answer {callId,sdp}`、`call.ice {callId,candidate}`、`call.ended {callId,reason?}`（`reason` 为 `hangup` / `timeout` / `disconnect` / `error`，前端据 i18n 映射中文提示）
+- 通话状态仅在 Hub 内存维护（`callId → {fromUid, fromSid, toUid, toSid, created, timer}`），带 5 分钟 TTL 兜底清理；**一方连接断开（含被踢）立即结束其通话并向对端下发 `call.ended{reason:"disconnect"}`**；**多实例部署下通话状态不跨实例共享**，媒体 P2P 本身不受影响，跨实例忙线判定属二期边界（与 presence 一致）。
 - ICE 配置经 **`GET /api/call/config`（需登录）** 下发 `{enabled, iceServers:[{urls,username?,credential?}]}`，前端登录后取一次并缓存；**TURN 凭据绝不放公开接口**（`/api/site` 只暴露 `call:{enabled:true}` 供前端判断入口是否显示）。默认启用公开 STUN，`TURN_*` 环境变量未配置时无 TURN（对称 NAT 下可能无法直连，需部署方自行配置）。
 
 ## 4. 数据模型与校验规则

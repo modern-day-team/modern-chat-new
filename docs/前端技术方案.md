@@ -158,7 +158,7 @@ components/declarative    插件声明式 UI 渲染器（内核）
 
 ### 4.1 一对一视频通话（WebRTC）
 - **信令走 WS、媒体走 P2P**：`call.*` 帧由 `stores/ws.ts` 的 `onFrame()` 旁路分发（与公告/通知一致），不进 `conversations` 消息状态机；上行直接 `useWsStore.send()`。通话组件 `components/call/CallOverlay.vue` 自包含 `Teleport to="body"`，在 `ChatLayout.vue` 挂载/解绑监听。
-- **状态机**：`idle → incoming（响铃 60s）→ connecting → active → ended`。`callId` 由发起端 `crypto.randomUUID()` 生成；被叫的 accept/offer/answer/ice 都带发起端 `toSid`，与后端精确投递对应。
+- **状态机**：`idle → incoming（响铃 60s）→ connecting（30s 兜底超时）→ active → ended`。`callId` 由发起端 `crypto.randomUUID()` 生成，服务端去重；**客户端不传 `toSid`**，offer/answer/ICE 的目标设备由服务端按 `callId` 与发送方身份推导（被叫无需知道主叫 sid）；关键帧发送失败（WS 断）立即回滚状态，一方断线后端下发 `call.ended{reason:"disconnect"}`。
 - **端到端媒体**：`RTCPeerConnection` + `getUserMedia({audio:true, video: mediaType==='video'})`；主叫 createOffer → `call.offer`，被叫 setRemoteDescription → createAnswer → `call.answer`；双方 `onicecandidate` 逐条发 `call.ice`，`addIceCandidate` 入队。ICE 配置取登录后的 `GET /api/call/config`（返回 `iceServers`，默认公开 STUN，TURN 可选且凭据只经此接口下发）；`/api/site` 的 `call.enabled` 仅用于判断是否显示通话入口。
 - **生命周期**：任一方 `call.hangup` → 双方 `call.ended`；`pc.ontrack` 绑定远端 `<video>`；挂断/拒接/超时/错误都调用同一 `cleanup()` 关闭 `MediaStream` 轨道与 `pc`，避免摄像头指示灯常亮；组件卸载与 WS 断开同样触发 cleanup。
 - **视觉与可访问性**：来电弹窗与通话悬浮窗全部用 `--mc-*` / `--td-*` 令牌与自研 `Ui*` 控件，动效只走 `--mc-dur-*` / `--mc-ease-*`；`prefers-reduced-motion` 下自动降级；来电弹窗带明确「接听/拒绝」按钮与状态文案（`i18n` 新增 `call` 分组，中英同步）。

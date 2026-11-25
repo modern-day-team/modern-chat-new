@@ -259,10 +259,11 @@ export type ClientFrame =
   | { type: 'edit'; messageId: number; content: string }
   | { type: 'reaction'; messageId: number; emoji: string; action: 'set' | 'remove' }
   | { type: 'delivered'; messageId: number }
-  | { type: 'call.invite'; callId: string; toUserId: number; mediaType: 'audio' | 'video' }
+  | { type: 'call.invite'; callId: string; toUserId: number; convId?: number; mediaType: 'audio' | 'video' }
   | { type: 'call.accept' | 'call.reject'; callId: string }
-  | { type: 'call.offer' | 'call.answer'; callId: string; toSid: string; sdp: string }
-  | { type: 'call.ice'; callId: string; toSid: string; candidate: string }
+  // offer/answer/ice 的目标设备由服务端按 callId 推导，客户端不传 toSid
+  | { type: 'call.offer' | 'call.answer'; callId: string; sdp: string }
+  | { type: 'call.ice'; callId: string; candidate: string }
   | { type: 'call.hangup'; callId: string }
   | { type: 'ping' }
 
@@ -316,7 +317,7 @@ export type ServerFrame =
   /** meta=true 表示成员/群名/公告等元信息变更（需重拉成员与群文件）；纯新消息不带 */
   | { type: 'conv_change'; convId: number; meta?: boolean }
   | { type: 'kicked'; reason: string }
-  | { type: 'call.incoming'; callId: string; fromUserId: number; nickname?: string; avatar?: string; mediaType: 'audio' | 'video' }
+  | { type: 'call.incoming'; callId: string; fromUserId: number; fromSid: string; nickname?: string; avatar?: string; mediaType: 'audio' | 'video' }
   | { type: 'call.accepted'; callId: string; fromSid: string }
   | { type: 'call.rejected' | 'call.busy' | 'call.ended'; callId: string; reason?: string }
   | { type: 'call.offer' | 'call.answer'; callId: string; sdp: string }

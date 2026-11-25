@@ -8,6 +8,15 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Video call review fixes
+
+Review found four high-severity defects in the first version (including "calls could never be established"); all fixed with regression tests:
+- **H1 callee could not reply with answer**: the original design required clients to send `toSid`, but the callee had no way to learn the caller's sid, so answers/ICE were all dropped. The server now derives the target device from `callId` and the sender's identity; clients no longer send `toSid`.
+- **H2 duplicate callId**: `callManager.add` now rejects duplicate IDs, preventing permanent busy state.
+- **H3 timer race**: `snapshot()` reads state under the lock; `setToSID()` is locked and idempotent (first answering device wins), removing the data race and the "just accepted but timed out" bug.
+- **H4 stale state on disconnect**: `Hub.Unregister` now ends that device's calls and notifies the peer with `call.ended{reason:"disconnect"}`; the frontend resets state in `cleanup`, adds a 30s connecting timeout, and rolls back if a key frame fails to send.
+- Contracts and docs aligned: `proto.ts`, backend spec §3.3.1, design doc §7, API reference §11.2/11.3, frontend guide §4.1, README and all website mirrors.
+
 ### One-to-one video calls (WebRTC)
 - **End-to-end audio/video calls**: added `call.*` WebSocket signaling frames (invite / accept / reject / offer / answer / ice / hangup). The server only relays signals, checks presence and friend/conversation membership, and enforces per-user busy state (60s no-answer timeout); it never handles media or stores call data. Media flows end-to-end via browser `RTCPeerConnection`.
 - **Incoming dialog + in-call floating window**: new `components/call/CallOverlay.vue` with self-contained Teleport, accept/decline/hangup, microphone and camera toggles, remote video and status hints; driven by `ws.onFrame()` in `ChatLayout`, decoupled from the message state machine. Added a `call` i18n group (zh/en).
