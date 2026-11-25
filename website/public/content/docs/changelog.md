@@ -8,6 +8,13 @@
 
 ## [未发布]
 
+### 代码结构优化（纯重构）
+
+- 后端通话：合并 `endCall` / `endCallForDevice` 的公共收尾为 `finishCall`（清理状态 + 双方广播 ended），删除未被调用的 `newCallID` 死代码；结束路径只有一处实现。
+- 前端通话：抽取 `components/call/logic.ts`（类型 / 帧过滤规则 `shouldHandleFrame` / `formatDuration` / `normalizeMediaType`），`CallOverlay.vue` 改为消费纯函数，过滤规则从散落各分支的 if 收敛为单一可测函数；新增 7 个 vitest 用例（过滤规则与格式化）。
+- 测试：提取 `newCallTestHub` 消除后端通话测试里重复的 Hub/Client 构造样板。
+- 以上均为结构优化，**功能行为与站长开关保持不变**。
+
 ### 站长通话开关
 
 - 新增站点设置 `site.callEnabled`（默认开）：站长后台「系统设置 → 站点信息」可用 UiSwitch 关闭语音/视频通话。

@@ -13,6 +13,10 @@ import UiButton from '@/components/ui/UiButton.vue'
 import AvatarBadge from '@/components/common/AvatarBadge.vue'
 import { useAppI18n } from '@/composables/useAppI18n'
 import type { ClientFrame, ServerFrame } from '@/types/proto'
+import {
+  formatDuration, normalizeMediaType, shouldHandleFrame,
+  type CallState, type IceServer, type MediaType,
+} from './logic'
 
 const props = defineProps<{
   /** 上行出口：返回 false 表示 WS 未连接 */
@@ -23,12 +27,7 @@ const props = defineProps<{
 const emit = defineEmits<{ error: [message: string] }>()
 const { t } = useAppI18n()
 
-type State = 'idle' | 'incoming' | 'connecting' | 'active' | 'ended'
-type MediaType = 'audio' | 'video'
-
-interface IceServer { urls: string; username?: string; credential?: string }
-
-const state = ref<State>('idle')
+const state = ref<CallState>('idle')
 const callId = ref('')
 const peerId = ref(0)
 const peerName = ref('')
@@ -59,12 +58,6 @@ const statusText = computed(() => {
   if (state.value === 'active') return `${t('call.connected')} · ${formatDuration(elapsed.value)}`
   return ''
 })
-
-function formatDuration(sec: number) {
-  const m = Math.floor(sec / 60)
-  const s = sec % 60
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-}
 
 /** 返回是否发送成功；关键帧发送失败由调用方回滚状态（避免前后端状态分叉）。 */
 function post(frame: ClientFrame): boolean {
@@ -233,11 +226,16 @@ function toggleCam() {
 
 /** 接收服务端下发的 call.* 帧（由 ChatLayout 的 ws.onFrame 旁路驱动）。 */
 async function handleFrame(frame: ServerFrame) {
-  if (!('type' in frame) || !frame.type.startsWith('call.')) return
+  const shouldHandle = shouldHandleFrame(frame, {
+    callId: callId.value,
+    state: state.value,
+    isCaller: isCaller.value,
+    selfId: props.selfId,
+    hasPeerConnection: !!pc,
+  })
+  if (!shouldHandle) return
   switch (frame.type) {
     case 'call.incoming': {
-      // 忽略自己发起的来电回环（selfId 仅用于此防御性校验）
-      if (props.selfId && frame.fromUserId === props.selfId) break
       if (state.value !== 'idle') {
         post({ type: 'call.reject', callId: frame.callId })
         return
@@ -246,20 +244,19 @@ async function handleFrame(frame: ServerFrame) {
       peerId.value = frame.fromUserId
       peerName.value = frame.nickname ?? ''
       peerAvatar.value = frame.avatar ?? ''
-      mediaType.value = frame.mediaType
+      mediaType.value = normalizeMediaType(frame.mediaType)
       isCaller.value = false
       state.value = 'incoming'
       incomingTimer = setTimeout(() => finish('timeout'), 60_000)
       break
     }
     case 'call.busy':
-      if (frame.callId === callId.value) { cleanup(); state.value = 'idle'; emit('error', t('call.busy')) }
+      cleanup(); state.value = 'idle'; emit('error', t('call.busy'))
       break
     case 'call.rejected':
-      if (frame.callId === callId.value) { cleanup(); state.value = 'idle'; emit('error', t('call.rejected')) }
+      cleanup(); state.value = 'idle'; emit('error', t('call.rejected'))
       break
     case 'call.accepted': {
-      if (frame.callId !== callId.value || !isCaller.value) break
       if (incomingTimer) { clearTimeout(incomingTimer); incomingTimer = null }
       if (!createPC() || !(await getMedia())) break
       state.value = 'connecting'
@@ -271,38 +268,30 @@ async function handleFrame(frame: ServerFrame) {
       break
     }
     case 'call.offer': {
-      // offer 只应发给被叫；主叫端忽略
-      if (frame.callId !== callId.value || isCaller.value || state.value !== 'connecting') break
-      if (!pc) break
-      await pc.setRemoteDescription(JSON.parse(frame.sdp) as RTCSessionDescriptionInit)
+      await pc!.setRemoteDescription(JSON.parse(frame.sdp) as RTCSessionDescriptionInit)
       await flushPendingIce()
-      const answer = await pc.createAnswer()
-      await pc.setLocalDescription(answer)
+      const answer = await pc!.createAnswer()
+      await pc!.setLocalDescription(answer)
       if (!post({ type: 'call.answer', callId: callId.value, sdp: JSON.stringify(answer) })) finish('error')
       break
     }
     case 'call.answer': {
-      // answer 只应发给主叫
-      if (frame.callId !== callId.value || !isCaller.value || !pc) break
-      await pc.setRemoteDescription(JSON.parse(frame.sdp) as RTCSessionDescriptionInit)
+      await pc!.setRemoteDescription(JSON.parse(frame.sdp) as RTCSessionDescriptionInit)
       await flushPendingIce()
       break
     }
     case 'call.ice': {
-      if (frame.callId !== callId.value || !pc) break
       const candidate = JSON.parse(frame.candidate) as RTCIceCandidateInit
-      if (pc.remoteDescription) await pc.addIceCandidate(candidate)
+      if (pc!.remoteDescription) await pc!.addIceCandidate(candidate)
       else pendingIce.push(candidate)
       break
     }
     case 'call.ended':
-      if (frame.callId === callId.value) {
-        cleanup()
-        state.value = 'idle'
-        callId.value = ''
-        if (frame.reason && frame.reason !== 'hangup' && frame.reason !== 'disconnect') {
-          emit('error', t(`call.${frame.reason}` as 'call.rejected'))
-        }
+      cleanup()
+      state.value = 'idle'
+      callId.value = ''
+      if (frame.reason && frame.reason !== 'hangup' && frame.reason !== 'disconnect') {
+        emit('error', t(`call.${frame.reason}` as 'call.rejected'))
       }
       break
   }

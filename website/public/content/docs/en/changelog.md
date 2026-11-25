@@ -8,6 +8,12 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Code structure cleanup (refactor only)
+- Backend calls: merged the shared teardown of `endCall` / `endCallForDevice` into `finishCall` (state cleanup + broadcast ended to both parties); removed the uncalled `newCallID` dead code.
+- Frontend calls: extracted `components/call/logic.ts` (types, frame-filter rule `shouldHandleFrame`, `formatDuration`, `normalizeMediaType`); `CallOverlay.vue` now consumes pure functions so filtering rules are centralized and testable instead of scattered per-branch `if`s. Added 7 vitest cases.
+- Tests: extracted `newCallTestHub` to remove repeated Hub/Client setup in call tests.
+- Structural cleanup only — behavior and the admin call toggle are unchanged.
+
 ### Admin call toggle
 - Added a site setting `site.callEnabled` (default on): admins can turn voice/video calls off in Admin → System settings → Site info with a UiSwitch.
 - When off, three layers enforce it: the frontend hides both call entries, `GET /api/call/config` returns 403, and all `call.*` WS signaling is rejected with an `error` frame — not just a hidden button.

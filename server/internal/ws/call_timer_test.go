@@ -7,13 +7,7 @@ import (
 
 // 超时 timer 只结束未接听的通话；接听后即使 timer 触发也不能误杀（H3 回归）。
 func TestCallTimeoutOnlyWhenUnanswered(t *testing.T) {
-	hub := NewHub(&Deps{})
-	caller := newTestClient(hub, 1, 8)
-	caller.sid = "sid-caller"
-	callee := newTestClient(hub, 2, 8)
-	callee.sid = "sid-callee"
-	hub.Register(caller)
-	hub.Register(callee)
+	hub, caller, callee := newCallTestHub(1, 2)
 
 	// 用短 TTL 模拟超时：直接调 endCall 前先检查 snapshot 语义
 	hub.handleCallInvite(caller, &clientFrame{Type: "call.invite", CallID: "timer-1", ToUserID: 2, MediaType: "video"})

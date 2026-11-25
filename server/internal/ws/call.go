@@ -1,8 +1,6 @@
 package ws
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"log/slog"
 	"strconv"
@@ -131,15 +129,6 @@ func (m *callManager) gcLocked() {
 	}
 }
 
-// newCallID 生成 128 位随机通话 ID。
-func newCallID() string {
-	buf := make([]byte, 16)
-	if _, err := rand.Read(buf); err != nil {
-		return "c" + hex.EncodeToString([]byte(time.Now().Format("20060102150405.000000000")))
-	}
-	return hex.EncodeToString(buf)
-}
-
 // ToSid 向指定用户的指定设备（sid）发帧；没有匹配连接时静默返回。
 // 与 kickSessionLocal（hub.go）同构：只序列化一次，锁内 trySend，不持锁做网络操作。
 func (h *Hub) ToSid(userID uint, sid string, frame any) bool {
@@ -163,29 +152,28 @@ func (h *Hub) ToSid(userID uint, sid string, frame any) bool {
 	return false
 }
 
-// endCall 结束通话并向双方所有连接广播 ended（参与方可能多端在线）。
-func (h *Hub) endCall(id, reason string) {
-	info, ok := h.calls.snapshot(id)
-	if !ok {
-		return
-	}
+// finishCall 结束一路通话的公共收尾：清理状态 + 向双方全部连接广播 ended。
+// 挂断 / 超时 / 断线走这里；拒绝是另一种语义（给主叫 rejected），单独处理。
+func (h *Hub) finishCall(id string, info callInfo, reason string) {
 	h.calls.remove(id)
 	frame := ginH{"type": "call.ended", "callId": id, "reason": reason}
 	h.ToUsers([]uint{info.fromUID}, frame)
 	h.ToUsers([]uint{info.toUID}, frame)
 }
 
-// endCallForDevice 设备断开时结束其参与的通话；toSid 精确通知对端接听设备。
+// endCall 按 callId 结束通话（挂断 / 拒绝 / 超时）。
+func (h *Hub) endCall(id, reason string) {
+	if info, ok := h.calls.snapshot(id); ok {
+		h.finishCall(id, info, reason)
+	}
+}
+
+// endCallForDevice 设备断开时结束其参与的通话（对端会收到 ended）。
 func (h *Hub) endCallForDevice(uid uint, sid, reason string) {
 	for _, id := range h.calls.findByDevice(uid, sid) {
-		info, ok := h.calls.snapshot(id)
-		if !ok {
-			continue
+		if info, ok := h.calls.snapshot(id); ok {
+			h.finishCall(id, info, reason)
 		}
-		h.calls.remove(id)
-		frame := ginH{"type": "call.ended", "callId": id, "reason": reason}
-		h.ToUsers([]uint{info.fromUID}, frame)
-		h.ToUsers([]uint{info.toUID}, frame)
 	}
 }
 

@@ -35,16 +35,23 @@ func callFrame(typ, id string) *clientFrame {
 	return &clientFrame{Type: typ, CallID: id}
 }
 
-// 完整通话流程：邀请 → 来电 → 接听 → offer → answer → ice 双向 → 挂断。
-// 这是 H1 的回归测试：被叫 answer 必须送达主叫（旧实现用未初始化的 toSid 会被丢弃）。
-func TestCallFlowInviteAnswerHangup(t *testing.T) {
-	hub := NewHub(&Deps{}) // Friends/Users 为 nil：跳过关系校验，专注信令链路
-	caller := newTestClient(hub, 1, 16)
+// newCallTestHub 构造一路通话测试所需的最小 Hub 与两端 Client（同包测试共享）。
+func newCallTestHub(callerUID, calleeUID uint) (*Hub, *Client, *Client) {
+	hub := NewHub(&Deps{})
+	caller := newTestClient(hub, callerUID, 16)
 	caller.sid = "sid-caller"
-	callee := newTestClient(hub, 2, 16)
+	callee := newTestClient(hub, calleeUID, 16)
 	callee.sid = "sid-callee"
 	hub.Register(caller)
 	hub.Register(callee)
+	return hub, caller, callee
+}
+
+// 完整通话流程：邀请 → 来电 → 接听 → offer → answer → ice 双向 → 挂断。
+// 这是 H1 的回归测试：被叫 answer 必须送达主叫（旧实现用未初始化的 toSid 会被丢弃）。
+func TestCallFlowInviteAnswerHangup(t *testing.T) {
+	// Friends/Users 为 nil：跳过关系校验，专注信令链路
+	hub, caller, callee := newCallTestHub(1, 2)
 
 	// 1) 主叫发起：被叫收到 incoming，带 fromSid
 	hub.handleCallInvite(caller, &clientFrame{
@@ -107,13 +114,7 @@ func TestCallMediaTypeNormalization(t *testing.T) {
 		{"", "audio"},
 		{"evil", "audio"},
 	} {
-		hub := NewHub(&Deps{})
-		caller := newTestClient(hub, 1, 8)
-		caller.sid = "sid-caller"
-		callee := newTestClient(hub, 2, 8)
-		callee.sid = "sid-callee"
-		hub.Register(caller)
-		hub.Register(callee)
+		hub, caller, callee := newCallTestHub(1, 2)
 		hub.handleCallInvite(caller, &clientFrame{
 			Type: "call.invite", CallID: "mt-" + tc.in, ToUserID: 2, MediaType: tc.in,
 		})
@@ -126,13 +127,7 @@ func TestCallMediaTypeNormalization(t *testing.T) {
 
 // 未接听时主叫发 offer 必须被丢弃（不能投给未接听设备）。
 func TestCallOfferBeforeAcceptDropped(t *testing.T) {
-	hub := NewHub(&Deps{})
-	caller := newTestClient(hub, 1, 8)
-	caller.sid = "sid-caller"
-	callee := newTestClient(hub, 2, 8)
-	callee.sid = "sid-callee"
-	hub.Register(caller)
-	hub.Register(callee)
+	hub, caller, callee := newCallTestHub(1, 2)
 
 	hub.handleCallInvite(caller, &clientFrame{Type: "call.invite", CallID: "pre-1", ToUserID: 2, MediaType: "audio"})
 	frameOf(t, callee) // incoming
@@ -169,13 +164,7 @@ func TestCallDuplicateAcceptIdempotent(t *testing.T) {
 
 // 断线清理（H4 修复）：被叫接听设备断开 → 主叫收到 disconnect，状态释放。
 func TestCallDisconnectNotifiesPeer(t *testing.T) {
-	hub := NewHub(&Deps{})
-	caller := newTestClient(hub, 1, 8)
-	caller.sid = "sid-caller"
-	callee := newTestClient(hub, 2, 8)
-	callee.sid = "sid-callee"
-	hub.Register(caller)
-	hub.Register(callee)
+	hub, caller, callee := newCallTestHub(1, 2)
 
 	hub.handleCallInvite(caller, &clientFrame{Type: "call.invite", CallID: "disc-1", ToUserID: 2, MediaType: "video"})
 	frameOf(t, callee)
