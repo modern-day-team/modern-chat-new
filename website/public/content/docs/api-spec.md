@@ -180,8 +180,8 @@ AdminPluginRow  { name, version, installCount, enabledCount, globalDisabled, cre
 | POST `/api/admin/users/:id/role` | `{role:\"user\"\|\"admin\"}` | `{ok:true, changed}`；降级最后一个站长返回 403；角色变更即时生效（鉴权中间件每次查库） |
 | POST `/api/admin/announce` | `{content}`（1-1000 字） | `{ok:true, convId, messageId, recipients}`；写入系统会话（`conversations.type=3`）并 WS 推送给全部用户 |
 | GET `/api/admin/audits` | `?page=&pageSize=` | `{audits: AdminAudit[], total, page, pageSize}`；`AdminAudit = {id, adminId, action, targetType, targetId, targetName, detail, ip, createdAt}`，倒序 |
-| GET `/api/site` | **免登录** | `{name, allowRegister, maintenanceMode, maintenanceMessage, requireInviteCode, requireEmail, requireEmailVerify, maxMessageLength, recallMinutes, maxGroupMembers, maxImageMB, maxAudioMB, maxFileMB, maxVideoMB}`；只含可公开字段，维护模式下也保持可用（前端维护页靠它拿文案）。`requireEmail` = 注册是否必填邮箱（开关开启即 true，首账号也是）；`requireEmailVerify` = 是否还需要验证码（开关 && SMTP 可用 && 已有账号，首账号豁免）。两者都是**实际生效值** |
-| GET `/api/admin/settings` | — | `{smtp, redis, storage, site:{name,allowRegister,maintenanceMode,maintenanceMessage,requireInviteCode,requireEmailVerify}, chat:{maxMessageLength,recallMinutes,maxGroupMembers,blockedWords}, upload:{maxImageMB,maxAudioMB,maxFileMB,maxVideoMB,maxStorageMB}, security:{loginMaxAttempts,loginLockMinutes}, smtpEnabled, redisEnabled, storageApplied, redisNeedsRestart}`；**密钥只给 hasXxx，永不回显**；站点 / 聊天 / 上传 / 安全部分显示的是**当前真实生效值**（含默认值） |
+| GET `/api/site` | **免登录** | `{name, allowRegister, maintenanceMode, maintenanceMessage, requireInviteCode, requireEmail, requireEmailVerify, maxMessageLength, recallMinutes, maxGroupMembers, maxImageMB, maxAudioMB, maxFileMB, maxVideoMB, call:{enabled}}`；`call.enabled` 由站长后台控制语音/视频通话开关（默认开）。只含可公开字段，维护模式下也保持可用（前端维护页靠它拿文案）。`requireEmail` = 注册是否必填邮箱（开关开启即 true，首账号也是）；`requireEmailVerify` = 是否还需要验证码（开关 && SMTP 可用 && 已有账号，首账号豁免）。两者都是**实际生效值** |
+| GET `/api/admin/settings` | — | `{smtp, redis, storage, site:{name,allowRegister,maintenanceMode,maintenanceMessage,requireInviteCode,requireEmailVerify,callEnabled}, chat:{maxMessageLength,recallMinutes,maxGroupMembers,blockedWords}, upload:{maxImageMB,maxAudioMB,maxFileMB,maxVideoMB,maxStorageMB}, security:{loginMaxAttempts,loginLockMinutes}, smtpEnabled, redisEnabled, storageApplied, redisNeedsRestart}`；**密钥只给 hasXxx，永不回显**；站点 / 聊天 / 上传 / 安全部分显示的是**当前真实生效值**（含默认值） |
 | PUT `/api/admin/settings` | `{smtp?, redis?, storage?, site?, chat?, upload?, security?}` | `{ok:true, redisNeedsRestart, storageApplied}`；密钥字段留空 = 不修改；SMTP 保存后热生效，Redis 需重启；站点 / 聊天 / 上传 / 安全**即时生效**；数值越界返回 400（不静默收敛）；写审计 `save_settings` |
 | GET `/api/admin/invites` | — | `InviteCode[]`（`{id,code,createdBy,creator,maxUses,uses,expiresAt,disabled,createdAt}`，新→旧） |
 | POST `/api/admin/invites` | `{maxUses:1-1000, expiresDays:0-365, count:1-20}` | `InviteCode[]`；码为 crypto/rand 12 字节 hex（24 位） |
@@ -221,6 +221,7 @@ AdminPluginRow  { name, version, installCount, enabledCount, globalDisabled, cre
 
 #### 3.3.1 一对一通话信令（WebRTC）
 - **后端只做信令中继，不处理媒体流**：音视频由浏览器 `RTCPeerConnection` 端到端传输，服务端不落库、不解码、不记录通话内容；本功能不需要新增数据库表。
+- **站长开关**：`site.callEnabled` 默认开，后台「系统设置 → 站点信息」可关；关闭后前端隐藏入口、`GET /api/call/config` 返回 403、WS `call.*` 信令统一回 `error` 帧拒绝发起（三重生效，不能只靠藏按钮）。
 - 上行帧（均带 `callId` 128 位随机串，服务端去重；SDP/ICE 单帧仍受 64KB 上限）：
   - `{"type":"call.invite","callId","toUserId","mediaType":"audio"|"video","convId?"}` —— 发起前校验目标在线（`Hub.Online`）且双方是好友或同会话成员；向目标**全部在线连接**下发 `call.incoming`；同一时刻每个用户最多一路通话，忙线或 callId 重复回 `{"type":"call.busy","callId"}`
   - `{"type":"call.accept","callId"}` / `{"type":"call.reject","callId"}` —— 被叫应答/拒绝；服务端用连接自身的 `sid` 精确投递到发起端（前端无需知道自己的 sid）；多端重复接听只有第一条生效；超时 60s 未应答自动按拒绝处理

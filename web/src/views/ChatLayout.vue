@@ -27,6 +27,7 @@ import { useFavoritesStore } from '@/stores/favorites'
 import { useFriendsStore } from '@/stores/friends'
 import { PANE_LIMITS, useLayoutStore, type PaneKey } from '@/stores/layout'
 import { usePluginsStore } from '@/stores/plugins'
+import { useSiteStore } from '@/stores/site'
 
 // 公告弹窗只在收到公告时显示：拆成异步 chunk，聊天首屏少下载 TDesign Dialog/表单样式（gzip ~48KB）
 const AnnouncementDialog = defineAsyncComponent(() => import('@/components/chat/AnnouncementDialog.vue'))
@@ -42,6 +43,7 @@ const convStore = useConversationsStore()
 const friendsStore = useFriendsStore()
 const favoritesStore = useFavoritesStore()
 const pluginsStore = usePluginsStore()
+const site = useSiteStore()
 const host = usePluginHost()
 const ws = useWsStore()
 const { t, te } = useAppI18n()
@@ -348,7 +350,7 @@ onUnmounted(() => {
       </Transition>
       <!-- 单聊语音/视频通话入口（浮在主区右上角，与详情入口并排） -->
       <UiButton
-        v-if="callPeerId"
+        v-if="callPeerId && site.config.call.enabled"
         class="mc-layout__call-toggle mc-layout__call-toggle--audio"
         variant="text"
         size="small"
@@ -359,7 +361,7 @@ onUnmounted(() => {
         <CallIcon size="16px" />
       </UiButton>
       <UiButton
-        v-if="callPeerId"
+        v-if="callPeerId && site.config.call.enabled"
         class="mc-layout__call-toggle"
         variant="text"
         size="small"

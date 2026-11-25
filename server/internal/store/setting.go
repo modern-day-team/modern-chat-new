@@ -49,6 +49,8 @@ const (
 	// 注册需邮箱验证：默认开启；开启时注册必须带邮箱 + 邮件验证码。
 	// 首个账号（站长）始终豁免，保证没有 SMTP 时也能把站点引导起来。
 	KeySiteRequireEmailVerify = "site.requireEmailVerify"
+	// 语音/视频通话：默认开启；关闭后前端隐藏入口、WS 信令拒绝发起。
+	KeySiteCallEnabled = "site.callEnabled"
 
 	// 安全
 	KeySecurityLoginMaxAttempts = "security.loginMaxAttempts"
@@ -80,8 +82,8 @@ var knownKeys = map[string]bool{
 
 	KeySiteName: true, KeySiteAllowRegister: true,
 	KeySiteMaintenanceMode: true, KeySiteMaintenanceMsg: true, KeySiteRequireInviteCode: true,
-	KeySiteRequireEmailVerify: true,
-	KeyChatMaxMessageLen:      true, KeyChatRecallMinutes: true, KeyChatMaxGroupMembers: true,
+	KeySiteRequireEmailVerify: true, KeySiteCallEnabled: true,
+	KeyChatMaxMessageLen: true, KeyChatRecallMinutes: true, KeyChatMaxGroupMembers: true,
 	KeyChatBlockedWords: true,
 	KeyUploadMaxImageMB: true, KeyUploadMaxAudioMB: true, KeyUploadMaxFileMB: true,
 	KeyUploadMaxVideoMB:         true,
@@ -237,9 +239,11 @@ type Ops struct {
 	RequireInviteCode  bool
 	// RequireEmailVerify 注册需邮箱验证（默认开）
 	RequireEmailVerify bool
-	MaxMessageLength   int
-	RecallMinutes      int
-	MaxGroupMembers    int
+	// CallEnabled 语音/视频通话（默认开；关闭后 WS 信令拒绝发起）
+	CallEnabled      bool
+	MaxMessageLength int
+	RecallMinutes    int
+	MaxGroupMembers  int
 	// BlockedWords 敏感词（已按行拆分、去空、去首尾空白）
 	BlockedWords []string
 	MaxImageMB   int
@@ -263,6 +267,7 @@ func DefaultOps() Ops {
 		// 默认要求邮箱验证：站点的第一件事通常是配好 SMTP。
 		// 首个账号（站长）在 Register 里豁免，不会把部署者锁在门外。
 		RequireEmailVerify: true,
+		CallEnabled:        true,
 		MaxMessageLength:   1000,
 		RecallMinutes:      2,
 		MaxGroupMembers:    200,
@@ -331,6 +336,10 @@ func OpsFrom(all map[string]string) Ops {
 	// 因为这里的安全默认值是「要验证」，而不是「不验证」）
 	if strings.TrimSpace(all[KeySiteRequireEmailVerify]) == "false" {
 		out.RequireEmailVerify = false
+	}
+	// 默认开：只有显式写 "false" 才关闭（升级后不突然禁用现有通话）
+	if strings.TrimSpace(all[KeySiteCallEnabled]) == "false" {
+		out.CallEnabled = false
 	}
 
 	out.MaxMessageLength = clampInt(all[KeyChatMaxMessageLen], 100, 5000, def.MaxMessageLength)

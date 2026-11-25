@@ -92,6 +92,7 @@ So environment variables still act as a fallback (containerized deployments can 
 | Site | Site name | ≤40 chars, default `ModernChat` | browser title, login page |
 | Site | Open registration | on / off (default on) | register endpoint 403, login page hides the entry |
 | Site | Maintenance mode + notice text | default off | non-admins get 503 + maintenance page (see below) |
+| Site | Voice & video calls | on / off (default on) | when off: frontend hides both entries, `GET /api/call/config` returns 403, and `call.*` WS signaling is rejected (effective immediately, no restart) |
 | Site | Registration requires invite code | default off | registration must carry a valid invite code |
 | Site | Registration requires email verification | default on (needs SMTP) | register page shows email (required) + verification code; same email has a 60-second cooldown, is valid for 10 minutes, and is invalidated after 5 consecutive wrong attempts. **Without SMTP configured, verification is automatically not required** (otherwise nobody could register); saving this switch as on in the admin console fails with a message to configure SMTP first. The first account is exempt from the code but **must still provide an email** (it is saved so the password can be recovered later). A user's "change email" also goes through a verification code (sent to the new address); without SMTP, that action is rejected |
 | Chat | Single message length | 100–5000, default 1000 | WS validation + input counter |

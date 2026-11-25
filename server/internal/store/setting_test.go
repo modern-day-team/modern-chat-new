@@ -23,6 +23,29 @@ func TestOpsFromRequireEmailVerify(t *testing.T) {
 	}
 }
 
+// 通话开关默认开，只有显式 false 才关闭（升级不突然禁用）。
+func TestOpsFromCallEnabled(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  map[string]string
+		want bool
+	}{
+		{"未配置默认开", map[string]string{}, true},
+		{"显式开", map[string]string{KeySiteCallEnabled: "true"}, true},
+		{"显式关", map[string]string{KeySiteCallEnabled: "false"}, false},
+		{"脏值保持默认开", map[string]string{KeySiteCallEnabled: "0"}, true},
+		{"空串保持默认开", map[string]string{KeySiteCallEnabled: "  "}, true},
+	}
+	for _, c := range cases {
+		if got := OpsFrom(c.raw).CallEnabled; got != c.want {
+			t.Fatalf("%s: got %v, want %v", c.name, got, c.want)
+		}
+	}
+	if !knownKeys[KeySiteCallEnabled] {
+		t.Fatal("callEnabled key must be whitelisted or settings.Save will skip it")
+	}
+}
+
 // 邀请码开关方向相反：默认关、只有显式 "true" 才打开。
 func TestOpsFromRequireInviteCode(t *testing.T) {
 	if OpsFrom(map[string]string{}).RequireInviteCode {

@@ -752,6 +752,9 @@ export default {
     allowRegisterOn: '允许新用户注册',
     allowRegisterOff: '已关闭注册',
     registerOffHint: '⚠ 关闭后注册接口直接返回 403，只有已有账号能登录。',
+    siteCallEnabled: '语音 / 视频通话',
+    callEnabledOn: '允许单聊发起语音与视频通话',
+    callEnabledOff: '已关闭通话（入口隐藏且信令被拒）',
     // 聊天规则
     chatTitle: '聊天规则',
     chatDesc: '这些规则由服务端每次请求现读，保存后立即生效，无需重启服务。',

@@ -28,6 +28,8 @@ export const useSiteStore = defineStore('site', () => {
     maxAudioMB: 5,
     maxFileMB: 20,
     maxVideoMB: 30,
+    // 保守默认：站点配置未拉回前不显示通话入口，拉回后按站长设置纠正
+    call: { enabled: false },
   })
   const loaded = ref(false)
 

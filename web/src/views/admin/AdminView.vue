@@ -273,6 +273,7 @@ const settingsForm = ref<AdminSettingsPayload>({
     maintenanceMessage: '',
     requireInviteCode: false,
     requireEmailVerify: true,
+    callEnabled: true,
   },
   chat: { maxMessageLength: 1000, recallMinutes: 2, maxGroupMembers: 200, blockedWords: '' },
   upload: { maxImageMB: 8, maxAudioMB: 5, maxFileMB: 20, maxVideoMB: 30, maxStorageMB: 0 },
@@ -1623,6 +1624,22 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
                     settingsForm.site.allowRegister
                       ? t('admin.allowRegisterOn')
                       : t('admin.allowRegisterOff')
+                  }}
+                </span>
+              </div>
+            </label>
+            <label class="mc-settings__field">
+              <span>{{ t('admin.siteCallEnabled') }}</span>
+              <div class="mc-settings__switch-row">
+                <UiSwitch
+                  :value="settingsForm.site.callEnabled"
+                  @change="(v) => (settingsForm.site.callEnabled = v)"
+                />
+                <span class="text-placeholder">
+                  {{
+                    settingsForm.site.callEnabled
+                      ? t('admin.callEnabledOn')
+                      : t('admin.callEnabledOff')
                   }}
                 </span>
               </div>

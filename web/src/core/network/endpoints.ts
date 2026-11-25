@@ -671,6 +671,8 @@ export interface SiteConfig {
   maxFileMB: number
   /** 视频单条上限（MB） */
   maxVideoMB: number
+  /** 语音/视频通话总开关（站长后台可关） */
+  call: { enabled: boolean }
 }
 
 export interface ChatRules {
@@ -731,6 +733,8 @@ export interface AdminSettingsPayload {
     maintenanceMessage: string
     requireInviteCode: boolean
     requireEmailVerify: boolean
+    /** 语音/视频通话开关（optional：老后端不传时保持默认） */
+    callEnabled?: boolean
   }
   chat: ChatRules
   upload: UploadLimits

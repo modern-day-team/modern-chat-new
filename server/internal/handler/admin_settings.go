@@ -69,6 +69,9 @@ type siteSetting struct {
 	RequireInviteCode  bool   `json:"requireInviteCode"`
 	// RequireEmailVerify 注册需邮箱验证（默认开；开启前必须配好 SMTP）
 	RequireEmailVerify bool `json:"requireEmailVerify"`
+	// CallEnabled 语音/视频通话（默认开；关闭后入口隐藏且 WS 信令拒绝）。
+	// 用指针区分「未传」与「显式 false」：老前端整体 PUT 时不致误关通话。
+	CallEnabled *bool `json:"callEnabled"`
 }
 
 // securitySetting 登录安全策略。
@@ -170,6 +173,7 @@ func (h *AdminHandler) GetSettings(c *gin.Context) {
 		MaintenanceMessage: ops.MaintenanceMessage,
 		RequireInviteCode:  ops.RequireInviteCode,
 		RequireEmailVerify: ops.RequireEmailVerify,
+		CallEnabled:        &ops.CallEnabled,
 	}
 	view.Security = securitySetting{
 		LoginMaxAttempts: ops.LoginMaxAttempts,
@@ -334,6 +338,11 @@ func (h *AdminHandler) SaveSettings(c *gin.Context) {
 		store.KeyUploadMaxStorageMB: strconv.Itoa(req.Upload.MaxStorageMB),
 	}
 
+	// callEnabled 用指针接收：未传（老前端缓存）时保持原值，避免误关通话
+	if req.Site.CallEnabled != nil {
+		updates[store.KeySiteCallEnabled] = strconv.FormatBool(*req.Site.CallEnabled)
+	}
+
 	if err := h.settings.Save(updates, middleware.UserFrom(c).ID); err != nil {
 		internal(c, err)
 		return
@@ -463,6 +472,9 @@ func describeSettings(req settingsPayload) string {
 	}
 	if req.Storage.Endpoint != "" {
 		parts = append(parts, "storage="+req.Storage.Endpoint)
+	}
+	if req.Site.CallEnabled != nil {
+		parts = append(parts, "call="+strconv.FormatBool(*req.Site.CallEnabled))
 	}
 	return strings.Join(parts, " ")
 }

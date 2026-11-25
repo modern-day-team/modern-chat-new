@@ -8,6 +8,11 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Admin call toggle
+- Added a site setting `site.callEnabled` (default on): admins can turn voice/video calls off in Admin → System settings → Site info with a UiSwitch.
+- When off, three layers enforce it: the frontend hides both call entries, `GET /api/call/config` returns 403, and all `call.*` WS signaling is rejected with an `error` frame — not just a hidden button.
+- The admin API accepts the field as a pointer, so older frontends doing a full settings PUT (without the field) keep the existing value instead of accidentally disabling calls. `/api/site` exposes `call.enabled` for frontend consumption.
+
 ### Voice calls
 - Added a "Voice call" entry next to the video button in single-chat view, using the same `call.*` signaling with `mediaType:'audio'`.
 - Voice mode requests only microphone permission (no camera), shows the peer's avatar instead of a blank video area, and plays the remote audio track through a hidden `<audio>` element; `ontrack` dispatches by track kind.

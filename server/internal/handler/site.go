@@ -61,13 +61,21 @@ func (h *SiteHandler) Get(c *gin.Context) {
 		"maxFileMB":          ops.MaxFileMB,
 		"maxVideoMB":         ops.MaxVideoMB,
 		// 只暴露开关，TURN 凭据绝不进公开接口（需登录的 /api/call/config 才下发）
-		"call": gin.H{"enabled": true},
+		"call": gin.H{"enabled": ops.CallEnabled},
 	})
 }
 
 // CallConfig GET /api/call/config（需登录）。
 // TURN 凭据只经此接口下发给登录用户，不写日志、不放公开接口。
 func (h *SiteHandler) CallConfig(c *gin.Context) {
+	enabled := store.DefaultOps().CallEnabled
+	if h.settings != nil {
+		enabled = h.settings.Ops().CallEnabled
+	}
+	if !enabled {
+		c.JSON(http.StatusForbidden, gin.H{"error": "站点已关闭语音/视频通话"})
+		return
+	}
 	servers := []gin.H{}
 	if h.call.STUNServer != "" {
 		servers = append(servers, gin.H{"urls": h.call.STUNServer})
@@ -79,5 +87,5 @@ func (h *SiteHandler) CallConfig(c *gin.Context) {
 			"credential": h.call.TURNPass,
 		})
 	}
-	c.JSON(http.StatusOK, gin.H{"enabled": true, "iceServers": servers})
+	c.JSON(http.StatusOK, gin.H{"enabled": enabled, "iceServers": servers})
 }

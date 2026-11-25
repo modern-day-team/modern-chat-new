@@ -190,7 +190,12 @@ func (h *Hub) endCallForDevice(uid uint, sid, reason string) {
 }
 
 // dispatchCall 通话信令路由（已过控制帧令牌桶）。
+// 站长可在后台关闭通话：关闭后所有 call.* 信令被拒，不只是隐藏前端入口。
 func (h *Hub) dispatchCall(c *Client, f *clientFrame) {
+	if h.deps != nil && h.deps.Settings != nil && !h.deps.Settings.Ops().CallEnabled {
+		c.trySend(mustJSON(ginH{"type": "error", "reason": "站点已关闭语音/视频通话"}))
+		return
+	}
 	switch f.Type {
 	case "call.invite":
 		h.handleCallInvite(c, f)
