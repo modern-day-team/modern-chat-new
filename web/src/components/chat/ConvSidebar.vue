@@ -9,7 +9,7 @@ import { DialogPlugin, MessagePlugin } from '@/components/ui/feedback'
 import { List as TList, ListItem as TListItem } from 'tdesign-vue-next'
 import { AddIcon, ChatIcon, SearchIcon, UserCircleIcon } from 'tdesign-icons-vue-next'
 
-import AvatarBadge from './AvatarBadge.vue'
+import AvatarBadge from '@/components/common/AvatarBadge.vue'
 import ContextMenu, { type ContextMenuItem } from '@/components/common/ContextMenu.vue'
 import { useAppI18n } from '@/composables/useAppI18n'
 import { convApi, searchApi, userApi } from '@/core/network/endpoints'

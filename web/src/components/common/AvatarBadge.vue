@@ -10,7 +10,7 @@ const props = withDefaults(
     /** 自定义头像（data URL）；为空时用默认头像图 */
     src?: string
   }>(),
-  { color: '#0052d9', size: 40, online: false, src: '' },
+  { color: 'var(--td-brand-color)', size: 40, online: false, src: '' },
 )
 
 const initial = computed(() => props.name?.trim()?.charAt(0)?.toUpperCase() || '?')

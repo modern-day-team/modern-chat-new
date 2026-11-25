@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import UiButton from '@/components/ui/UiButton.vue'
-import AvatarBadge from '@/components/chat/AvatarBadge.vue'
+import AvatarBadge from '@/components/common/AvatarBadge.vue'
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { MessagePlugin } from '@/components/ui/feedback'

@@ -5,7 +5,7 @@ import UiInput from '@/components/ui/UiInput.vue'
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { MessagePlugin } from '@/components/ui/feedback'
 
-import AvatarBadge from './AvatarBadge.vue'
+import AvatarBadge from '@/components/common/AvatarBadge.vue'
 import { useAppI18n } from '@/composables/useAppI18n'
 import { userApi } from '@/core/network/endpoints'
 import { useAuthStore } from '@/stores/auth'

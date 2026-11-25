@@ -8,7 +8,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { DialogPlugin, MessagePlugin } from '@/components/ui/feedback'
 import { SearchIcon } from 'tdesign-icons-vue-next'
 
-import AvatarBadge from './AvatarBadge.vue'
+import AvatarBadge from '@/components/common/AvatarBadge.vue'
 import ContextMenu, { type ContextMenuItem } from '@/components/common/ContextMenu.vue'
 import PluginPanel from '@/components/declarative/PluginPanel.vue'
 import { useAppI18n } from '@/composables/useAppI18n'

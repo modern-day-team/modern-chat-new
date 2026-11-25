@@ -34,6 +34,10 @@ type Deps struct {
 	WS            *ws.Hub
 	AuthLimiter   middleware.Limiter // 认证类接口按 IP 限流
 	PluginLimiter middleware.Limiter // 插件安装按用户限流
+	MsgLimiter    middleware.Limiter // 消息限流（WS 与服务端插件宿主共用）
+	// LimiterFactory 为其余按用途隔离的限流点创建后端。main 在 Redis 可用时
+	// 注入共享配额工厂，否则回退内存；测试未注入时按内存处理。
+	LimiterFactory middleware.LimiterFactory
 	// Settings 与 Storage 由 main 装配（Hub 也要用同一个 Storage 做 URL 归属校验）
 	Settings *store.SettingStore
 	Storage  service.Storage
@@ -51,6 +55,16 @@ type Deps struct {
 
 // New 装配引擎。
 func New(d Deps) *gin.Engine {
+	// 限流后端按用途隔离：每个用途一个独立键前缀，避免同一 IP/UID 在不同
+	// 接口间串配额。未注入工厂（测试）时回退内存版，保持既有行为。
+	limiterFactory := d.LimiterFactory
+	if limiterFactory == nil {
+		limiterFactory = middleware.MemoryLimiterFactory
+	}
+	newLimiter := func(name string, perMin, burst int) middleware.Limiter {
+		return limiterFactory(name, perMin, burst)
+	}
+
 	r := gin.New()
 	// 修复缺陷：gin 默认 trustedProxies 为 0.0.0.0/0 + ::/0（信任所有代理），
 	// 客户端可伪造 X-Forwarded-For 冒充任意 IP，从而绕过按 IP 的认证接口限流。
@@ -130,6 +144,9 @@ func New(d Deps) *gin.Engine {
 			Timeout: time.Duration(d.Cfg.AITimeoutSeconds) * time.Second, AllowPrivate: d.Cfg.AIAllowPrivate,
 		})
 	}
+	// 注入宿主业务能力（message.send / conv.* / user.* / notification.push）。
+	// 权限边界与限流见 plugin_host.go；未配置的服务注入 nil，mc_call 返回明确错误。
+	WireServerPluginHost(spRuntime, users, convs, msgs, d.WS, d.Settings, d.Storage, pushSubs, d.Push, d.MsgLimiter)
 	resets := store.NewPasswordResetStore(d.DB)
 	audits := store.NewAuditStore(d.DB)
 	sessions := store.NewSessionStore(d.DB)
@@ -160,6 +177,8 @@ func New(d Deps) *gin.Engine {
 	sessionH := handler.NewSessionHandler(sessionSvc, d.WS)
 	friendH := handler.NewFriendHandler(users, friends, convs, moderation)
 	convH := handler.NewConversationHandler(users, friends, convs, msgs, moderation, settings, d.Storage)
+	// 收藏域业务规则归位 service 内核：handler 依赖窄接口而非具体 store。
+	convH.SetFavorites(service.NewFavoriteService(msgs))
 	modH := handler.NewModerationHandler(users, convs, msgs, moderation)
 	stickerH := handler.NewStickerHandler(stickers, d.Storage)
 	fileH := handler.NewFileHandler(files, convs, d.Storage)
@@ -246,7 +265,7 @@ func New(d Deps) *gin.Engine {
 	// 这几条是不带 JWT 的公网端点，单独按 IP 限流：既能挡密钥爆破，
 	// 也能兜住旧站 PHP 的重试风暴（一个大用户的 messages 阶段会有几十次 tick）。
 	// 120/min + burst 20 足够正常迁移跑满，又不至于把带宽/CPU 打满。
-	migrateLimit := middleware.RateLimit(middleware.NewLimiterStore(120, 20), middleware.KeyByIP)
+	migrateLimit := middleware.RateLimit(newLimiter("migrate", 120, 20), middleware.KeyByIP)
 	api.POST("/migrate/preview", migrateLimit, migrateH.Preview)
 	api.POST("/migrate/start", migrateLimit, migrateH.Start)
 	api.POST("/migrate/tick", migrateLimit, migrateH.Tick)
@@ -265,12 +284,12 @@ func New(d Deps) *gin.Engine {
 	// 扫码登录（handler/auth_qr.go）：桌面展示二维码，手机端已登录会话扫码确认。
 	// 桌面未登录态轮询 status（POST 传 body，票据不进访问日志），专用限流 60/min
 	// —— authLimit 的 10/min 会被 2.5s 一次的轮询打满。
-	qrLimit := middleware.RateLimit(middleware.NewLimiterStore(60, 20), middleware.KeyByIP)
+	qrLimit := middleware.RateLimit(newLimiter("qr", 60, 20), middleware.KeyByIP)
 	api.POST("/auth/qr/start", authLimit, authH.QRStart)
 	api.POST("/auth/qr/status", qrLimit, authH.QRStatus)
 	// 服务端插件的公开动态接口：只放行 manifest 标记 public 的路由（扫码首屏/回调）。
 	// 独立限流，避免匿名脚本打爆 WASM 实例。
-	extPublicLimit := middleware.RateLimit(middleware.NewLimiterStore(120, 30), middleware.KeyByIP)
+	extPublicLimit := middleware.RateLimit(newLimiter("ext-public", 120, 30), middleware.KeyByIP)
 	api.Any("/ext-public/:plugin/*path", extPublicLimit, serverPluginH.DynamicPublic)
 
 	// 两步验证（handler/auth_2fa.go，默认关闭）：登录密码正确后若开了 2FA，
@@ -299,7 +318,7 @@ func New(d Deps) *gin.Engine {
 		authed.POST("/me/2fa/email/enable", authH.TwofaEmailEnable)
 		authed.POST("/me/2fa/disable", authH.TwofaDisable)
 		// 换绑邮箱：给「新邮箱」发验证码（按用户限流，60 秒冷却由 store 保证）
-		emailCodeLimit := middleware.RateLimit(middleware.NewLimiterStore(5, 5), middleware.KeyByUID)
+		emailCodeLimit := middleware.RateLimit(newLimiter("email-code-change", 5, 5), middleware.KeyByUID)
 		authed.POST("/me/email-code", emailCodeLimit, authH.EmailCodeChange)
 
 		authed.GET("/users/search", userH.Search)
@@ -375,7 +394,7 @@ func New(d Deps) *gin.Engine {
 
 		// 图片 / 语音上传：按用户限流（10 次/分），避免被当图床刷
 		if uploadH != nil {
-			uploadLimit := middleware.RateLimit(middleware.NewLimiterStore(10, 10), middleware.KeyByUID)
+			uploadLimit := middleware.RateLimit(newLimiter("upload", 10, 10), middleware.KeyByUID)
 			authed.POST("/upload", uploadLimit, uploadH.Upload)
 		}
 		authed.POST("/plugins/from-url", pluginLimit, pluginH.FromURL)
@@ -387,7 +406,7 @@ func New(d Deps) *gin.Engine {
 		authed.DELETE("/plugins/:id/data", pluginDataH.Delete)
 		authed.GET("/plugins/:id/data/keys", pluginDataH.Keys)
 		// 服务端统一 AI 代理：密钥只在服务端；按用户限流，避免用户插件刷爆上游
-		aiLimit := middleware.RateLimit(middleware.NewLimiterStore(20, 5), middleware.KeyByUID)
+		aiLimit := middleware.RateLimit(newLimiter("ai", 20, 5), middleware.KeyByUID)
 		authed.GET("/ai/status", aiH.Status)
 		authed.POST("/ai/chat", aiLimit, aiH.Chat)
 		// 服务端插件：页面声明与动态接口（仍需登录）

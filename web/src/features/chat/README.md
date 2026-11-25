@@ -18,4 +18,10 @@
 
 ## 已知耦合（待解）
 - ConvSidebar 同时承载会话列表与联系人视图（chat/contacts 混合）
-- DetailPanel 含好友操作（拉黑/删除），归属 chat 但触达 contacts 能力
+- DetailPanel 含好友操作（拉黑/删除），归属 chat 但触达 contacts 能力；
+  两者经共享层 `@/stores/friends` 访问好友状态，符合边界规则，但视图职责仍待拆分
+
+## 已治理（2026-11-25）
+- `AvatarBadge` 原病态归属 chat 却被 `JoinView` / `AdminView` 等非 chat 视图反向引用，
+  已上提到 `components/common/AvatarBadge.vue`，切断非 chat 视图 → chat 内部的反向依赖。
+  通用头像组件统一从 `@/components/common/AvatarBadge.vue` 引入。

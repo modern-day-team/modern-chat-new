@@ -327,6 +327,12 @@ export type DeclarativeComponent =
   | 'checkbox'
   | 'switch'
   | 'segmented'
+  // SDK v5 UI 面：结构 / 状态 / 宿主文件选择
+  | 'tabs'
+  | 'steps'
+  | 'empty'
+  | 'loading'
+  | 'upload'
 
 export interface UIDescNode {
   component: DeclarativeComponent

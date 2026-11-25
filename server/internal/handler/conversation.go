@@ -19,12 +19,23 @@ import (
 
 // 群成员上限见 store.MaxGroupMembers（§3.2）。
 
+// FavoriteManager 消费方定义的窄接口（由 service.FavoriteService 实现）。
+// 收藏域的业务规则归位 service，handler 只做参数解析与状态码映射。
+type FavoriteManager interface {
+	MessageByID(messageID uint) (*model.Message, error)
+	Favorite(userID, messageID uint) error
+	Unfavorite(userID, messageID uint) error
+	Favorites(userID uint, limit int) ([]model.FavoriteView, error)
+}
+
 // ConversationHandler 会话与消息 REST。
 type ConversationHandler struct {
 	users   *store.UserStore
 	friends *store.FriendStore
 	convs   *store.ConversationStore
 	msgs    *store.MessageStore
+	// favorites 收藏业务窄接口；未注入时回退到 msgs 直连（兼容旧调用/测试）。
+	favorites FavoriteManager
 	// mod 拉黑关系：单聊发起前双向拦截
 	mod *store.ModerationStore
 	// settings 用于读取群人数上限等可运营规则（可为 nil，回落到内置默认值）
@@ -54,6 +65,53 @@ func NewConversationHandler(
 		users: users, friends: friends, convs: convs, msgs: msgs, mod: mod,
 		settings: settings, storage: storage,
 	}
+}
+
+// SetFavorites 注入收藏业务服务（组合根调用）；未注入时收藏相关方法回退到 msgs 直连。
+func (h *ConversationHandler) SetFavorites(svc FavoriteManager) {
+	h.favorites = svc
+}
+
+// favoriteSvc 返回收藏业务服务；未注入时用 msgs 适配（保持单测/旧调用兼容）。
+func (h *ConversationHandler) favoriteSvc() FavoriteManager {
+	if h.favorites != nil {
+		return h.favorites
+	}
+	return favoriteFallback{msgs: h.msgs}
+}
+
+// favoriteFallback 把 MessageStore 适配为 FavoriteManager，供未注入 service 时回退。
+type favoriteFallback struct{ msgs *store.MessageStore }
+
+func (f favoriteFallback) MessageByID(messageID uint) (*model.Message, error) {
+	msg, err := f.msgs.ByID(messageID)
+	if err != nil {
+		return nil, err
+	}
+	if msg == nil {
+		return nil, service.ErrMessageNotFound
+	}
+	return msg, nil
+}
+func (f favoriteFallback) Favorite(userID, messageID uint) error {
+	return f.msgs.Favorite(userID, messageID)
+}
+func (f favoriteFallback) Unfavorite(userID, messageID uint) error {
+	return f.msgs.Unfavorite(userID, messageID)
+}
+func (f favoriteFallback) Favorites(userID uint, limit int) ([]model.FavoriteView, error) {
+	n := limit
+	if n < 1 || n > 200 {
+		n = 100
+	}
+	rows, err := f.msgs.Favorites(userID, n)
+	if err != nil {
+		return nil, err
+	}
+	if rows == nil {
+		rows = []model.FavoriteView{}
+	}
+	return rows, nil
 }
 
 // List 会话列表。
@@ -258,7 +316,7 @@ func (h *ConversationHandler) Favorite(c *gin.Context) {
 		return
 	}
 	me := middleware.UserFrom(c)
-	if err := h.msgs.Favorite(me.ID, msg.ID); err != nil {
+	if err := h.favoriteSvc().Favorite(me.ID, msg.ID); err != nil {
 		internal(c, err)
 		return
 	}
@@ -272,7 +330,7 @@ func (h *ConversationHandler) Unfavorite(c *gin.Context) {
 		return
 	}
 	me := middleware.UserFrom(c)
-	if err := h.msgs.Unfavorite(me.ID, msg.ID); err != nil {
+	if err := h.favoriteSvc().Unfavorite(me.ID, msg.ID); err != nil {
 		internal(c, err)
 		return
 	}
@@ -305,17 +363,10 @@ func (h *ConversationHandler) SearchMessages(c *gin.Context) {
 // Favorites 收藏列表（按收藏时间倒序）。
 func (h *ConversationHandler) Favorites(c *gin.Context) {
 	limit := parseUint64Default(c.Query("limit"), 100)
-	if limit < 1 || limit > 200 {
-		limit = 100
-	}
-	rows, err := h.msgs.Favorites(middleware.UserFrom(c).ID, limit)
+	rows, err := h.favoriteSvc().Favorites(middleware.UserFrom(c).ID, limit)
 	if err != nil {
 		internal(c, err)
 		return
-	}
-	// 兜底：nil slice 会被序列化成 null（客户端 `.map` 会崩），统一给空数组
-	if rows == nil {
-		rows = []model.FavoriteView{}
 	}
 	c.JSON(http.StatusOK, rows)
 }
@@ -326,13 +377,13 @@ func (h *ConversationHandler) ownedMessage(c *gin.Context) (*model.Message, bool
 	if !ok {
 		return nil, false
 	}
-	msg, err := h.msgs.ByID(msgID)
+	msg, err := h.favoriteSvc().MessageByID(msgID)
 	if err != nil {
-		internal(c, err)
-		return nil, false
-	}
-	if msg == nil {
-		fail(c, http.StatusNotFound, "消息不存在")
+		if errors.Is(err, service.ErrMessageNotFound) {
+			fail(c, http.StatusNotFound, "消息不存在")
+		} else {
+			internal(c, err)
+		}
 		return nil, false
 	}
 	if !h.requireMember(c, msg.ConversationID) {

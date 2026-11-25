@@ -90,6 +90,55 @@ type AIConfig struct {
 // Enabled 是否配置了可用的 AI 代理。
 func (c AIConfig) Enabled() bool { return c.BaseURL != "" && c.APIKey != "" && c.Model != "" }
 
+// 以下是宿主注入给 WASM 插件的轻量业务结构。刻意只暴露展示所需的最小字段集，
+// 不直接复用 model.*View，避免插件拿到头像 URL、邮箱、角色之外的敏感列。
+// 字段口径与 model.UserBrief / model.ConversationView / model.MemberView 对齐。
+
+// ConvBrief 会话摘要（conv.list 返回）。
+type ConvBrief struct {
+	ID           uint    `json:"id"`
+	Type         int8    `json:"type"`
+	Name         *string `json:"name,omitempty"`
+	PeerNickname string  `json:"peerNickname,omitempty"` // 单聊对方昵称；群聊为空
+	MemberCount  int     `json:"memberCount"`
+	Unread       int     `json:"unread"`
+}
+
+// MemberBrief 会话成员摘要（conv.members 返回）。
+type MemberBrief struct {
+	UserID   uint   `json:"userId"`
+	Nickname string `json:"nickname"`
+	Role     string `json:"role"` // owner | admin | member
+}
+
+// UserBrief 用户摘要（user.get / user.search 返回）。
+type UserBrief struct {
+	ID          uint   `json:"id"`
+	Username    string `json:"username"`
+	Nickname    string `json:"nickname"`
+	AvatarColor string `json:"avatarColor"`
+}
+
+// HostServices WASM 宿主可注入的业务能力。所有回调都由注入方（组合根）负责
+// 权限边界：只能以「当前 WASM 用户」身份读取自己的会话 / 自己所在会话的成员、
+// 以自己身份发消息、给自己推通知，不能伪造系统身份或读取他人数据。
+// 未注入时对应 host call 返回明确错误，不影响 kv/http/ai/qr 等既有能力。
+type HostServices struct {
+	// MessageSender 以 from 身份向 convID 发消息；payload 为插件自定义结构化数据
+	// （≤32KB，仅实时帧携带，不落库）。
+	MessageSender func(from uint, convID uint, content string, msgType string, payload json.RawMessage) error
+	// ConvLister 列出 userID 可见的会话。
+	ConvLister func(userID uint) ([]ConvBrief, error)
+	// ConvMembers 列出 userID 所在会话 convID 的成员；非成员必须拒绝。
+	ConvMembers func(userID, convID uint) ([]MemberBrief, error)
+	// UserLookup 按 ID 查用户摘要，未找到返回 (nil, nil)。
+	UserLookup func(userID uint) (*UserBrief, error)
+	// UserSearch 按关键词搜索用户摘要。
+	UserSearch func(kw string, limit int) ([]UserBrief, error)
+	// NotificationPusher 给 userID 推一条浏览器通知；未配置时为 nil。
+	NotificationPusher func(userID uint, title, body string) error
+}
+
 // Runtime 服务端插件运行时：从 DB 加载启用插件，提供页面/路由查询、事件广播与定时任务。
 // 所有出站均为异步，失败只记日志，不影响主流程。
 type Runtime struct {
@@ -97,6 +146,7 @@ type Runtime struct {
 	store  *store.ServerPluginStore
 	kv     *store.ServerPluginKVStore
 	ai     AIConfig
+	host   HostServices // 注入的宿主业务能力（WASM 宿主 server:* / notification.push）
 	snap   atomic.Value // *snapshot
 	jobsMu sync.Mutex
 	jobs   []scheduledJob
@@ -107,6 +157,10 @@ func (r *Runtime) SetKVStore(kv *store.ServerPluginKVStore) { r.kv = kv }
 
 // SetAIConfig 注入服务端统一 AI 代理配置（WASM 宿主 ai.chat）。
 func (r *Runtime) SetAIConfig(ai AIConfig) { r.ai = ai }
+
+// SetHost 注入宿主业务能力（WASM 宿主 message.send / conv.* / user.* / notification.push）。
+// 组合根应在 Reload/Start 之前调用；未注入的回调在 mc_call 里返回「未配置」错误。
+func (r *Runtime) SetHost(services HostServices) { r.host = services }
 
 // ClearKV 删除插件全部 KV（卸载时调用）。
 func (r *Runtime) ClearKV(pluginID uint) error {

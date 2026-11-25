@@ -6,7 +6,7 @@ import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import { ArrowLeftIcon, ChatIcon } from 'tdesign-icons-vue-next'
 
-import AvatarBadge from './AvatarBadge.vue'
+import AvatarBadge from '@/components/common/AvatarBadge.vue'
 import MessageComposer from './MessageComposer.vue'
 import ContextMenu, { type ContextMenuItem } from '@/components/common/ContextMenu.vue'
 import { usePluginHost } from '@/composables/usePluginHost'

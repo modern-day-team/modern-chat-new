@@ -12,7 +12,7 @@
  */
 import { computed, inject, reactive } from 'vue'
 
-import AvatarBadge from './AvatarBadge.vue'
+import AvatarBadge from '@/components/common/AvatarBadge.vue'
 import LazyVideo from './LazyVideo.vue'
 import VoiceMessage from './VoiceMessage.vue'
 import MergeForwardCard from './MergeForwardCard.vue'

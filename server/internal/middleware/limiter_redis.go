@@ -19,16 +19,42 @@ type RedisLimiter struct {
 	prefix string
 }
 
-func NewRedisLimiter(client *redis.Client, perMin int) *RedisLimiter {
-	return &RedisLimiter{client: client, perMin: perMin, prefix: "mc:rl"}
+// NewRedisLimiter 创建共享配额限流器。namespace 用于区分用途：不同接口即使
+// 限流同一个 IP/UID，也必须落在不同键前缀，否则会互相挤占配额（例如登录失败
+// 5 次后迁移接口也被连带限流）。不传 namespace 时兼容旧调用的默认前缀。
+func NewRedisLimiter(client *redis.Client, perMin int, namespace ...string) *RedisLimiter {
+	prefix := "mc:rl"
+	if len(namespace) > 0 && namespace[0] != "" {
+		prefix = "mc:rl:" + namespace[0]
+	}
+	return &RedisLimiter{client: client, perMin: perMin, prefix: prefix}
+}
+
+// LimiterFactory 按用途创建限流器；name 作为 Redis 键前缀隔离不同接口。
+type LimiterFactory func(name string, perMin, burst int) Limiter
+
+// MemoryLimiterFactory 内存版工厂（单实例或 Redis 未启用时回退）。
+func MemoryLimiterFactory(_ string, perMin, burst int) Limiter {
+	return NewLimiterStore(perMin, burst)
+}
+
+// RedisLimiterFactory Redis 版工厂（多实例共享配额）。
+func RedisLimiterFactory(client *redis.Client) LimiterFactory {
+	return func(name string, perMin, _ int) Limiter {
+		return NewRedisLimiter(client, perMin, name)
+	}
+}
+
+// key 构造 Redis 计数键：用途前缀 + 调用方 key + 分钟桶。
+func (l *RedisLimiter) key(callerKey string) string {
+	return fmt.Sprintf("%s:%s:%d", l.prefix, callerKey, time.Now().Unix()/60)
 }
 
 func (l *RedisLimiter) Allow(key string) bool {
-	bucket := time.Now().Unix() / 60
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 
-	k := fmt.Sprintf("%s:%s:%d", l.prefix, key, bucket)
+	k := l.key(key)
 	n, err := l.client.Incr(ctx, k).Result()
 	if err != nil {
 		slog.Warn("redis limiter unavailable, allowing request", "err", err.Error())

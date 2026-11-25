@@ -25,7 +25,7 @@ import {
   UserIcon,
 } from 'tdesign-icons-vue-next'
 
-import AvatarBadge from '@/components/chat/AvatarBadge.vue'
+import AvatarBadge from '@/components/common/AvatarBadge.vue'
 import AdminGroupsPanel from '@/views/admin/AdminGroupsPanel.vue'
 import { ApiError } from '@/core/network/http'
 import { useAppI18n } from '@/composables/useAppI18n'

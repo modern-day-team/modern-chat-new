@@ -21,6 +21,24 @@ describe('validateUIDesc 白名单', () => {
     }
   })
 
+  it('SDK v5 UI 面组件进入白名单；upload 的 accept/maxSize 保留原始值，对象 props 仍被丢弃', () => {
+    for (const component of ['tabs', 'steps', 'empty', 'loading', 'upload']) {
+      const node = validateUIDesc({
+        component,
+        props: { labels: '["A","B"]', items: '["A"]', text: 'x', accept: 'image/*', maxSize: 262144 },
+        action: 'pick',
+      })
+      expect(node?.component).toBe(component)
+    }
+    const upload = validateUIDesc({
+      component: 'upload',
+      props: { accept: 'image/*', maxSize: 262144, evil: { a: 1 } },
+    })
+    expect(upload?.props.accept).toBe('image/*')
+    expect(upload?.props.maxSize).toBe(262144)
+    expect(upload?.props).not.toHaveProperty('evil')
+  })
+
   it('白名单外组件（如 script）拒绝', () => {
     expect(validateUIDesc({ component: 'script', props: { content: 'x' } })).toBeNull()
     expect(validateUIDesc({ component: 'iframe', props: {} })).toBeNull()

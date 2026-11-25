@@ -222,7 +222,7 @@ Each plugin is a single JS file (≤1MB), stored on the server and loaded by the
 
 There are two plugin layers. **User plugins** are single JS/TS files installed by each user and sandboxed in the browser. **Server plugins** are installed by admins and may be declarative manifests or WASM modules executed in a restricted WASI sandbox, adding site-wide pages, APIs, event hooks and jobs.
 
-User-plugin SDK is now **v4**: v2 added conversation search/drafts/clipboard, v3 added full plugin pages and account-level data, and v4 adds the server-side AI proxy (`api.ai.*`) so API keys never reach the browser. Every v1–v3 API remains compatible. Check `api.version` for feature detection.
+User-plugin SDK is now **v5**: v2 added conversation search/drafts/clipboard, v3 added full plugin pages and account-level data, v4 added the server-side AI proxy, and v5 adds conversation/message management, user relationship APIs and file upload. Every v1–v4 API remains compatible. Check `api.version` for feature detection.
 
 ### Entry convention
 
@@ -272,6 +272,10 @@ function __mcActivate(api) {
 | `api.addPage/setPage/removePage` | Register a full plugin page with a declarative body | `ui:page` |
 | `api.data.get/set/remove/keys` | Account-level server KV, surviving device and cache changes | `data` |
 | `api.ai.status()` / `api.ai.chat(messages)` | Server-side AI proxy; non-streaming, 1–40 messages, ≤96KB context | `ai` |
+| `api.conv.create/rename/invite/...` | Conversation and group management | `conv:write` |
+| `api.message.history/recall/edit/react/favorite/report/delete` | Read and modify messages | `conv:read` / `message:send` |
+| `api.users.blockStatus/block/unblock` | Query and manage block relationships | `ui:host` |
+| `api.file.upload(kind, dataUrl, filename)` | Upload a file selected by the host-rendered `upload` control (≤1MB) | `file:upload` |
 | `api.storage.get/set` / `remove` / `keys` | Per-plugin namespaced storage and key management (≤64KB per value) | `storage` |
 | `api.request(url, opts?)` | Host-mediated fetch; only `allowedHosts` domains pass (subject to browser CORS) | `net` |
 | `api.theme.apply(cssVars)` | Modify `--td-*` theme tokens, site-wide instant reskin | `ui:theme` |
@@ -304,7 +308,7 @@ UI descriptions only accept 8 components: `text / image / button / input / card 
 
 ### Try the example plugin
 
-The repo ships with eight plugin examples / manifests, including a WASM server plugin (user plugins are also downloadable from the "Marketplace" page on the website):
+The repo ships with nine plugin examples / manifests, including a WASM server plugin (user plugins are also downloadable from the "Marketplace" page on the website):
 
 - [`plugins/examples/weather.plugin.js`](plugins/examples/weather.plugin.js): sidebar weather panel + custom `weather` message type
 - [`plugins/examples/dice.plugin.js`](plugins/examples/dice.plugin.js): dice roller panel + custom `dice` message type
@@ -312,6 +316,7 @@ The repo ships with eight plugin examples / manifests, including a WASM server p
 - [`plugins/examples/search-kit.plugin.js`](plugins/examples/search-kit.plugin.js): SDK v2 demo with message search, drafts, clipboard, storage management and new declarative controls
 - [`plugins/examples/page-kit.plugin.js`](plugins/examples/page-kit.plugin.js): SDK v3 demo with a full plugin page and account-level server data
 - [`plugins/examples/ai-chat.plugin.js`](plugins/examples/ai-chat.plugin.js): SDK v4 AI chat page using the server-side proxy
+- [`plugins/examples/power-kit.plugin.js`](plugins/examples/power-kit.plugin.js): SDK v5 demo with conversation/message/file APIs and the new declarative controls
 - [`plugins/examples/server-hello.plugin.json`](plugins/examples/server-hello.plugin.json): admin server-plugin manifest with a site-wide page and a static API
 - [`server-examples/qr-kit`](server-examples/qr-kit): WASM server plugin using the host QR-login capability
 

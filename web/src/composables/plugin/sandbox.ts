@@ -88,8 +88,8 @@ export function bootHtml(pluginCode: string, allowedHosts: string[], token: stri
     });
   }
   var sdk = {
-    // 宿主 API 级别：v4 增加服务端统一 AI 代理（v3 全站页面 + 用户数据）
-    version: "4",
+    // 宿主 API 级别：v5 增加会话/消息写操作与宿主文件上传（v4 服务端统一 AI 代理）
+    version: "5",
     on: function (ev, fn) { (handlers[ev] || (handlers[ev] = [])).push(fn); },
     send: function (convId, payload, msgType) { return call("send", [convId, payload, msgType]); },
     registerMessageRenderer: function (type, fn) { renderers.set(type, fn); return call("registerMessageRenderer", [type]); },
@@ -116,15 +116,43 @@ export function bootHtml(pluginCode: string, allowedHosts: string[], token: stri
     },
     // 当前用户身份（需 conv:read）：只含 id / 昵称
     me: function () { return call("me", []); },
-    // 当前会话与会话列表只读数据（需 conv:read）
+    // 当前会话与会话列表只读数据（需 conv:read）；v5 起补齐会话写操作（需 conv:write）
     conv: {
       current: function () { return call("conv.current", []); },
       members: function () { return call("conv.members", []); },
-      list: function () { return call("conv.list", []); }
+      list: function () { return call("conv.list", []); },
+      createSingle: function (userId) { return call("conv.createSingle", [userId]); },
+      createGroup: function (name) { return call("conv.createGroup", [name]); },
+      rename: function (id, name) { return call("conv.rename", [id, name]); },
+      invite: function (id, userIds) { return call("conv.invite", [id, userIds]); },
+      leave: function (id) { return call("conv.leave", [id]); },
+      join: function (id) { return call("conv.join", [id]); },
+      setPrefs: function (id, prefs) { return call("conv.setPrefs", [id, prefs || {}]); },
+      remove: function (id) { return call("conv.remove", [id]); },
+      clear: function (id, upToId) { return call("conv.clear", [id, upToId]); },
+      files: function (id) { return call("conv.files", [id]); },
+      addFile: function (id, file) { return call("conv.addFile", [id, file]); },
+      removeFile: function (fileId) { return call("conv.removeFile", [fileId]); },
+      setAnnouncement: function (id, content) { return call("conv.setAnnouncement", [id, content]); },
+      kick: function (id, userId) { return call("conv.kick", [id, userId]); },
+      setAdmin: function (id, userId, admin) { return call("conv.setAdmin", [id, userId, admin === true]); },
+      mute: function (id, userId, minutes) { return call("conv.mute", [id, userId, minutes]); },
+      transfer: function (id, userId) { return call("conv.transfer", [id, userId]); },
+      createInviteLink: function (id, expiresDays) { return call("conv.createInviteLink", [id, expiresDays]); }
     },
     messages: {
       recent: function (n) { return call("messages.recent", [n]); },
       search: function (kw, opts) { return call("messages.search", [kw, opts || {}]); }
+    },
+    // SDK v5：消息历史（只读，需 conv:read）与写操作（需 message:send）
+    message: {
+      history: function (convId, opts) { return call("message.history", [convId, opts || {}]); },
+      delete: function (convId, messageId) { return call("message.delete", [convId, messageId]); },
+      recall: function (messageId) { return call("message.recall", [messageId]); },
+      edit: function (messageId, content) { return call("message.edit", [messageId, content]); },
+      react: function (messageId, emoji, remove) { return call("message.react", [messageId, emoji, remove === true]); },
+      favorite: function (messageId, favorite) { return call("message.favorite", [messageId, favorite !== false]); },
+      report: function (messageId, reason) { return call("message.report", [messageId, reason]); }
     },
     // 输入框草稿：读写当前会话（需 ui:host），插件写入后立即刷新输入区
     draft: {
@@ -153,7 +181,15 @@ export function bootHtml(pluginCode: string, allowedHosts: string[], token: stri
     theme: { apply: function (vars) { return call("theme.apply", [vars]); } },
     // 站内用户目录搜索（需 conv:read）：只含 id / username / nickname / avatarColor
     users: {
-      search: function (kw) { return call("users.search", [kw]); }
+      search: function (kw) { return call("users.search", [kw]); },
+      // SDK v5：账号关系动作（需 ui:host）
+      blockStatus: function (userId) { return call("users.blockStatus", [userId]); },
+      block: function (userId) { return call("users.block", [userId]); },
+      unblock: function (userId) { return call("users.unblock", [userId]); }
+    },
+    // SDK v5：宿主侧文件上传（需 file:upload），dataUrl 由宿主解码，插件不碰 Blob 构造细节
+    file: {
+      upload: function (kind, dataUrl, filename) { return call("file.upload", [kind, dataUrl, filename]); }
     }
   };
   window.__mcActivate = null;

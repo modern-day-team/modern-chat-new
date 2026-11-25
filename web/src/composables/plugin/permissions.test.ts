@@ -33,6 +33,9 @@ describe('API_PERMISSION 完整性', () => {
       'ui:page',
       'data',
       'ai',
+      // SDK v5
+      'conv:write',
+      'file:upload',
     ])
     const bad = Object.entries(API_PERMISSION)
       .concat(Object.entries(EVENT_PERMISSION))
@@ -66,6 +69,49 @@ describe('API_PERMISSION 完整性', () => {
   it('SDK v4 AI 代理需要 ai 权限', () => {
     expect(API_PERMISSION['ai.status']).toBe('ai')
     expect(API_PERMISSION['ai.chat']).toBe('ai')
+  })
+
+  it('SDK v5：会话写操作需 conv:write，消息历史仍需 conv:read', () => {
+    for (const api of [
+      'conv.createSingle',
+      'conv.createGroup',
+      'conv.rename',
+      'conv.invite',
+      'conv.leave',
+      'conv.join',
+      'conv.setPrefs',
+      'conv.remove',
+      'conv.clear',
+      'conv.files',
+      'conv.addFile',
+      'conv.removeFile',
+      'conv.setAnnouncement',
+      'conv.kick',
+      'conv.setAdmin',
+      'conv.mute',
+      'conv.transfer',
+      'conv.createInviteLink',
+    ]) {
+      expect(API_PERMISSION[api]).toBe('conv:write')
+    }
+    expect(API_PERMISSION['message.history']).toBe('conv:read')
+  })
+
+  it('SDK v5：消息写动作按 message:send 收敛，账号关系复用 ui:host，上传独立权限', () => {
+    for (const api of [
+      'message.delete',
+      'message.recall',
+      'message.edit',
+      'message.react',
+      'message.favorite',
+      'message.report',
+    ]) {
+      expect(API_PERMISSION[api]).toBe('message:send')
+    }
+    for (const api of ['users.blockStatus', 'users.block', 'users.unblock']) {
+      expect(API_PERMISSION[api]).toBe('ui:host')
+    }
+    expect(API_PERMISSION['file.upload']).toBe('file:upload')
   })
 
   it('on 不进 API_PERMISSION：api.on 是沙箱内本地注册，不走 RPC', () => {

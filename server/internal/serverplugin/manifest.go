@@ -35,7 +35,7 @@ type Manifest struct {
 	Version      string   `json:"version"`
 	Description  string   `json:"description"`
 	Runtime      string   `json:"runtime"`     // declarative（默认）| wasm
-	Permissions  []string `json:"permissions"` // host 能力：auth:qr / ai:chat
+	Permissions  []string `json:"permissions"` // host 能力：auth:qr / ai:chat / server:message / server:conv / server:user
 	Pages        []Page   `json:"pages"`
 	Routes       []Route  `json:"routes"`
 	Events       []Event  `json:"events"`
@@ -113,7 +113,7 @@ func (m *Manifest) Validate() error {
 	}
 	for _, p := range m.Permissions {
 		switch p {
-		case "auth:qr", "ai:chat":
+		case "auth:qr", "ai:chat", "server:message", "server:conv", "server:user":
 		default:
 			return fmt.Errorf("%w: 未知服务端宿主权限 %q", ErrInvalid, p)
 		}

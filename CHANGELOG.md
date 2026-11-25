@@ -8,6 +8,20 @@
 
 ## [未发布]
 
+### 架构解耦与水平扩展准备
+
+- **REST 限流统一到共享配额**：迁移 / 扫码轮询 / 公开插件 / 换邮箱码 / 上传 / AI 六处限流点此前走内存令牌桶，多实例下配额被实例数放大；现统一按用途注入限流工厂，Redis 可用时共享配额、否则回退内存。不同用途键前缀隔离，登录失败不再连带限流同 IP 的其它接口；服务端插件发消息与 WS 主链路共用同一用户配额，堵住插件绕过限流群发。
+- **跨实例踢线广播**：Redis 可用时，封禁/重置密码（`KickUser`）与单设备下线（`KickSession`）通过 Pub/Sub 广播到全部实例，远端即时断开匹配连接；未配 Redis 时退化为单实例行为，远端由既有 5s 连接级复核兜底。`internal/cluster` 不依赖任何上层包，组件可独立运行。
+- **业务规则归位内核（第二批）**：新增 `service/favorite.go`，收藏消息的存在校验、收藏/取消收藏、列表空数组兜底与 limit 归一化从 handler 收敛到 service 内核；`ConversationHandler` 改依赖消费方窄接口，附单测。
+- **前端跨端依赖治理**：`AvatarBadge` 从 `components/chat/` 上提到 `components/common/`，切断登录页/后台等非 chat 视图对 chat 内部的反向引用；默认取色改用品牌令牌。REST 响应形状、状态码与视觉呈现均不变。
+
+### 插件能力全景扩展（SDK v5）
+
+- **用户插件 API 扩展**：新增 `conv:write`、`file:upload` 权限和 `api.conv.*` / `api.message.*` / `api.users.block*` / `api.file.upload`；插件可创建/管理会话、读写消息历史、撤回/编辑/收藏/举报消息、上传文件，仍全部经过宿主权限校验。
+- **描述式 UI 扩展**：新增 `tabs` / `steps` / `empty` / `loading` / `upload` 五类白名单组件；`upload` 由宿主读取文件并限制 1MB，插件拿不到 DOM File 对象。
+- **服务端 WASM 宿主 API 扩展**：新增 `message.send`、`conv.list`、`conv.members`、`user.get`、`user.search`、`notification.push`，配套 `server:message` / `server:conv` / `server:user` 权限；所有业务动作绑定当前用户，公开路由不能伪造身份。
+- **示例**：新增 `power-kit.plugin.js`，集中演示会话管理、消息历史、文件上传和新 UI 控件。
+
 ### 服务端 WASM 插件与 AI 代理
 
 - **WASM 服务端运行时（迁移 0036）**：新增 `runtime: "wasm"` 服务端插件，使用 `wazero` 在受限 WASI 沙箱中执行；支持管理员上传 8MB 内的 `.wasm`，路由通过 `handler: true` 交给插件，`public: true` 可匿名访问。

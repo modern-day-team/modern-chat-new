@@ -16,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 
+	"github.com/modern-day-team/modern-chat-new/server/internal/cluster"
 	"github.com/modern-day-team/modern-chat-new/server/internal/config"
 	"github.com/modern-day-team/modern-chat-new/server/internal/logx"
 	"github.com/modern-day-team/modern-chat-new/server/internal/middleware"
@@ -70,29 +71,23 @@ func main() {
 		slog.Warn("bootstrap default group failed", "err", err.Error())
 	}
 
-	// 限流后端：优先 Redis（多实例共享配额），不可用时降级为内存
-	var (
-		authLimiter   middleware.Limiter
-		msgLimiter    middleware.Limiter
-		pluginLimiter middleware.Limiter
-	)
+	// 限流后端：优先 Redis（多实例共享配额），不可用时降级为内存。
+	// 按用途生成独立键前缀，避免认证/消息/插件/上传等接口共用同一 IP/UID 键时
+	// 互相挤占配额（例如登录失败多次后，同 IP 的迁移接口也被连带限流）。
+	var limiterFactory middleware.LimiterFactory = middleware.MemoryLimiterFactory
 	rdb, redisErr := store.OpenRedis(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB)
 	if rdb != nil {
 		slog.Info("rate limiting backed by redis", "addr", cfg.Redis.Addr, "db", cfg.Redis.DB)
-		authLimiter = middleware.NewRedisLimiter(rdb, 10)
-		msgLimiter = middleware.NewRedisLimiter(rdb, 20)
-		pluginLimiter = middleware.NewRedisLimiter(rdb, 5)
+		limiterFactory = middleware.RedisLimiterFactory(rdb)
+	} else if cfg.Redis.Enabled() {
+		slog.Warn("redis unavailable, falling back to in-memory limiter",
+			"addr", cfg.Redis.Addr, "err", redisErr)
 	} else {
-		if cfg.Redis.Enabled() {
-			slog.Warn("redis unavailable, falling back to in-memory limiter",
-				"addr", cfg.Redis.Addr, "err", redisErr)
-		} else {
-			slog.Info("redis not configured (REDIS_ADDR empty), using in-memory limiter")
-		}
-		authLimiter = middleware.NewLimiterStore(10, 10)
-		msgLimiter = middleware.NewLimiterStore(20, 20)
-		pluginLimiter = middleware.NewLimiterStore(5, 5)
+		slog.Info("redis not configured (REDIS_ADDR empty), using in-memory limiter")
 	}
+	authLimiter := limiterFactory("auth", 10, 10)
+	msgLimiter := limiterFactory("msg", 20, 20)
+	pluginLimiter := limiterFactory("plugin", 5, 5)
 
 	// 系统设置 + 上传存储：Hub 与 router 都要用，所以在装配处构造一次。
 	// 存储类型取决于后台是否配了对象存储（数据库优先于环境变量）。
@@ -208,43 +203,68 @@ func main() {
 			Timeout: time.Duration(cfg.AITimeoutSeconds) * time.Second, AllowPrivate: cfg.AIAllowPrivate,
 		})
 	}
+
+	// 宿主能力依赖：与 Hub 共用同一组 store，避免多实例口径漂移。
+	pluginUsers := store.NewUserStore(db)
+	pluginConvs := store.NewConversationStore(db)
+	pluginMsgs := store.NewMessageStore(db)
+	pluginPushSubs := store.NewPushStore(db)
+
+	// 跨实例踢线总线：仅在 Redis 可用时启用。未配置 Redis 时保持 nil，
+	// Hub 退化为纯单实例（踢本地连接，远端靠连接级复核），组件可独立部署。
+	var clusterBus *cluster.Bus
+	if rdb != nil {
+		clusterBus = cluster.NewBus(rdb, "")
+		slog.Info("cross-instance kick bus enabled", "node", clusterBus.NodeID())
+	}
+
+	// WebSocket Hub（宿主 message.send 需要它广播，因此先于 SetHost 构造）
+	hubDeps := &ws.Deps{
+		Convs:      pluginConvs,
+		Messages:   pluginMsgs,
+		Friends:    store.NewFriendStore(db),
+		Users:      pluginUsers, // 连接级封禁 / tv 复核（task-4 修复点）
+		Moderation: store.NewModerationStore(db),
+		MsgLimiter: msgLimiter,
+		Storage:    uploadStorage,
+		Settings:   settings,
+		Push:       pushService,
+		PushSubs:   pluginPushSubs,
+		Events:     serverPluginRuntime,
+	}
+	if clusterBus != nil {
+		hubDeps.Broadcaster = clusterBus
+		hubDeps.ClusterEvents = clusterBus
+	}
+	hub := ws.NewHub(hubDeps)
+	go hub.Run()
+
+	// 注入宿主业务能力，必须先于 Reload/Start：插件首个 host call 就能用到完整能力。
+	router.WireServerPluginHost(serverPluginRuntime, pluginUsers, pluginConvs, pluginMsgs,
+		hub, settings, uploadStorage, pluginPushSubs, pushService, msgLimiter)
 	if err := serverPluginRuntime.Reload(); err != nil {
 		slog.Warn("server plugin reload failed", "err", err.Error())
 	}
 	runtimeCtx, runtimeCancel := context.WithCancel(context.Background())
 	go serverPluginRuntime.Start(runtimeCtx)
 
-	// WebSocket Hub
-	hub := ws.NewHub(&ws.Deps{
-		Convs:      store.NewConversationStore(db),
-		Messages:   store.NewMessageStore(db),
-		Friends:    store.NewFriendStore(db),
-		Users:      store.NewUserStore(db), // 连接级封禁 / tv 复核（task-4 修复点）
-		Moderation: store.NewModerationStore(db),
-		MsgLimiter: msgLimiter,
-		Storage:    uploadStorage,
-		Settings:   settings,
-		Push:       pushService,
-		PushSubs:   store.NewPushStore(db),
-		Events:     serverPluginRuntime,
-	})
-	go hub.Run()
-
 	r := router.New(router.Deps{
-		Cfg:           cfg,
-		DB:            db,
-		Mailer:        service.NewMailer(cfg.SMTP),
-		Notifier:      hub,
-		WS:            hub,
-		Settings:      settings,
-		Storage:       uploadStorage,
-		Backup:        backup,
-		Push:          pushService,
-		AuthLimiter:   authLimiter,
-		PluginLimiter: pluginLimiter,
-		Updater:       updater,
-		AutoUpdater:   autoScheduler,
-		ServerPlugins: serverPluginRuntime,
+		Cfg:            cfg,
+		DB:             db,
+		Mailer:         service.NewMailer(cfg.SMTP),
+		Notifier:       hub,
+		WS:             hub,
+		Settings:       settings,
+		Storage:        uploadStorage,
+		Backup:         backup,
+		Push:           pushService,
+		AuthLimiter:    authLimiter,
+		PluginLimiter:  pluginLimiter,
+		MsgLimiter:     msgLimiter,
+		LimiterFactory: limiterFactory,
+		Updater:        updater,
+		AutoUpdater:    autoScheduler,
+		ServerPlugins:  serverPluginRuntime,
 	})
 
 	// 只设读头/空闲超时，不设 ReadTimeout / WriteTimeout：

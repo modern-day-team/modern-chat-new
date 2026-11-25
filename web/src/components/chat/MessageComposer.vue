@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { MessagePlugin } from '@/components/ui/feedback'
 import UiButton from '@/components/ui/UiButton.vue'
 
-import AvatarBadge from './AvatarBadge.vue'
+import AvatarBadge from '@/components/common/AvatarBadge.vue'
 import { mediaApi, stickerApi, type Sticker } from '@/core/network/endpoints'
 import { useAppI18n } from '@/composables/useAppI18n'
 import { useAuthStore } from '@/stores/auth'

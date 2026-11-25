@@ -142,3 +142,35 @@ func TestCheckEndpointRejectsUserInfo(t *testing.T) {
 		t.Fatal("带用户名密码的 endpoint 必须拒绝")
 	}
 }
+
+func TestParseManifestHostPermissions(t *testing.T) {
+	base := `{
+	  "name":"host-api","version":"1.0.0","runtime":"wasm",
+	  "permissions":%s,
+	  "pages":[],"events":[],"jobs":[],"allowedHosts":[],
+	  "routes":[{"method":"POST","path":"/run","handler":true}]
+	}`
+	// 合法：三个新增 server:* 权限单独与组合都能通过。
+	for _, perms := range []string{
+		`["server:message"]`,
+		`["server:conv"]`,
+		`["server:user"]`,
+		`["auth:qr","ai:chat","server:message","server:conv","server:user"]`,
+	} {
+		if _, err := ParseManifest(fmt.Appendf(nil, base, perms)); err != nil {
+			t.Errorf("permissions %s 应合法: %v", perms, err)
+		}
+	}
+	// 非法：未声明 / 拼写错误 / 大小写不符都不能通过。
+	for _, perms := range []string{
+		`["server:admin"]`,
+		`["server:messagex"]`,
+		`["SERVER:MESSAGE"]`,
+		`["server:message","unknown"]`,
+		`["system:message"]`,
+	} {
+		if _, err := ParseManifest(fmt.Appendf(nil, base, perms)); err == nil {
+			t.Errorf("permissions %s 应被拒绝", perms)
+		}
+	}
+}

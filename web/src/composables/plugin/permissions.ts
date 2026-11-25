@@ -47,6 +47,39 @@ export const API_PERMISSION: Record<string, string> = {
   // SDK v4：服务端统一 AI 代理（密钥不下发，插件只拿到回答）
   'ai.status': 'ai',
   'ai.chat': 'ai',
+  // SDK v5：会话写操作。conv.files 虽是读取，按任务约定归 conv:write；
+  // 消息历史是只读正文，门槛仍是 conv:read
+  'conv.createSingle': 'conv:write',
+  'conv.createGroup': 'conv:write',
+  'conv.rename': 'conv:write',
+  'conv.invite': 'conv:write',
+  'conv.leave': 'conv:write',
+  'conv.join': 'conv:write',
+  'conv.setPrefs': 'conv:write',
+  'conv.remove': 'conv:write',
+  'conv.clear': 'conv:write',
+  'conv.files': 'conv:write',
+  'conv.addFile': 'conv:write',
+  'conv.removeFile': 'conv:write',
+  'conv.setAnnouncement': 'conv:write',
+  'conv.kick': 'conv:write',
+  'conv.setAdmin': 'conv:write',
+  'conv.mute': 'conv:write',
+  'conv.transfer': 'conv:write',
+  'conv.createInviteLink': 'conv:write',
+  'message.history': 'conv:read',
+  // 消息写动作统一按发送门槛收敛（含「仅自己删除」的 REST 端点）
+  'message.delete': 'message:send',
+  'message.recall': 'message:send',
+  'message.edit': 'message:send',
+  'message.react': 'message:send',
+  'message.favorite': 'message:send',
+  'message.report': 'message:send',
+  // 账号关系动作复用 ui:host，不新增权限名
+  'users.blockStatus': 'ui:host',
+  'users.block': 'ui:host',
+  'users.unblock': 'ui:host',
+  'file.upload': 'file:upload',
 }
 
 /**

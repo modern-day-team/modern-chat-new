@@ -1,0 +1,36 @@
+{
+  "name": "host-kit",
+  "version": "1.0.0",
+  "description": "服务端 WASM 宿主能力示例：会话、成员、用户、消息、推送与 AI",
+  "runtime": "wasm",
+  "permissions": ["server:conv", "server:user", "server:message", "ai:chat"],
+  "pages": [
+    {
+      "id": "host-kit",
+      "title": "宿主能力示例",
+      "icon": "宿",
+      "scope": "user",
+      "body": [
+        { "component": "badge", "props": { "text": "WASM 服务端插件", "tone": "success" } },
+        { "component": "text", "props": { "content": "该插件通过宿主 API 读取会话/成员/用户，并可以当前用户身份发消息或推送。" } },
+        { "component": "text", "props": { "content": "GET  /api/ext/host-kit/summary    → 会话摘要" } },
+        { "component": "text", "props": { "content": "GET  /api/ext/host-kit/members?convId=1 → 会话成员" } },
+        { "component": "text", "props": { "content": "POST /api/ext/host-kit/users     {kw,limit} → 用户搜索" } },
+        { "component": "text", "props": { "content": "POST /api/ext/host-kit/send      {convId,content} → 发消息" } },
+        { "component": "text", "props": { "content": "POST /api/ext/host-kit/push      {title,body} → 给自己推送" } },
+        { "component": "text", "props": { "content": "POST /api/ext/host-kit/ai        {messages} → 服务端 AI 代理" } }
+      ]
+    }
+  ],
+  "routes": [
+    { "method": "GET", "path": "/summary", "handler": true },
+    { "method": "GET", "path": "/members", "handler": true },
+    { "method": "POST", "path": "/users", "handler": true },
+    { "method": "POST", "path": "/send", "handler": true },
+    { "method": "POST", "path": "/push", "handler": true },
+    { "method": "POST", "path": "/ai", "handler": true }
+  ],
+  "events": [],
+  "jobs": [],
+  "allowedHosts": []
+}

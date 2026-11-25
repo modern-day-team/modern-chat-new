@@ -15,9 +15,20 @@ import { reactive, readonly } from 'vue'
 import { MessagePlugin } from '@/components/ui/feedback'
 
 import type { PageDesc, Plugin, PanelDesc, ServerFrame } from '@/types/proto'
-import { aiApi, convApi, pluginApi, pluginDataApi, searchApi, userApi, type AIMessage } from '@/core/network/endpoints'
+import {
+  aiApi,
+  convApi,
+  mediaApi,
+  moderationApi,
+  pluginApi,
+  pluginDataApi,
+  searchApi,
+  userApi,
+  type AIMessage,
+} from '@/core/network/endpoints'
 import { useAuthStore } from '@/stores/auth'
 import { useConversationsStore } from '@/stores/conversations'
+import { useFavoritesStore } from '@/stores/favorites'
 import { usePluginsStore } from '@/stores/plugins'
 import { useWsStore } from '@/stores/ws'
 // 内核子模块：声明式 UI 校验 / 权限映射 / 沙箱引导，各自单一职责（见 ./plugin/）
@@ -118,6 +129,20 @@ function convBrief(c: { id: number; type: number; name?: string | null; peer?: {
     memberCount: c.memberCount,
   }
 }
+
+/** 正整数 id 闸门：插件传来的任何 id 都必须先过这里，杜绝负数/小数/字符串注入 */
+function positiveId(v: unknown): number {
+  const n = Number(v)
+  return Number.isInteger(n) && n > 0 ? n : 0
+}
+
+/** 短文本闸门：按上限截断（name ≤60、content ≤8000），避免插件塞超长请求 */
+function boundedText(v: unknown, max: number): string {
+  return String(v ?? '').slice(0, max)
+}
+
+/** 上传种类白名单：与 mediaApi.upload 的 kind 参数逐项对应 */
+const UPLOAD_KINDS = ['image', 'audio', 'sticker', 'file', 'video'] as const
 
 function createHost() {
   const state = reactive<PluginHostState>({ started: false, panels: {}, pages: {}, actions: {} })
@@ -663,6 +688,369 @@ function createHost() {
           }
           window.location.assign(`${import.meta.env.BASE_URL}plugin/${pluginId}/${pageId}`)
           reply(runtime, callId, true)
+          break
+        }
+        // ===== SDK v5：会话写操作（conv:write） =====
+        case 'conv.createSingle': {
+          const userId = positiveId(args[0])
+          if (!userId) {
+            reply(runtime, callId, false, undefined, 'invalid user id')
+            return
+          }
+          const c = await convApi.createSingle(userId)
+          reply(runtime, callId, true, convBrief(c))
+          break
+        }
+        case 'conv.createGroup': {
+          const name = boundedText(args[0], 60).trim()
+          if (!name) {
+            reply(runtime, callId, false, undefined, 'invalid group name')
+            return
+          }
+          const c = await convApi.createGroup(name)
+          reply(runtime, callId, true, convBrief(c))
+          break
+        }
+        case 'conv.rename': {
+          const convId = positiveId(args[0])
+          const name = boundedText(args[1], 60).trim()
+          if (!convId || !name) {
+            reply(runtime, callId, false, undefined, 'invalid conversation id or name')
+            return
+          }
+          await convApi.rename(convId, name)
+          reply(runtime, callId, true)
+          break
+        }
+        case 'conv.invite': {
+          const convId = positiveId(args[0])
+          const userIds = Array.isArray(args[1])
+            ? (args[1] as unknown[]).map(positiveId).filter((id) => id > 0).slice(0, 50)
+            : []
+          if (!convId || !userIds.length) {
+            reply(runtime, callId, false, undefined, 'invalid conversation id or user ids')
+            return
+          }
+          const r = await convApi.invite(convId, userIds)
+          reply(runtime, callId, true, { added: Number(r.added ?? 0) })
+          break
+        }
+        case 'conv.leave':
+        case 'conv.join':
+        case 'conv.remove': {
+          const convId = positiveId(args[0])
+          if (!convId) {
+            reply(runtime, callId, false, undefined, 'invalid conversation id')
+            return
+          }
+          if (apiName === 'conv.leave') await convApi.leave(convId)
+          else if (apiName === 'conv.join') await convApi.join(convId)
+          else await convApi.remove(convId)
+          reply(runtime, callId, true)
+          break
+        }
+        case 'conv.setPrefs': {
+          const convId = positiveId(args[0])
+          if (!convId) {
+            reply(runtime, callId, false, undefined, 'invalid conversation id')
+            return
+          }
+          // 只放行三个已知布尔项：插件塞进来的其他字段（含原型污染键）一律过滤
+          const raw = (args[1] ?? {}) as Record<string, unknown>
+          const prefs: { pinned?: boolean; muted?: boolean; archived?: boolean } = {}
+          for (const key of ['pinned', 'muted', 'archived'] as const) {
+            if (typeof raw[key] === 'boolean') prefs[key] = raw[key]
+          }
+          const r = await convApi.setPrefs(convId, prefs)
+          reply(runtime, callId, true, { pinned: r.pinned, muted: r.muted, archived: r.archived })
+          break
+        }
+        case 'conv.clear': {
+          const convId = positiveId(args[0])
+          const upToId = args[1] === undefined ? undefined : positiveId(args[1])
+          if (!convId || (args[1] !== undefined && !upToId)) {
+            reply(runtime, callId, false, undefined, 'invalid conversation id or message id')
+            return
+          }
+          const r = await convApi.clear(convId, upToId)
+          reply(runtime, callId, true, { clearedBeforeId: Number(r.clearedBeforeId ?? 0) })
+          break
+        }
+        case 'conv.files': {
+          const convId = positiveId(args[0])
+          if (!convId) {
+            reply(runtime, callId, false, undefined, 'invalid conversation id')
+            return
+          }
+          const rows = await convApi.files(convId)
+          reply(
+            runtime,
+            callId,
+            true,
+            (rows ?? []).slice(0, 100).map((f) => ({
+              id: f.id,
+              name: f.name,
+              url: f.url,
+              size: f.size,
+              uploaderId: f.uploaderId,
+              uploaderName: f.uploaderName,
+              createdAt: f.createdAt,
+            })),
+          )
+          break
+        }
+        case 'conv.addFile': {
+          const convId = positiveId(args[0])
+          const f = (args[1] ?? {}) as Record<string, unknown>
+          const name = boundedText(f.name, 60).trim()
+          const url = boundedText(f.url, 2000)
+          const size = Number(f.size)
+          if (
+            !convId ||
+            !name ||
+            !/^https?:\/\//i.test(url) ||
+            !Number.isFinite(size) ||
+            !Number.isInteger(size) ||
+            size < 0
+          ) {
+            reply(runtime, callId, false, undefined, 'invalid file desc')
+            return
+          }
+          const row = await convApi.addFile(convId, { name, url, size })
+          reply(runtime, callId, true, row)
+          break
+        }
+        case 'conv.removeFile': {
+          const fileId = positiveId(args[0])
+          if (!fileId) {
+            reply(runtime, callId, false, undefined, 'invalid file id')
+            return
+          }
+          await convApi.removeFile(fileId)
+          reply(runtime, callId, true)
+          break
+        }
+        case 'conv.setAnnouncement': {
+          const convId = positiveId(args[0])
+          if (!convId) {
+            reply(runtime, callId, false, undefined, 'invalid conversation id')
+            return
+          }
+          await convApi.setAnnouncement(convId, boundedText(args[1], 8000))
+          reply(runtime, callId, true)
+          break
+        }
+        case 'conv.kick':
+        case 'conv.transfer': {
+          const convId = positiveId(args[0])
+          const userId = positiveId(args[1])
+          if (!convId || !userId) {
+            reply(runtime, callId, false, undefined, 'invalid conversation id or user id')
+            return
+          }
+          if (apiName === 'conv.kick') await convApi.kick(convId, userId)
+          else await convApi.transfer(convId, userId)
+          reply(runtime, callId, true)
+          break
+        }
+        case 'conv.setAdmin': {
+          const convId = positiveId(args[0])
+          const userId = positiveId(args[1])
+          if (!convId || !userId) {
+            reply(runtime, callId, false, undefined, 'invalid conversation id or user id')
+            return
+          }
+          await convApi.setAdmin(convId, userId, args[2] === true)
+          reply(runtime, callId, true)
+          break
+        }
+        case 'conv.mute': {
+          const convId = positiveId(args[0])
+          const userId = positiveId(args[1])
+          const minutes = Number(args[2])
+          if (!convId || !userId || !Number.isFinite(minutes) || minutes < 0 || minutes > 60 * 24 * 30) {
+            reply(runtime, callId, false, undefined, 'invalid mute arguments')
+            return
+          }
+          const r = await convApi.mute(convId, userId, Math.trunc(minutes))
+          reply(runtime, callId, true, { mutedUntil: r.mutedUntil ?? null })
+          break
+        }
+        case 'conv.createInviteLink': {
+          const convId = positiveId(args[0])
+          if (!convId) {
+            reply(runtime, callId, false, undefined, 'invalid conversation id')
+            return
+          }
+          const raw = args[1]
+          const expiresDays =
+            raw === undefined ? 7 : Math.max(0, Math.min(365, Math.trunc(Number(raw) || 0)))
+          const r = await convApi.createInviteLink(convId, expiresDays)
+          reply(runtime, callId, true, { token: r.token, path: r.path, expiresAt: r.expiresAt ?? null })
+          break
+        }
+        // ===== SDK v5：消息历史（conv:read）与写操作（message:send） =====
+        case 'message.history': {
+          const convId = positiveId(args[0])
+          if (!convId) {
+            reply(runtime, callId, false, undefined, 'invalid conversation id')
+            return
+          }
+          const opts = (args[1] ?? {}) as Record<string, unknown>
+          const limit = Math.max(1, Math.min(50, Math.trunc(Number(opts.limit ?? 30) || 30)))
+          const beforeId = opts.beforeId === undefined ? undefined : positiveId(opts.beforeId)
+          const afterId = opts.afterId === undefined ? undefined : positiveId(opts.afterId)
+          if ((opts.beforeId !== undefined && !beforeId) || (opts.afterId !== undefined && !afterId)) {
+            reply(runtime, callId, false, undefined, 'invalid cursor id')
+            return
+          }
+          const page = afterId
+            ? await convApi.messagesAfter(convId, afterId, limit)
+            : await convApi.messages(convId, beforeId, limit)
+          reply(runtime, callId, true, {
+            hasMore: page.hasMore === true,
+            messages: (page.messages ?? []).map((m) => ({
+              id: m.id,
+              senderId: m.senderId,
+              msgType: m.msgType,
+              // 撤回消息正文不下发，与 messages.recent 同一口径
+              content: m.isRecalled ? '' : m.content,
+              createdAt: m.createdAt,
+              recalled: m.isRecalled,
+            })),
+          })
+          break
+        }
+        case 'message.delete': {
+          const convId = positiveId(args[0])
+          const messageId = positiveId(args[1])
+          if (!convId || !messageId) {
+            reply(runtime, callId, false, undefined, 'invalid conversation id or message id')
+            return
+          }
+          await convApi.deleteMessage(convId, messageId)
+          useConversationsStore().removeMessageLocal(convId, messageId)
+          reply(runtime, callId, true)
+          break
+        }
+        case 'message.recall': {
+          const messageId = positiveId(args[0])
+          if (!messageId) {
+            reply(runtime, callId, false, undefined, 'invalid message id')
+            return
+          }
+          // 与用户手动撤回一致：只发 WS 帧，等服务端广播再更新本地
+          useConversationsStore().recallMessage(messageId)
+          reply(runtime, callId, true)
+          break
+        }
+        case 'message.edit': {
+          const messageId = positiveId(args[0])
+          const content = boundedText(args[1], 8000)
+          if (!messageId || !content.trim()) {
+            reply(runtime, callId, false, undefined, 'invalid message id or content')
+            return
+          }
+          // editMessage 内部按站点 maxMessageLength 再校验一次，服务端复核时限
+          const ok = useConversationsStore().editMessage(messageId, content)
+          reply(runtime, callId, true, ok)
+          break
+        }
+        case 'message.react': {
+          const messageId = positiveId(args[0])
+          const emoji = boundedText(args[1], 16)
+          if (!messageId || !emoji) {
+            reply(runtime, callId, false, undefined, 'invalid message id or emoji')
+            return
+          }
+          const ok = useConversationsStore().toggleReaction(messageId, emoji, args[2] === true)
+          reply(runtime, callId, true, ok)
+          break
+        }
+        case 'message.favorite': {
+          const messageId = positiveId(args[0])
+          if (!messageId) {
+            reply(runtime, callId, false, undefined, 'invalid message id')
+            return
+          }
+          // favorites store 内部调 favoriteApi 并同步 ids/items，收藏夹无需刷新即一致
+          const favorites = useFavoritesStore()
+          if (args[1] === false) await favorites.remove(messageId)
+          else await favorites.add(messageId)
+          reply(runtime, callId, true)
+          break
+        }
+        case 'message.report': {
+          const messageId = positiveId(args[0])
+          if (!messageId) {
+            reply(runtime, callId, false, undefined, 'invalid message id')
+            return
+          }
+          const r = await moderationApi.report(messageId, boundedText(args[1], 200))
+          reply(runtime, callId, true, { ok: true, duplicate: r.duplicate === true })
+          break
+        }
+        // ===== SDK v5：账号关系（ui:host）与宿主文件上传（file:upload） =====
+        case 'users.blockStatus': {
+          const userId = positiveId(args[0])
+          if (!userId) {
+            reply(runtime, callId, false, undefined, 'invalid user id')
+            return
+          }
+          const r = await userApi.blockStatus(userId)
+          reply(runtime, callId, true, { blocked: r.blocked === true })
+          break
+        }
+        case 'users.block':
+        case 'users.unblock': {
+          const userId = positiveId(args[0])
+          if (!userId) {
+            reply(runtime, callId, false, undefined, 'invalid user id')
+            return
+          }
+          if (apiName === 'users.block') await userApi.block(userId)
+          else await userApi.unblock(userId)
+          reply(runtime, callId, true)
+          break
+        }
+        case 'file.upload': {
+          const kind = String(args[0] ?? '')
+          if (!UPLOAD_KINDS.includes(kind as (typeof UPLOAD_KINDS)[number])) {
+            reply(runtime, callId, false, undefined, 'invalid upload kind')
+            return
+          }
+          const dataUrl = String(args[1] ?? '')
+          // 只接受 data:<mime>;base64,<payload>；先在字符串层卡长度再进 atob
+          const match = /^data:([a-z0-9.+-]+\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/i.exec(dataUrl)
+          if (!match || dataUrl.length > 1.5 * 1024 * 1024) {
+            reply(runtime, callId, false, undefined, 'invalid data url')
+            return
+          }
+          // 显式绑定 ArrayBuffer：TS 6 下裸 Uint8Array 默认是 ArrayBufferLike，不能直接当 BlobPart
+          let bytes: Uint8Array<ArrayBuffer>
+          try {
+            const binary = atob(match[2]!)
+            bytes = new Uint8Array(new ArrayBuffer(binary.length))
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+          } catch {
+            reply(runtime, callId, false, undefined, 'invalid base64 data')
+            return
+          }
+          if (bytes.byteLength > 1024 * 1024) {
+            reply(runtime, callId, false, undefined, 'file too large (max 1MB)')
+            return
+          }
+          const filename = boundedText(args[2], 120) || 'file'
+          const r = await mediaApi.upload(
+            kind as (typeof UPLOAD_KINDS)[number],
+            new Blob([bytes], { type: match[1]! }),
+            filename,
+          )
+          reply(runtime, callId, true, {
+            url: String(r.url ?? ''),
+            size: Number(r.size ?? bytes.byteLength),
+            kind: String(r.kind ?? kind),
+          })
           break
         }
         default:

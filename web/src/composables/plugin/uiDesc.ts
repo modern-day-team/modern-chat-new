@@ -26,6 +26,12 @@ const ALLOWED_COMPONENTS = new Set([
   'checkbox',
   'switch',
   'segmented',
+  // SDK v5 UI 面：结构 / 状态 / 宿主文件选择（props 仍只放行原始值）
+  'tabs',
+  'steps',
+  'empty',
+  'loading',
+  'upload',
 ])
 
 /** 校验 UI 描述：白名单外组件、javascript: 链接、非 plain props 一律拒绝 */

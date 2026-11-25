@@ -2,7 +2,9 @@
  * 描述式 UI 白名单渲染器（§8.2）。
  * 白名单组件：text / image / button / input / textarea / checkbox / switch / segmented
  * / card / list / divider / link + 数据展示类 table / progress / badge；
+ * SDK v5 UI 面追加 tabs / steps / empty / loading / upload；
  * props 仅接受原始值；链接/图片仅 http(s)（双保险，桥接层已校验过）。
+ * upload 是唯一回传对象给插件的组件：对象由宿主 FileReader 产出，不是插件 DOM。
  */
 import { defineComponent, h, type PropType, type VNode } from 'vue'
 import {
@@ -226,6 +228,117 @@ export const DeclarativeNodes = defineComponent({
               {},
               rows.map((r, ri) => h('tr', { key: ri }, r.map((c, ci) => h('td', { key: ci }, c)))),
             ),
+          ])
+        }
+        case 'tabs': {
+          // labels='["A","B"]'（≤8 项），active 为索引；只渲染当前子节点的描述树。
+          // 动作回传索引，插件据此更新 active 后重发面板/页面描述。
+          let labels: string[] = []
+          try {
+            const parsed: unknown = JSON.parse(str('labels', '[]'))
+            if (Array.isArray(parsed)) labels = parsed.slice(0, 8).map((l) => String(l ?? ''))
+          } catch {
+            labels = []
+          }
+          const rawActive = Number(p.active ?? 0)
+          const active = Number.isFinite(rawActive)
+            ? Math.max(0, Math.min(labels.length - 1, Math.trunc(rawActive)))
+            : 0
+          const children = node.children ?? []
+          const action = String(node.action ?? 'tabs')
+          return h('div', { class: 'mc-dtabs' }, [
+            h(
+              'div',
+              { class: 'mc-dtabs__bar', role: 'tablist' },
+              labels.map((label, i) =>
+                h(
+                  'button',
+                  {
+                    key: i,
+                    type: 'button',
+                    role: 'tab',
+                    'aria-selected': i === active,
+                    class: ['mc-dtabs__item', i === active ? 'is-active' : ''],
+                    onClick: () => props.onAction?.(action, i),
+                  },
+                  label,
+                ),
+              ),
+            ),
+            h('div', { class: 'mc-dtabs__body' }, children[active] ? [renderNode(children[active]!)] : []),
+          ])
+        }
+        case 'steps': {
+          // items='["A","B"]'（≤8 项），active 为当前步骤序号；展示型组件，不回传动作。
+          let items: string[] = []
+          try {
+            const parsed: unknown = JSON.parse(str('items', '[]'))
+            if (Array.isArray(parsed)) items = parsed.slice(0, 8).map((i) => String(i ?? ''))
+          } catch {
+            items = []
+          }
+          const rawActive = Number(p.active ?? 0)
+          const active = Number.isFinite(rawActive)
+            ? Math.max(0, Math.min(items.length - 1, Math.trunc(rawActive)))
+            : 0
+          return h(
+            'ol',
+            { class: 'mc-dsteps' },
+            items.map((label, i) =>
+              h(
+                'li',
+                { key: i, class: ['mc-dsteps__item', i === active ? 'is-active' : '', i < active ? 'is-done' : ''] },
+                [h('span', { class: 'mc-dsteps__dot num' }, String(i + 1)), h('span', { class: 'mc-dsteps__label' }, label)],
+              ),
+            ),
+          )
+        }
+        case 'empty':
+          return h('div', { class: 'mc-dempty' }, [
+            str('icon') ? h('span', { class: 'mc-dempty__icon' }, str('icon')) : null,
+            h('span', { class: 'mc-dempty__text' }, str('text', '暂无内容')),
+          ])
+        case 'loading':
+          return h('div', { class: 'mc-dloading', role: 'status' }, [
+            h('span', { class: 'mc-dloading__spinner', 'aria-hidden': 'true' }),
+            h('span', { class: 'mc-dloading__text' }, str('text', '加载中…')),
+          ])
+        case 'upload': {
+          // 唯一允许回传对象的组件：文件字节由宿主 FileReader 读取，插件拿不到 DOM 节点。
+          // accept 仅为原生 input 属性；maxSize 默认 256KB、硬上限 1MB，超限走 action:error。
+          const accept = String(p.accept ?? '*').slice(0, 200)
+          const rawMax = Number(p.maxSize ?? 262144)
+          const maxSize = Number.isFinite(rawMax) && rawMax > 0 ? Math.min(1048576, Math.trunc(rawMax)) : 262144
+          const action = String(node.action ?? 'upload')
+          return h('div', { class: 'mc-dupload' }, [
+            h('input', {
+              type: 'file',
+              class: 'mc-dupload__input',
+              accept,
+              onChange: (ev: Event) => {
+                const input = ev.target as HTMLInputElement
+                const file = input.files?.[0]
+                // 清空 value：同一文件再次选择也要触发 change
+                input.value = ''
+                if (!file) return
+                if (file.size > maxSize) {
+                  props.onAction?.(`${action}:error`, { message: `文件超过 ${Math.round(maxSize / 1024)} KB` })
+                  return
+                }
+                const reader = new FileReader()
+                reader.onload = () => {
+                  props.onAction?.(action, {
+                    name: file.name,
+                    size: file.size,
+                    type: file.type,
+                    dataUrl: String(reader.result ?? ''),
+                  })
+                }
+                reader.onerror = () => props.onAction?.(`${action}:error`, { message: '文件读取失败' })
+                reader.readAsDataURL(file)
+              },
+            }),
+            h('span', { class: 'mc-dupload__hint num' }, `≤ ${Math.round(maxSize / 1024)} KB`),
           ])
         }
         default:

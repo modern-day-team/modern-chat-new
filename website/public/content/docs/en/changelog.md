@@ -8,6 +8,20 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Architecture decoupling and horizontal-scaling groundwork
+
+- **Unified REST rate limiting on shared quotas**: the migration / QR poll / public plugin / email-code / upload / AI limit points previously used in-memory token buckets, so quotas were multiplied by instance count. They now use a purpose-scoped limiter factory: Redis-backed shared quotas when Redis is available, in-memory fallback otherwise. Keys are isolated per purpose (failed logins no longer throttle unrelated endpoints from the same IP), and server-plugin message sending shares the WS per-user quota, closing a plugin bypass for mass sending.
+- **Cross-instance kick broadcast**: when Redis is configured, bans/password resets (`KickUser`) and single-device sign-out (`KickSession`) are broadcast via Pub/Sub so every instance immediately drops matching connections. Without Redis it degrades to single-instance behavior and remote instances still converge via the existing 5s per-frame check. `internal/cluster` has no dependency on upper layers, so components remain independently runnable.
+- **More business rules in the core service**: added `service/favorite.go`; message existence checks, favorite/unfavorite and empty-array/limit normalization moved out of the handler into the service core via a consumer-defined narrow interface, with unit tests.
+- **Frontend cross-module dependency cleanup**: `AvatarBadge` moved from `components/chat/` to `components/common/`, removing reverse references from non-chat views (login, admin) into chat internals; the default tint now uses the brand token. REST response shapes, status codes and visuals are unchanged.
+
+### Full plugin capability expansion (SDK v5)
+
+- **User plugin APIs**: added `conv:write` and `file:upload` permissions plus `api.conv.*`, `api.message.*`, `api.users.block*` and `api.file.upload`. Plugins can create/manage conversations, read message history, recall/edit/favorite/report messages and upload files, all behind host permission checks.
+- **Declarative UI**: added `tabs`, `steps`, `empty`, `loading` and `upload`. The host reads the selected file and caps it at 1 MB, so plugins never receive a DOM File object.
+- **Server WASM host APIs**: added `message.send`, `conv.list`, `conv.members`, `user.get`, `user.search` and `notification.push`, with `server:message` / `server:conv` / `server:user` permissions. Business actions are bound to the current user; public routes cannot forge identity.
+- **Example**: added `power-kit.plugin.js` demonstrating conversation management, message history, file upload and the new UI controls.
+
 ### Server-side WASM plugins and AI proxy
 
 - **WASM server runtime (migration 0036)**: added `runtime: "wasm"` server plugins executed in a restricted WASI sandbox via `wazero`. Admins can upload a `.wasm` up to 8 MB; routes with `handler: true` are dispatched to the plugin, and `public: true` allows anonymous access.

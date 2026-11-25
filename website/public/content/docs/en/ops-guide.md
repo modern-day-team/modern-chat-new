@@ -7,7 +7,7 @@
 
 ## 1. Deployment Shape
 
-**Technical premises**: single-instance self-hosting. MySQL 8.0 is the only required dependency; Redis (shared rate-limit quota) and SMTP (password-recovery emails) are **optional** and degrade gracefully when absent.
+**Technical premises**: single-instance self-hosting. MySQL 8.0 is the only required dependency; Redis (shared rate-limit quota + cross-instance kick broadcast) and SMTP (password-recovery emails) are **optional** and degrade gracefully when absent. Multi-instance deployments need Redis: rate-limit quotas are shared and bans/single-device sign-outs are broadcast instantly via Pub/Sub to every instance (see `REDIS_ADDR` in §2.1). Online presence is still in-process only and is not aggregated across instances (phase-two boundary in the design doc §9.5).
 
 ```
 Browser ──HTTPS──▶ nginx (static assets + /api proxy + /ws upgrade)
@@ -43,7 +43,7 @@ The backend reads all config from environment variables (`server/internal/config
 | `LOG_DIR` | `logs` | no | log directory; empty = stdout only |
 | `DATA_DIR` | `data` | no | data directory; uploaded images / voice / video live in `DATA_DIR/uploads/YYYY/MM/`. **Ignored when using object storage** (files are not written locally) |
 | `LOG_RETAIN_DAYS` | `15` | no | log retention days |
-| `REDIS_ADDR` | empty | no | when set, rate limiting uses a Redis shared quota (multi-instance); connection failures fall back to memory automatically. **Editable in the admin console** (restart required) |
+| `REDIS_ADDR` | empty | no | when set: ① REST/WS/plugin rate limiting uses a Redis shared quota (multi-instance); ② bans/single-device sign-outs are broadcast instantly to all instances via Redis Pub/Sub (channel `mc:ws:kick`). Connection failures fall back to in-memory limiting and single-instance kicks (remote instances still converge via the existing 5s per-frame check). **Editable in the admin console** (restart required) |
 | `REDIS_PASSWORD` | empty | no | Redis password. **Editable in the admin console** (restart required, stored encrypted) |
 | `REDIS_DB` | `0` | no | Redis DB number. **Editable in the admin console** (restart required) |
 | `SMTP_HOST` | empty | no | when empty, recovery links only go to the server log (**users get no email**). **Editable in the admin console** |

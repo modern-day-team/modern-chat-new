@@ -78,6 +78,15 @@ const PLUGINS: MarketPlugin[] = [
     en: 'SDK v4 demo: a full AI chat page using the server-side proxy, so the API key never reaches the browser.',
     perms: ['ui:page', 'ai'],
   },
+  {
+    file: 'power-kit.plugin.js',
+    name: 'power-kit',
+    version: '1.0.0',
+    cat: 'demo',
+    zh: 'SDK v5 示例：会话管理、消息历史、文件上传与 tabs/steps/empty/loading/upload 控件。',
+    en: 'SDK v5 demo: conversation management, message history, file upload and tabs/steps/empty/loading/upload controls.',
+    perms: ['ui:panel', 'ui:page', 'conv:read', 'conv:write', 'message:send', 'file:upload'],
+  },
 ]
 
 const keyword = ref('')

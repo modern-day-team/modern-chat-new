@@ -5,7 +5,7 @@ import { useRouter } from 'vue-router'
 import { DialogPlugin } from '@/components/ui/feedback'
 import { ChatIcon, NotificationIcon, SettingIcon, StarIcon, UserCircleIcon } from 'tdesign-icons-vue-next'
 
-import AvatarBadge from './AvatarBadge.vue'
+import AvatarBadge from '@/components/common/AvatarBadge.vue'
 import ProfileCard from './ProfileCard.vue'
 import { useAppI18n } from '@/composables/useAppI18n'
 import { useAuthStore } from '@/stores/auth'

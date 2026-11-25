@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"sync"
@@ -10,6 +11,7 @@ import (
 	"github.com/gorilla/websocket"
 	"golang.org/x/time/rate"
 
+	"github.com/modern-day-team/modern-chat-new/server/internal/cluster"
 	"github.com/modern-day-team/modern-chat-new/server/internal/middleware"
 	"github.com/modern-day-team/modern-chat-new/server/internal/serverplugin"
 	"github.com/modern-day-team/modern-chat-new/server/internal/service"
@@ -44,6 +46,20 @@ type Deps struct {
 	PushSubs *store.PushStore
 	// Events 服务端插件事件总线（message:new 等；可为 nil）
 	Events *serverplugin.Runtime
+	// ClusterBus 跨实例事件总线（可为 nil：单实例部署不广播踢线）
+	Broadcaster EventBroadcaster
+	// ClusterEvents 接收其它实例的踢线事件（可为 nil）
+	ClusterEvents EventSubscriber
+}
+
+// EventBroadcaster 由 ws 消费方定义的窄接口：只负责广播踢线事件。
+type EventBroadcaster interface {
+	Publish(ev cluster.Event) error
+}
+
+// EventSubscriber 由 ws 消费方定义的窄接口：只负责订阅并回调。
+type EventSubscriber interface {
+	Subscribe(ctx context.Context, onMessage func(cluster.Event)) error
 }
 
 // Hub 在线连接注册表（按用户分片锁）。
@@ -60,8 +76,10 @@ type Hub struct {
 	// 每次要取同会话全部成员 ∪ 好友，最热的高频查库路径之一。
 	relatedCache sync.Map // userID -> *relatedEntry
 	done         chan struct{}
-	closed       bool
-	mu           sync.RWMutex
+	// clusterCancel 取消跨实例事件订阅（Close 时调用，与 done 分开：done 是 Hub 生命周期）。
+	clusterCancel context.CancelFunc
+	closed        bool
+	mu            sync.RWMutex
 }
 
 // Client 一条 WS 连接。
@@ -114,6 +132,24 @@ func NewHub(deps *Deps) *Hub {
 func (h *Hub) Run() {
 	cleanup := time.NewTicker(5 * time.Minute)
 	defer cleanup.Stop()
+	// 跨实例踢线订阅：单实例（未注入）时不启动；订阅失败只告警，不影响本实例运行。
+	if h.deps != nil && h.deps.ClusterEvents != nil {
+		ctx, cancel := context.WithCancel(context.Background())
+		h.mu.Lock()
+		h.clusterCancel = cancel
+		h.mu.Unlock()
+		if err := h.deps.ClusterEvents.Subscribe(ctx, func(ev cluster.Event) {
+			switch ev.Kind {
+			case cluster.KindKickUser:
+				h.kickUserLocal(ev.UID, ev.Reason)
+			case cluster.KindKickSession:
+				h.kickSessionLocal(ev.SID, ev.Reason)
+			}
+		}); err != nil {
+			slog.Warn("cluster kick subscription failed", "err", err.Error())
+			cancel()
+		}
+	}
 	for {
 		select {
 		case <-h.done:
@@ -191,12 +227,20 @@ func (h *Hub) Unregister(c *Client) {
 //   - 锁外通过 kickCh 通知 writePump 冲刷队列、发 WS 关闭帧后自行退出；
 //   - 另有 kickGrace 兜底定时器强制 Close，防止 writePump 已死时连接残留。
 func (h *Hub) KickUser(userID uint, reason string) {
+	if userID == 0 {
+		return
+	}
+	h.kickUserLocal(userID, reason)
+	// 广播给其它实例：远端只踢自己的同 uid 连接，不再次广播（靠 nodeID 过滤回声）。
+	// Redis 不可用时 Publish 返回错误，本实例已处理，远端由 5s 连接级复核兜底。
+	h.broadcast(cluster.Event{Kind: cluster.KindKickUser, UID: userID, Reason: reason})
+}
+
+// kickUserLocal 只踢本实例连接（供 KickUser 与跨实例事件回调复用）。
+func (h *Hub) kickUserLocal(userID uint, reason string) {
 	data, err := json.Marshal(ginH{"type": "kicked", "reason": reason})
 	if err != nil {
 		slog.Error("ws marshal kicked frame", "err", err.Error())
-		return
-	}
-	if userID == 0 {
 		return
 	}
 	s := h.shards[userID%ShardCount]
@@ -224,6 +268,12 @@ func (h *Hub) KickSession(sid, reason string) {
 	if sid == "" {
 		return
 	}
+	h.kickSessionLocal(sid, reason)
+	h.broadcast(cluster.Event{Kind: cluster.KindKickSession, SID: sid, Reason: reason})
+}
+
+// kickSessionLocal 只踢本实例中 sid 匹配的连接（供 KickSession 与跨实例回调复用）。
+func (h *Hub) kickSessionLocal(sid, reason string) {
 	data, err := json.Marshal(ginH{"type": "kicked", "reason": reason})
 	if err != nil {
 		slog.Error("ws marshal kicked frame", "err", err.Error())
@@ -248,6 +298,17 @@ func (h *Hub) KickSession(sid, reason string) {
 	}
 	if len(targets) > 0 {
 		slog.Info("ws kicked session conns", "sid", sid, "conns", len(targets))
+	}
+}
+
+// broadcast 广播踢线事件。未注入总线（单实例 / 测试）时为 no-op。
+// 广播失败只告警：不影响本实例已执行的踢线，远端靠连接级复核兜底。
+func (h *Hub) broadcast(ev cluster.Event) {
+	if h.deps == nil || h.deps.Broadcaster == nil {
+		return
+	}
+	if err := h.deps.Broadcaster.Publish(ev); err != nil {
+		slog.Warn("cluster kick broadcast failed", "kind", ev.Kind, "err", err.Error())
 	}
 }
 
@@ -329,6 +390,9 @@ func (h *Hub) Close() {
 	}
 	h.closed = true
 	close(h.done)
+	if h.clusterCancel != nil {
+		h.clusterCancel()
+	}
 	h.mu.Unlock()
 	// 锁内只收集，锁外关闭：避免持分片锁做网络操作。
 	var all []*Client
