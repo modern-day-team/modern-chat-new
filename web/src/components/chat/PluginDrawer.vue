@@ -14,6 +14,7 @@ import { usePluginHost } from '@/composables/usePluginHost'
 import { useAuthStore } from '@/stores/auth'
 import { usePluginsStore } from '@/stores/plugins'
 import type { PageDesc, Plugin } from '@/types/proto'
+import * as market from './pluginMarket'
 
 const visible = defineModel<boolean>({ default: false })
 /** 市场一键安装深链预填：URL 永久生效，名称只做提示横幅 */
@@ -125,17 +126,8 @@ async function installFromUrl() {
   if (ok) emit('preset-done')
 }
 
-/** 语义化版本比较：old 大于 new 时为降级安装 */
-function isDowngrade(oldV: string, newV: string): boolean {
-  const a = oldV.split('.').map(Number)
-  const b = newV.split('.').map(Number)
-  for (let i = 0; i < 3; i++) {
-    const x = a[i] ?? 0
-    const y = b[i] ?? 0
-    if (x !== y) return x > y
-  }
-  return false
-}
+/** 语义化版本比较：old 大于 new 时为降级安装（实现在 pluginMarket.ts，纯函数可测） */
+const isDowngrade = market.isDowngrade
 
 /** 安装 / 升级 → 弹权限清单，用户确认后才生效（§8.4）。
  *  返回是否走完弹窗（供市场深链判断是否收横幅）。 */

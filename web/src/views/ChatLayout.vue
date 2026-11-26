@@ -14,6 +14,7 @@ import GroupPane from '@/components/chat/GroupPane.vue'
 import MessagePane from '@/components/chat/MessagePane.vue'
 import NotificationDrawer from '@/components/chat/NotificationDrawer.vue'
 import PluginDrawer from '@/components/chat/PluginDrawer.vue'
+import { readPluginInstallQuery } from '@/components/chat/pluginMarket'
 import PaneResizer from '@/components/common/PaneResizer.vue'
 import { useAppI18n } from '@/composables/useAppI18n'
 import { lastSeenAnnouncementId, markAnnouncementSeen } from '@/composables/announcement'
@@ -60,11 +61,10 @@ const presetInstallName = ref('')
 
 /** 消费官网市场带来的 ?plugin-install 深链（onMounted 与应用内导航时各试一次） */
 function consumePresetInstall() {
-  const u = route.query['plugin-install']
-  if (typeof u !== 'string' || !u) return
-  presetInstallUrl.value = u
-  const n = route.query['plugin-name']
-  presetInstallName.value = typeof n === 'string' ? n : ''
+  const preset = readPluginInstallQuery(route.query as Record<string, unknown>)
+  if (!preset) return
+  presetInstallUrl.value = preset.url
+  presetInstallName.value = preset.name
   pluginDrawerVisible.value = true
   // 用完即清 query：刷新不重弹；抽屉横幅由 presetInstallName 驱动直到安装成功
   const q = { ...route.query }
