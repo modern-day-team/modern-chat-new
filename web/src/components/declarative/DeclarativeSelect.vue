@@ -6,9 +6,9 @@
  * 这里改为挂载时按需动态加载，仅在插件确实渲染 select 节点时才加载该 chunk，
  * 加载完成前显示轻量占位，避免阻塞首屏。
  */
-import { ref, shallowRef, onMounted } from 'vue'
+import { shallowRef, onMounted } from 'vue'
 
-const props = defineProps<{
+defineProps<{
   value: string
   options: { label: string; value: string }[]
   placeholder: string
