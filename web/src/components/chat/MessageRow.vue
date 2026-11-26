@@ -257,7 +257,7 @@ const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉']
       </div>
 
       <!-- 表情回应：已有点击切换，+ 展开预设表情。
-           暂未开放（FEATURES.reactions=false 隐藏，逻辑保留），开关在 src/config/features.ts -->
+           开关在 src/config/features.ts（FEATURES.reactions） -->
       <div
         v-if="FEATURES.reactions && !msg.isRecalled && msg.id > 0"
         class="mc-msg__reactions"

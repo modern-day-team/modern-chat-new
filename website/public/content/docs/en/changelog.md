@@ -8,6 +8,10 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 
 ## [Unreleased]
 
+### New Features
+
+- **Emoji reactions enabled**: emoji reactions under message bubbles (👍 ❤️ 😂 😮 😢 🎉) are now live. The whole pipeline was already implemented — WS `reaction` frames (one reaction per user per message, set/remove with idempotent server broadcast), REST history aggregation `{emoji,count,mine}`, the reaction chips and preset picker under each bubble — previously hidden behind `FEATURES.reactions=false` per the phase-2 plan; the flag is now on by default. No WS/REST contract changes; the cross-platform golden contract samples already include reaction frames.
+
 ### Fixes
 
 - **Call ICE config was never actually delivered**: `CallOverlay` fetched `GET /api/call/config` with a bare `fetch` and no `Authorization` header, while that endpoint sits behind auth (Bearer only) — so even logged-in users always got a 401 that was silently swallowed. STUN/TURN never reached `RTCPeerConnection`: same-network calls worked via host candidates, cross-NAT deployments could not connect. Now goes through the unified REST client (auth / timeout / 401 handling).

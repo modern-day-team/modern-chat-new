@@ -5,7 +5,8 @@
 export const FEATURES = {
   /**
    * 表情回应（消息气泡下的 emoji 表态）。
-   * 暂未开放：设计文档 §1.2 把「表情回应」划在二期，本期只做自定义表情发送。
+   * 2026-11-26 启用：链路早已实现（WS reaction 帧 + REST 历史聚合 + UI），
+   * 此前按设计文档划在二期隐藏；如需临时下线改回 false 即可。
    */
-  reactions: false,
+  reactions: true,
 } as const

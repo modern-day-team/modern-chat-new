@@ -8,6 +8,10 @@
 
 ## [未发布]
 
+### 新功能
+
+- **表情回应开放**：消息气泡下的 emoji 表态（👍 ❤️ 😂 😮 😢 🎉）正式可用。链路此前已完整实现——WS `reaction` 帧（每人每条消息最多一个表情，set/remove，服务端幂等广播）、REST 历史分页聚合 `{emoji,count,mine}`、气泡下方回应条与预设表情选择器——原按设计文档划在二期、以 `FEATURES.reactions=false` 隐藏；现打开开关默认展示。WS/REST 契约无任何变化，跨端契约金样本已含 reaction 帧。
+
 ### 修复
 
 - **通话 ICE 配置从未真正下发**：`CallOverlay` 取 `GET /api/call/config` 时用裸 `fetch` 不带 `Authorization` 头，而该接口在鉴权组（仅认 Bearer），登录用户也恒 401 且被静默吞掉——STUN/TURN 配置从未到达 `RTCPeerConnection`，同网靠 host candidates 能通、跨 NAT 部署打不通。改走统一 REST 客户端（带鉴权 / 超时 / 401 处理）。
