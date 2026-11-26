@@ -8,6 +8,14 @@
 
 ## [未发布]
 
+### 修复
+
+- **通话 ICE 配置从未真正下发**：`CallOverlay` 取 `GET /api/call/config` 时用裸 `fetch` 不带 `Authorization` 头，而该接口在鉴权组（仅认 Bearer），登录用户也恒 401 且被静默吞掉——STUN/TURN 配置从未到达 `RTCPeerConnection`，同网靠 host candidates 能通、跨 NAT 部署打不通。改走统一 REST 客户端（带鉴权 / 超时 / 401 处理）。
+- **网络抖动不再立即挂断**：WebRTC `disconnected` 常是暂态（ICE 换路径、Wi-Fi 抖动），原先与终态 `failed` 同等处理直接结束通话。现在 `disconnected` 给 10s 宽限，恢复 `connected` 即撤销，超时才挂断；`failed` 仍是终态。
+- **信令坏包防护**：SDP / ICE candidate 是对端经服务端**原文转发**的字符串，畸形数据原先在 `handleFrame` 里直接抛未处理异常，会话卡死在「连接中」。坏包解析现在返回 null：candidate 坏包仅丢弃，SDP 坏包结束通话（纯函数 `safeParseJson` 进 `logic.ts` 并补测试）。
+- **多端响铃联动**：被叫接听后，其余响铃设备立即收到 `call.ended{reason:"accepted-elsewhere"}` 停止响铃（原先要等满 60s 来电超时才静默）。服务端同时收紧校验：响铃阶段非接听设备伪造的 answer/ICE 一律丢弃（补 ws 回归测试）。
+- **声明式渲染防深递归**：插件描述树 `card` / `list` / `tabs` 嵌套深度加 8 层上限，超限渲染占位节点，防止恶意深嵌套把渲染递归打爆。
+
 ### 性能优化
 
 - **聊天首屏体积下降**：插件声明式渲染器里的 TDesign `Select`（约 140 KB）原先经 `MessageRow` 静态引入，被拉进聊天首屏关键路径，即使插件消息里的 `select` 节点并不常见。改为 `DeclarativeSelect.vue` 挂载时按需动态加载，仅插件确实渲染 `select` 节点时才加载该 chunk——首屏不再为罕见控件买单，`select` chunk 移出关键路径（懒加载 chunk 104 KB / gzip 32 KB）。

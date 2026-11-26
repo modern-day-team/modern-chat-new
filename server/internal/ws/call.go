@@ -152,6 +152,24 @@ func (h *Hub) ToSid(userID uint, sid string, frame any) bool {
 	return false
 }
 
+// ToUserExcept 向指定用户除某设备外的全部连接发帧。
+// accept 时通知被叫其它设备停止响铃；与 ToSid 同构：只序列化一次，锁内 trySend。
+func (h *Hub) ToUserExcept(userID uint, exceptSID string, frame any) {
+	data, err := json.Marshal(frame)
+	if err != nil {
+		slog.Error("ws marshal call frame", "err", err.Error())
+		return
+	}
+	s := h.shards[userID%ShardCount]
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for c := range s.conns[userID] {
+		if c.sid != exceptSID {
+			c.trySend(data)
+		}
+	}
+}
+
 // finishCall 结束一路通话的公共收尾：清理状态 + 向双方全部连接广播 ended。
 // 挂断 / 超时 / 断线走这里；拒绝是另一种语义（给主叫 rejected），单独处理。
 func (h *Hub) finishCall(id string, info callInfo, reason string) {
@@ -300,6 +318,11 @@ func (h *Hub) handleCallAccept(c *Client, f *clientFrame) {
 	h.ToSid(info.fromUID, info.fromSID, ginH{
 		"type": "call.accepted", "callId": f.CallID, "fromSid": c.sid,
 	})
+	// 多端响铃联动：通话已归属本设备，其余响铃设备立即停止（通话并未结束，
+	// 用独立原因与挂断区分，前端据 i18n 提示「已在其他设备接听」）。
+	h.ToUserExcept(c.UserID, c.sid, ginH{
+		"type": "call.ended", "callId": f.CallID, "reason": "accepted-elsewhere",
+	})
 }
 
 // handleCallReject 被叫拒绝：清理并回主叫 rejected。
@@ -324,6 +347,11 @@ func (h *Hub) handleCallSignal(c *Client, f *clientFrame) {
 	if c.UserID == info.fromUID {
 		targetSID = info.toSID
 	} else {
+		// 被叫必须是接听设备本身：响铃阶段其它设备不能替通话注入 SDP/ICE。
+		// （callPeer 对未接听被叫放行所有设备，这里收紧到 toSID 精确匹配。）
+		if c.sid != info.toSID {
+			return
+		}
 		targetSID = info.fromSID
 	}
 	if targetSID == "" {

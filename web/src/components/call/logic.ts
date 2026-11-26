@@ -61,6 +61,20 @@ export function shouldHandleFrame(frame: ServerFrame, ctx: FrameFilterContext): 
   }
 }
 
+/**
+ * 安全解析经服务端原文转发的 JSON 字段（SDP / ICE candidate）。
+ * 对端数据不可信：坏包返回 null，由调用方决定丢弃或结束通话，
+ * 避免在 async 帧处理里抛未处理异常把会话卡死在连接中。
+ */
+export function safeParseJson<T>(raw: string | undefined): T | null {
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    return null
+  }
+}
+
 /** 秒 → mm:ss（通话时长）。 */
 export function formatDuration(sec: number): string {
   const m = Math.floor(sec / 60)

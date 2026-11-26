@@ -392,6 +392,7 @@ export default {
     connecting: 'Connecting…',
     connected: 'In call',
     ended: 'Call ended',
+    'accepted-elsewhere': 'Answered on another device',
     rejected: 'Call declined',
     busy: 'The other person is busy',
     timeout: 'No answer',

@@ -153,6 +153,10 @@ func TestCallDuplicateAcceptIdempotent(t *testing.T) {
 	frameOf(t, callee2)
 	hub.handleCallAccept(callee1, callFrame("call.accept", "multi-1"))
 	frameOf(t, caller) // 第一条 accepted
+	// 接听设备的其它终端立即停止响铃（多端联动，避免手机接了电脑还震铃）
+	if end := frameOf(t, callee2); end["type"] != "call.ended" || end["reason"] != "accepted-elsewhere" {
+		t.Fatalf("ringing device should get accepted-elsewhere: %v", end)
+	}
 	hub.handleCallAccept(callee2, callFrame("call.accept", "multi-1"))
 	noFrame(t, caller) // 第二条被忽略
 
@@ -160,6 +164,39 @@ func TestCallDuplicateAcceptIdempotent(t *testing.T) {
 	if info.toSID != "sid-dev-1" {
 		t.Fatalf("answering device changed on duplicate accept: %s", info.toSID)
 	}
+}
+
+// 响铃阶段非接听设备的 SDP/ICE 必须被丢弃（服务端收紧：被叫信号只能来自接听设备）。
+func TestCallSignalFromNonAnsweringDeviceDropped(t *testing.T) {
+	hub := NewHub(&Deps{})
+	caller := newTestClient(hub, 1, 8)
+	caller.sid = "sid-caller"
+	callee1 := newTestClient(hub, 2, 8)
+	callee1.sid = "sid-dev-1"
+	callee2 := newTestClient(hub, 2, 8)
+	callee2.sid = "sid-dev-2"
+	hub.Register(caller)
+	hub.Register(callee1)
+	hub.Register(callee2)
+
+	hub.handleCallInvite(caller, &clientFrame{Type: "call.invite", CallID: "sig-1", ToUserID: 2, MediaType: "video"})
+	frameOf(t, callee1)
+	frameOf(t, callee2)
+
+	// 未接听时另一台设备伪造 answer：不应送达主叫
+	hub.handleCallSignal(callee2, &clientFrame{Type: "call.answer", CallID: "sig-1", SDP: "evil"})
+	noFrame(t, caller)
+
+	// 正常接听后，接听设备信号畅通、非接听设备仍被拒
+	hub.handleCallAccept(callee1, callFrame("call.accept", "sig-1"))
+	frameOf(t, caller)  // accepted
+	frameOf(t, callee2) // accepted-elsewhere
+	hub.handleCallSignal(callee1, &clientFrame{Type: "call.answer", CallID: "sig-1", SDP: "good"})
+	if ans := frameOf(t, caller); ans["sdp"] != "good" {
+		t.Fatalf("answering device signal should pass: %v", ans)
+	}
+	hub.handleCallSignal(callee2, &clientFrame{Type: "call.ice", CallID: "sig-1", Candidate: "evil"})
+	noFrame(t, caller)
 }
 
 // 断线清理（H4 修复）：被叫接听设备断开 → 主叫收到 disconnect，状态释放。

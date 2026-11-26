@@ -8,6 +8,14 @@
 
 ## [未发布]
 
+### 修复
+
+- **通话 ICE 配置从未真正下发**：`CallOverlay` 取 `GET /api/call/config` 时用裸 `fetch` 不带 `Authorization` 头，而该接口在鉴权组（仅认 Bearer），登录用户也恒 401 且被静默吞掉——STUN/TURN 配置从未到达 `RTCPeerConnection`，同网靠 host candidates 能通、跨 NAT 部署打不通。改走统一 REST 客户端（带鉴权 / 超时 / 401 处理）。
+- **网络抖动不再立即挂断**：WebRTC `disconnected` 常是暂态（ICE 换路径、Wi-Fi 抖动），原先与终态 `failed` 同等处理直接结束通话。现在 `disconnected` 给 10s 宽限，恢复 `connected` 即撤销，超时才挂断；`failed` 仍是终态。
+- **信令坏包防护**：SDP / ICE candidate 是对端经服务端**原文转发**的字符串，畸形数据原先在 `handleFrame` 里直接抛未处理异常，会话卡死在「连接中」。坏包解析现在返回 null：candidate 坏包仅丢弃，SDP 坏包结束通话（纯函数 `safeParseJson` 进 `logic.ts` 并补测试）。
+- **多端响铃联动**：被叫接听后，其余响铃设备立即收到 `call.ended{reason:"accepted-elsewhere"}` 停止响铃（原先要等满 60s 来电超时才静默）。服务端同时收紧校验：响铃阶段非接听设备伪造的 answer/ICE 一律丢弃（补 ws 回归测试）。
+- **声明式渲染防深递归**：插件描述树 `card` / `list` / `tabs` 嵌套深度加 8 层上限，超限渲染占位节点，防止恶意深嵌套把渲染递归打爆。
+
 ### 文档与协同
 
 - **新增《项目组架构与集成》总览文档**（`docs/项目组架构与集成.md`）：明确"一个核心，四个组件"的定位关系与双重属性（可独立可联合）；登录拓扑三条路径与 **uid 空间约束警示**（同一主仓库实例只接一个身份源，防止共享 `JWT_SECRET` 时跨库串号）；契约真源索引、部署组合（最小 / 标准 / 全套）、版本与发版协同及跨仓库流程约定。官网文档站同步收录（ecosystem.md，中英双语）。

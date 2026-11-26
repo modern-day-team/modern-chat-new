@@ -394,6 +394,7 @@ export default {
     connecting: '正在连接…',
     connected: '通话中',
     ended: '通话已结束',
+    'accepted-elsewhere': '已在其他设备接听',
     rejected: '对方拒绝通话',
     busy: '对方正在通话中',
     timeout: '无人接听',

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ServerFrame } from '@/types/proto'
 import {
-  formatDuration, isCallFrame, normalizeMediaType, shouldHandleFrame,
+  formatDuration, isCallFrame, normalizeMediaType, safeParseJson, shouldHandleFrame,
   type FrameFilterContext,
 } from './logic'
 
@@ -61,5 +61,14 @@ describe('formatDuration / normalizeMediaType', () => {
     expect(normalizeMediaType('audio')).toBe('audio')
     expect(normalizeMediaType('evil')).toBe('audio')
     expect(normalizeMediaType(undefined)).toBe('audio')
+  })
+})
+
+describe('safeParseJson', () => {
+  it('合法 JSON 原样解析；坏包与空值返回 null（不抛异常）', () => {
+    expect(safeParseJson<{ type: string }>('{"type":"offer"}')).toEqual({ type: 'offer' })
+    expect(safeParseJson('not-json{')).toBe(null)
+    expect(safeParseJson(undefined)).toBe(null)
+    expect(safeParseJson('')).toBe(null)
   })
 })

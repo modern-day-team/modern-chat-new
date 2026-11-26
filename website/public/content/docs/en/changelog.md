@@ -8,6 +8,14 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Fixes
+
+- **Call ICE config was never actually delivered**: `CallOverlay` fetched `GET /api/call/config` with a bare `fetch` and no `Authorization` header, while that endpoint sits behind auth (Bearer only) — so even logged-in users always got a 401 that was silently swallowed. STUN/TURN never reached `RTCPeerConnection`: same-network calls worked via host candidates, cross-NAT deployments could not connect. Now goes through the unified REST client (auth / timeout / 401 handling).
+- **Network blips no longer drop the call**: WebRTC `disconnected` is often transient (ICE path switch, Wi-Fi jitter); it was previously treated the same as the terminal `failed` state and ended the call immediately. `disconnected` now gets a 10s grace period — recovering to `connected` cancels it, timeout still hangs up; `failed` remains terminal.
+- **Malformed signaling guard**: SDP / ICE candidate strings are relayed verbatim through the server from the peer; malformed data used to throw unhandled exceptions inside `handleFrame`, leaving the call stuck on "connecting". Bad packets now parse to null: a bad candidate is dropped, a bad SDP ends the call (pure `safeParseJson` helper in `logic.ts` with tests).
+- **Multi-device ring sync**: after the callee answers, other ringing devices immediately receive `call.ended{reason:"accepted-elsewhere"}` and stop ringing (previously they rang until the 60s incoming timeout). The server also tightens validation: answer/ICE forged by non-answering devices during ringing is dropped (ws regression tests added).
+- **Declarative render depth guard**: plugin description trees (`card` / `list` / `tabs`) are capped at 8 nesting levels, rendering a placeholder beyond it, so a deeply nested description can no longer blow up rendering recursion.
+
 ### Performance
 
 - **Smaller chat first screen**: the plugin declarative renderer's TDesign `Select` (≈140 KB) was previously statically imported via `MessageRow`, pulling it into the chat first-screen critical path even though `select` nodes in plugin messages are uncommon. It is now lazy-loaded on mount via `DeclarativeSelect.vue`, loading only when a plugin actually renders a `select` node — the `select` chunk is off the critical path (lazy chunk 104 KB / gzip 32 KB), so the first screen no longer pays for a rare plugin control.

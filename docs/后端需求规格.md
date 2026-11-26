@@ -224,11 +224,11 @@ AdminPluginRow  { name, version, installCount, enabledCount, globalDisabled, cre
 - **站长开关**：`site.callEnabled` 默认开，后台「系统设置 → 站点信息」可关；关闭后前端隐藏入口、`GET /api/call/config` 返回 403、WS `call.*` 信令统一回 `error` 帧拒绝发起（三重生效，不能只靠藏按钮）。
 - 上行帧（均带 `callId` 128 位随机串，服务端去重；SDP/ICE 单帧仍受 64KB 上限）：
   - `{"type":"call.invite","callId","toUserId","mediaType":"audio"|"video","convId?"}` —— 发起前校验目标在线（`Hub.Online`）且双方是好友或同会话成员；向目标**全部在线连接**下发 `call.incoming`；同一时刻每个用户最多一路通话，忙线或 callId 重复回 `{"type":"call.busy","callId"}`
-  - `{"type":"call.accept","callId"}` / `{"type":"call.reject","callId"}` —— 被叫应答/拒绝；服务端用连接自身的 `sid` 精确投递到发起端（前端无需知道自己的 sid）；多端重复接听只有第一条生效；超时 60s 未应答自动按拒绝处理
-  - `{"type":"call.offer","callId","sdp"}` / `{"type":"call.answer","callId","sdp"}` —— SDP 交换。**客户端不传 `toSid`**：服务端按 `callId` 与发送方身份推导目标设备（主叫→被叫接听设备，被叫→发起设备），避免被叫不知道主叫 sid 导致 answer 全丢
+  - `{"type":"call.accept","callId"}` / `{"type":"call.reject","callId"}` —— 被叫应答/拒绝；服务端用连接自身的 `sid` 精确投递到发起端（前端无需知道自己的 sid）；多端重复接听只有第一条生效；超时 60s 未应答自动按拒绝处理；接听后向被叫**其余设备**下发 `call.ended{reason:"accepted-elsewhere"}` 停止响铃
+  - `{"type":"call.offer","callId","sdp"}` / `{"type":"call.answer","callId","sdp"}` —— SDP 交换。**客户端不传 `toSid`**：服务端按 `callId` 与发送方身份推导目标设备（主叫→被叫接听设备，被叫→发起设备），避免被叫不知道主叫 sid 导致 answer 全丢；被叫侧只接受**接听设备**的信号，响铃阶段其它设备伪造的 SDP/ICE 一律丢弃
   - `{"type":"call.ice","callId","candidate"}` —— trickle ICE，单条 candidate 一帧；目标设备同样由服务端推导；高频但受控制帧令牌桶约束
   - `{"type":"call.hangup","callId"}` —— 任一方挂断，向双方全部连接下发 `call.ended`，释放通话状态
-- 下行帧：`call.incoming {callId,fromUserId,fromSid,nickname?,avatar?,mediaType}`（`fromSid` 供客户端展示/调试，回信令**不需要**它）、`call.accepted {callId,fromSid}`、`call.rejected {callId}`、`call.busy {callId}`、`call.offer/answer {callId,sdp}`、`call.ice {callId,candidate}`、`call.ended {callId,reason?}`（`reason` 为 `hangup` / `timeout` / `disconnect` / `error`，前端据 i18n 映射中文提示）
+- 下行帧：`call.incoming {callId,fromUserId,fromSid,nickname?,avatar?,mediaType}`（`fromSid` 供客户端展示/调试，回信令**不需要**它）、`call.accepted {callId,fromSid}`、`call.rejected {callId}`、`call.busy {callId}`、`call.offer/answer {callId,sdp}`、`call.ice {callId,candidate}`、`call.ended {callId,reason?}`（`reason` 为 `hangup` / `timeout` / `disconnect` / `error` / `accepted-elsewhere`（已在其他设备接听），前端据 i18n 映射中文提示）
 - 通话状态仅在 Hub 内存维护（`callId → {fromUid, fromSid, toUid, toSid, created, timer}`），带 5 分钟 TTL 兜底清理；**一方连接断开（含被踢）立即结束其通话并向对端下发 `call.ended{reason:"disconnect"}`**；**多实例部署下通话状态不跨实例共享**，媒体 P2P 本身不受影响，跨实例忙线判定属二期边界（与 presence 一致）。
 - ICE 配置经 **`GET /api/call/config`（需登录）** 下发 `{enabled, iceServers:[{urls,username?,credential?}]}`，前端登录后取一次并缓存；**TURN 凭据绝不放公开接口**（`/api/site` 只暴露 `call:{enabled:true}` 供前端判断入口是否显示）。默认启用公开 STUN，`TURN_*` 环境变量未配置时无 TURN（对称 NAT 下可能无法直连，需部署方自行配置）。
 

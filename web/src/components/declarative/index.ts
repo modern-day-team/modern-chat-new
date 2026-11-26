@@ -40,9 +40,17 @@ export const DeclarativeNodes = defineComponent({
   props: {
     nodes: { type: Array as PropType<readonly UIDescNode[]>, required: true },
     onAction: { type: Function as PropType<ActionFn>, default: undefined },
+    // 嵌套深度：描述树由插件生成，card/list/tabs 无上限嵌套会把渲染递归打爆
+    depth: { type: Number, default: 0 },
   },
   setup(props) {
-    function renderNode(node: UIDescNode): VNode {
+    // 容器类节点的最大嵌套层数；合法 UI 远用不到，超限渲染占位
+    const MAX_DEPTH = 8
+
+    function renderNode(node: UIDescNode, depth: number): VNode {
+      if (depth > MAX_DEPTH) {
+        return h('span', { class: 'text-placeholder' }, i18n.global.t('message.rejectedComponent'))
+      }
       const p = safeProps(node.props ?? {})
       const str = (k: string, d = '') => String(p[k] ?? d)
 
@@ -155,13 +163,13 @@ export const DeclarativeNodes = defineComponent({
           return h(
             'div',
             { class: 'mc-dcard' },
-            h(DeclarativeNodes, { nodes: node.children ?? [], onAction: props.onAction }),
+            h(DeclarativeNodes, { nodes: node.children ?? [], onAction: props.onAction, depth: depth + 1 }),
           )
         case 'list':
           return h(
             'ul',
             { class: 'mc-dlist' },
-            (node.children ?? []).map((c, i) => h('li', { key: i }, [renderNode(c)])),
+            (node.children ?? []).map((c, i) => h('li', { key: i }, [renderNode(c, depth + 1)])),
           )
         case 'divider':
           return h(TDivider, { style: { margin: '6px 0' } })
@@ -263,7 +271,7 @@ export const DeclarativeNodes = defineComponent({
                 ),
               ),
             ),
-            h('div', { class: 'mc-dtabs__body' }, children[active] ? [renderNode(children[active]!)] : []),
+            h('div', { class: 'mc-dtabs__body' }, children[active] ? [renderNode(children[active]!, depth + 1)] : []),
           ])
         }
         case 'steps': {
@@ -345,7 +353,7 @@ export const DeclarativeNodes = defineComponent({
       }
     }
 
-    return () => h('div', { class: 'mc-declarative' }, props.nodes.map(renderNode))
+    return () => h('div', { class: 'mc-declarative' }, props.nodes.map((n) => renderNode(n, props.depth)))
   },
 })
 

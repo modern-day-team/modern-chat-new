@@ -11,10 +11,11 @@ import {
 } from 'tdesign-icons-vue-next'
 import UiButton from '@/components/ui/UiButton.vue'
 import AvatarBadge from '@/components/common/AvatarBadge.vue'
+import { http } from '@/core/network/http'
 import { useAppI18n } from '@/composables/useAppI18n'
 import type { ClientFrame, ServerFrame } from '@/types/proto'
 import {
-  formatDuration, normalizeMediaType, shouldHandleFrame,
+  formatDuration, normalizeMediaType, safeParseJson, shouldHandleFrame,
   type CallState, type IceServer, type MediaType,
 } from './logic'
 
@@ -48,6 +49,8 @@ let pc: RTCPeerConnection | null = null
 let elapsedTimer: ReturnType<typeof setInterval> | null = null
 let incomingTimer: ReturnType<typeof setTimeout> | null = null
 let connectingTimer: ReturnType<typeof setTimeout> | null = null
+// 连接暂态中断的宽限计时器：disconnected 可能是 ICE 换路径 / 网络抖动
+let disconnectTimer: ReturnType<typeof setTimeout> | null = null
 const pendingIce: RTCIceCandidateInit[] = []
 
 const statusText = computed(() => {
@@ -69,13 +72,12 @@ function post(frame: ClientFrame): boolean {
 async function loadIceConfig() {
   if (iceServers.value.length) return
   try {
-    const res = await fetch('/api/call/config', { headers: { Accept: 'application/json' } })
-    if (res.ok) {
-      const data = (await res.json()) as { iceServers?: IceServer[] }
-      iceServers.value = data.iceServers ?? []
-    }
+    // 必须走统一 REST 客户端（带 Bearer）：/api/call/config 在鉴权组，
+    // 裸 fetch 不带 Authorization 会恒 401，STUN/TURN 从未下发（跨 NAT 打不通）
+    const data = await http.get<{ iceServers?: IceServer[] }>('/call/config')
+    iceServers.value = data.iceServers ?? []
   } catch {
-    // 失败时退回空配置：STUN 仍可由浏览器默认行为处理，不阻断通话
+    // 失败时退回空配置：只有 host candidates，同网可用；跨网需部署 TURN，不阻断通话
   }
 }
 
@@ -101,13 +103,32 @@ function createPC(): boolean {
     if (remoteVideo.value) remoteVideo.value.srcObject = stream
   }
   pc.onconnectionstatechange = () => {
-    if (pc?.connectionState === 'failed' || pc?.connectionState === 'disconnected') {
+    const st = pc?.connectionState
+    // failed 是终态；closed 由本端 pc.close() 触发（cleanup 中），不在此处理；
+    // disconnected 常是暂时性的（ICE 换路径、Wi-Fi 抖动），给 10s 宽限，
+    // 期间恢复 connected 即撤销，超时才挂断。
+    if (st === 'failed') {
       finish('error')
-    } else if (pc?.connectionState === 'connected' && state.value === 'connecting') {
+      return
+    }
+    if (st === 'disconnected') {
+      if (!disconnectTimer) {
+        disconnectTimer = setTimeout(() => {
+          disconnectTimer = null
+          if (pc?.connectionState === 'disconnected') finish('error')
+        }, 10_000)
+      }
+      return
+    }
+    if (st === 'connected' && state.value === 'connecting') {
+      if (disconnectTimer) { clearTimeout(disconnectTimer); disconnectTimer = null }
       if (connectingTimer) { clearTimeout(connectingTimer); connectingTimer = null }
       state.value = 'active'
       elapsed.value = 0
       elapsedTimer = setInterval(() => { elapsed.value += 1 }, 1000)
+    } else if (st === 'connected') {
+      // 通话中从 disconnected 恢复：撤销宽限
+      if (disconnectTimer) { clearTimeout(disconnectTimer); disconnectTimer = null }
     }
   }
   return true
@@ -142,6 +163,7 @@ function cleanup() {
   if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null }
   if (incomingTimer) { clearTimeout(incomingTimer); incomingTimer = null }
   if (connectingTimer) { clearTimeout(connectingTimer); connectingTimer = null }
+  if (disconnectTimer) { clearTimeout(disconnectTimer); disconnectTimer = null }
   localStream.value?.getTracks().forEach((track) => track.stop())
   localStream.value = null
   if (localVideo.value) localVideo.value.srcObject = null
@@ -268,7 +290,10 @@ async function handleFrame(frame: ServerFrame) {
       break
     }
     case 'call.offer': {
-      await pc!.setRemoteDescription(JSON.parse(frame.sdp) as RTCSessionDescriptionInit)
+      // SDP 是对端经服务端原文转发的字符串：坏包结束通话，不让异常悬挂
+      const remote = safeParseJson<RTCSessionDescriptionInit>(frame.sdp)
+      if (!remote) { finish('error'); break }
+      await pc!.setRemoteDescription(remote)
       await flushPendingIce()
       const answer = await pc!.createAnswer()
       await pc!.setLocalDescription(answer)
@@ -276,12 +301,16 @@ async function handleFrame(frame: ServerFrame) {
       break
     }
     case 'call.answer': {
-      await pc!.setRemoteDescription(JSON.parse(frame.sdp) as RTCSessionDescriptionInit)
+      const remote = safeParseJson<RTCSessionDescriptionInit>(frame.sdp)
+      if (!remote) { finish('error'); break }
+      await pc!.setRemoteDescription(remote)
       await flushPendingIce()
       break
     }
     case 'call.ice': {
-      const candidate = JSON.parse(frame.candidate) as RTCIceCandidateInit
+      // 坏 candidate 只丢弃不挂断：丢个别 ICE 不影响已有连接
+      const candidate = safeParseJson<RTCIceCandidateInit>(frame.candidate)
+      if (!candidate) break
       if (pc!.remoteDescription) await pc!.addIceCandidate(candidate)
       else pendingIce.push(candidate)
       break
