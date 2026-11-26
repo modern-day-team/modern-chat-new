@@ -8,6 +8,11 @@
 
 ## [未发布]
 
+### 文档与协同
+
+- **新增《项目组架构与集成》总览文档**（`docs/项目组架构与集成.md`）：明确"一个核心，四个组件"的定位关系与双重属性（可独立可联合）；登录拓扑三条路径与 **uid 空间约束警示**（同一主仓库实例只接一个身份源，防止共享 `JWT_SECRET` 时跨库串号）；契约真源索引、部署组合（最小 / 标准 / 全套）、版本与发版协同及跨仓库流程约定。官网文档站同步收录（ecosystem.md，中英双语）。
+- **新增跨端契约金样本**（`contracts/`）：`ws-frames.json`（WS `ClientFrame` / `ServerFrame` 全帧金样本，与 `proto.ts` 逐字段对应）与 `rest-samples.json`（版本协商 / 当前用户 / 会话列表 / 消息分页关键 REST 响应金样本）。desktop / mobile 各持同步副本并用 `.sha256` 指纹接入 CI 校验——客户端测试直接消费金样本断言"解析口径与主仓库一致"，防止契约漂移。同步流程见 `contracts/README.md`。
+
 ### 性能优化
 
 - **聊天首屏体积下降**：插件声明式渲染器里的 TDesign `Select`（约 140 KB）原先经 `MessageRow` 静态引入，被拉进聊天首屏关键路径，即使插件消息里的 `select` 节点并不常见。改为 `DeclarativeSelect.vue` 挂载时按需动态加载，仅插件确实渲染 `select` 节点时才加载该 chunk——首屏不再为罕见控件买单，`select` chunk 移出关键路径（懒加载 chunk 104 KB / gzip 32 KB）。

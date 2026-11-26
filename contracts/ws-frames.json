@@ -1,0 +1,78 @@
+{
+  "meta": {
+    "name": "modernchat-ws-frames",
+    "title": "ModernChat WS 帧契约金样本",
+    "source": "web/src/types/proto.ts (ClientFrame / ServerFrame)",
+    "protocolDoc": "docs/设计文档.md §7、docs/后端需求规格.md",
+    "protocolVersion": 1,
+    "updated": "2026-11-26",
+    "notes": [
+      "本文件是跨端契约的唯一真源；desktop / mobile 各持同步副本并用 *.sha256 校验，禁止直接改副本。",
+      "金样本只增不改语义：变更已有字段属破坏性变更，须走版本协商并同步两端 CHANGELOG。",
+      "call.* 为语音 / 视频通话信令，当前仅 web 实现；其余端接入前先复制副本。"
+    ]
+  },
+  "clientToServer": {
+    "chat": {
+      "type": "chat",
+      "convId": 1,
+      "clientMsgId": "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+      "content": "你好，世界",
+      "msgType": "text",
+      "replyToId": 42,
+      "mentions": [7],
+      "forwarded": false
+    },
+    "typing": { "type": "typing", "convId": 1 },
+    "read": { "type": "read", "convId": 1, "upToId": 1024 },
+    "recall": { "type": "recall", "messageId": 1024 },
+    "edit": { "type": "edit", "messageId": 1024, "content": "你好，世界（已更正）" },
+    "reaction": { "type": "reaction", "messageId": 1024, "emoji": "👍", "action": "set" },
+    "delivered": { "type": "delivered", "messageId": 1024 },
+    "call.invite": { "type": "call.invite", "callId": "c-3f2504e0", "toUserId": 7, "convId": 1, "mediaType": "audio" },
+    "call.accept": { "type": "call.accept", "callId": "c-3f2504e0" },
+    "call.reject": { "type": "call.reject", "callId": "c-3f2504e0" },
+    "call.offer": { "type": "call.offer", "callId": "c-3f2504e0", "sdp": "v=0..." },
+    "call.answer": { "type": "call.answer", "callId": "c-3f2504e0", "sdp": "v=0..." },
+    "call.ice": { "type": "call.ice", "callId": "c-3f2504e0", "candidate": "candidate:1 1 udp ..." },
+    "call.hangup": { "type": "call.hangup", "callId": "c-3f2504e0" },
+    "ping": { "type": "ping" }
+  },
+  "serverToClient": {
+    "message": {
+      "type": "message",
+      "id": 1025,
+      "convId": 1,
+      "from": { "id": 7, "nickname": "小明" },
+      "content": "你好，世界",
+      "msgType": "text",
+      "clientMsgId": "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+      "replyToId": 42,
+      "replyTo": { "id": 42, "senderId": 3, "senderNickname": "小红", "msgType": "text", "content": "在吗", "isRecalled": false },
+      "mentions": [7],
+      "forwarded": false,
+      "createdAt": "2026-11-26T08:00:00Z"
+    },
+    "recall": { "type": "recall", "messageId": 1025, "convId": 1, "recalledAt": "2026-11-26T08:01:00Z" },
+    "message_update": { "type": "message_update", "id": 1025, "convId": 1, "content": "你好，世界（已更正）", "editedAt": "2026-11-26T08:02:00Z" },
+    "reaction": { "type": "reaction", "messageId": 1025, "convId": 1, "emoji": "👍", "before": "", "userId": 3, "action": "set" },
+    "message_delivered": { "type": "message_delivered", "messageId": 1025, "convId": 1, "userId": 7 },
+    "message_admin_deleted": { "type": "message_admin_deleted", "messageId": 1025, "convId": 1 },
+    "read": { "type": "read", "convId": 1, "userId": 7, "upToId": 1025 },
+    "typing": { "type": "typing", "convId": 1, "userId": 7 },
+    "presence": { "type": "presence", "userId": 7, "online": true },
+    "user_change": { "type": "user_change", "userId": 7, "nickname": "小明", "avatar": "/uploads/avatar/7.png", "avatarColor": "#0052D9" },
+    "conv_change": { "type": "conv_change", "convId": 1, "meta": false },
+    "kicked": { "type": "kicked", "reason": "账号在其他设备登录" },
+    "call.incoming": { "type": "call.incoming", "callId": "c-3f2504e0", "fromUserId": 7, "fromSid": "sid-7-1", "nickname": "小明", "avatar": "", "mediaType": "audio" },
+    "call.accepted": { "type": "call.accepted", "callId": "c-3f2504e0", "fromSid": "sid-7-1" },
+    "call.rejected": { "type": "call.rejected", "callId": "c-3f2504e0", "reason": "" },
+    "call.busy": { "type": "call.busy", "callId": "c-3f2504e0", "reason": "" },
+    "call.ended": { "type": "call.ended", "callId": "c-3f2504e0", "reason": "" },
+    "call.offer": { "type": "call.offer", "callId": "c-3f2504e0", "sdp": "v=0..." },
+    "call.answer": { "type": "call.answer", "callId": "c-3f2504e0", "sdp": "v=0..." },
+    "call.ice": { "type": "call.ice", "callId": "c-3f2504e0", "candidate": "candidate:1 1 udp ..." },
+    "pong": { "type": "pong" },
+    "error": { "type": "error", "reason": "消息包含敏感内容", "clientMsgId": "3f2504e0-4f89-11d3-9a0c-0305e82c3301" }
+  }
+}

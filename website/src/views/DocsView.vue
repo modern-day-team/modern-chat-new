@@ -69,6 +69,13 @@ const DOCS: DocItem[] = [
     descZh: '桌面 / 移动 / SSO / Hub 接入主站的来源登记、登录、WS 与会话管理',
     descEn: 'Origin setup, auth, WS and sessions for desktop / mobile / SSO / Hub',
   },
+  {
+    file: 'ecosystem.md',
+    zh: '项目组架构与集成',
+    en: 'Ecosystem & integration',
+    descZh: '核心与组件关系、登录拓扑、契约金样本、部署组合与发版协同',
+    descEn: 'Core/components, login topology, contracts, deploys & releases',
+  },
   { group: true, zh: '设计与架构', en: 'Design & architecture' },
   {
     file: 'design.md',
@@ -198,6 +205,7 @@ const LINK_MAP: Record<string, string> = {
   'README.md': 'getting-started.md',
   'CHANGELOG.md': 'changelog.md',
   'docs/客户端接入指南.md': 'client-guide.md',
+  'docs/项目组架构与集成.md': 'ecosystem.md',
   'docs/设计文档.md': 'design.md',
   'docs/后端需求规格.md': 'api-spec.md',
   'docs/API文档.md': 'api-reference.md',

@@ -14,6 +14,7 @@ $map = [ordered]@{
   'README.md'             = 'getting-started.md'
   'CHANGELOG.md'          = 'changelog.md'
   'docs/客户端接入指南.md'  = 'client-guide.md'
+  'docs/项目组架构与集成.md' = 'ecosystem.md'
   'docs/设计文档.md'       = 'design.md'
   'docs/后端需求规格.md'   = 'api-spec.md'
   'docs/API文档.md'        = 'api-reference.md'

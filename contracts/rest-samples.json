@@ -1,0 +1,78 @@
+{
+  "meta": {
+    "name": "modernchat-rest-samples",
+    "title": "ModernChat REST 响应契约金样本",
+    "source": "docs/后端需求规格.md §3 ↔ web/src/api/index.ts ↔ web/src/types/proto.ts",
+    "protocolVersion": 1,
+    "updated": "2026-11-26",
+    "notes": [
+      "字段一律 camelCase、时间 ISO8601 UTC；错误统一 {\"error\": \"<中文消息>\"}，401 触发跳登录。",
+      "列表接口空时返回 [] 而不是 null。"
+    ]
+  },
+  "endpoints": {
+    "GET /api/client/version": {
+      "version": "0.12.0",
+      "minVersion": "0.10.0",
+      "upgradeRequired": false
+    },
+    "GET /api/client/version（版本过低）": {
+      "version": "0.12.0",
+      "minVersion": "0.10.0",
+      "upgradeRequired": true,
+      "message": "当前客户端版本过低，请升级后再使用"
+    },
+    "GET /api/me": {
+      "id": 7,
+      "username": "xiaoming",
+      "nickname": "小明",
+      "avatarColor": "#0052D9",
+      "avatar": "/uploads/avatar/7.png",
+      "avatarThumb": "/uploads/avatar/7_thumb.png",
+      "email": "xiaoming@example.com",
+      "role": "user",
+      "bannedUntil": null,
+      "banReason": null,
+      "createdAt": "2026-01-01T00:00:00Z"
+    },
+    "GET /api/conversations": [
+      {
+        "id": 1,
+        "type": 1,
+        "name": null,
+        "peer": { "id": 7, "username": "xiaoming", "nickname": "小明", "avatarColor": "#0052D9", "avatar": "", "avatarThumb": "" },
+        "ownerId": null,
+        "memberCount": 2,
+        "lastMessageId": 1025,
+        "lastMessageAt": "2026-11-26T08:00:00Z",
+        "lastMessagePreview": "你好，世界",
+        "lastMessageType": "text",
+        "lastReadMessageId": 1020,
+        "unreadCount": 5,
+        "pinned": false,
+        "muted": false
+      }
+    ],
+    "GET /api/conversations/:id/messages": {
+      "messages": [
+        {
+          "id": 1025,
+          "conversationId": 1,
+          "senderId": 7,
+          "clientMsgId": "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+          "msgType": "text",
+          "content": "你好，世界",
+          "isRecalled": false,
+          "recalledAt": null,
+          "editedAt": null,
+          "replyToId": null,
+          "replyTo": null,
+          "mentions": [],
+          "createdAt": "2026-11-26T08:00:00Z"
+        }
+      ],
+      "hasMore": true,
+      "nextCursor": 1024
+    }
+  }
+}
