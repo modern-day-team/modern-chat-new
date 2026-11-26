@@ -15,7 +15,7 @@ import { http } from '@/core/network/http'
 import { useAppI18n } from '@/composables/useAppI18n'
 import type { ClientFrame, ServerFrame } from '@/types/proto'
 import {
-  formatDuration, normalizeMediaType, safeParseJson, shouldHandleFrame,
+  endedPresentation, formatDuration, normalizeMediaType, safeParseJson, shouldHandleFrame,
   type CallState, type IceServer, type MediaType,
 } from './logic'
 
@@ -51,6 +51,9 @@ let incomingTimer: ReturnType<typeof setTimeout> | null = null
 let connectingTimer: ReturnType<typeof setTimeout> | null = null
 // 连接暂态中断的宽限计时器：disconnected 可能是 ICE 换路径 / 网络抖动
 let disconnectTimer: ReturnType<typeof setTimeout> | null = null
+// 防重入守卫：state 检查在 await 之前，快速双击会在 await 期间二次进入
+let starting = false
+let accepting = false
 const pendingIce: RTCIceCandidateInit[] = []
 
 const statusText = computed(() => {
@@ -200,31 +203,41 @@ function finish(reason: string) {
 
 /** 主叫发起通话（由会话侧「视频通话」按钮调用）。 */
 async function startCall(toUserId: number, type: MediaType = 'video', convId = 0) {
-  if (state.value !== 'idle') return
-  await loadIceConfig()
-  callId.value = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
-  peerId.value = toUserId
-  peerName.value = ''
-  mediaType.value = type
-  isCaller.value = true
-  state.value = 'connecting'
-  armConnectingTimer()
-  const frame: ClientFrame = { type: 'call.invite', callId: callId.value, toUserId, mediaType: type }
-  if (convId > 0) frame.convId = convId
-  if (!post(frame)) { cleanup(); state.value = 'idle'; callId.value = '' }
+  if (state.value !== 'idle' || starting) return
+  starting = true
+  try {
+    await loadIceConfig()
+    callId.value = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    peerId.value = toUserId
+    peerName.value = ''
+    mediaType.value = type
+    isCaller.value = true
+    state.value = 'connecting'
+    armConnectingTimer()
+    const frame: ClientFrame = { type: 'call.invite', callId: callId.value, toUserId, mediaType: type }
+    if (convId > 0) frame.convId = convId
+    if (!post(frame)) { cleanup(); state.value = 'idle'; callId.value = '' }
+  } finally {
+    starting = false
+  }
 }
 
 /** 被叫接听。 */
 async function accept() {
-  if (state.value !== 'incoming') return
-  await loadIceConfig()
-  if (!createPC() || !(await getMedia())) return
-  state.value = 'connecting'
-  armConnectingTimer()
-  if (!post({ type: 'call.accept', callId: callId.value })) {
-    cleanup()
-    state.value = 'idle'
-    callId.value = ''
+  if (state.value !== 'incoming' || accepting) return
+  accepting = true
+  try {
+    await loadIceConfig()
+    if (!createPC() || !(await getMedia())) return
+    state.value = 'connecting'
+    armConnectingTimer()
+    if (!post({ type: 'call.accept', callId: callId.value })) {
+      cleanup()
+      state.value = 'idle'
+      callId.value = ''
+    }
+  } finally {
+    accepting = false
   }
 }
 
@@ -315,14 +328,21 @@ async function handleFrame(frame: ServerFrame) {
       else pendingIce.push(candidate)
       break
     }
-    case 'call.ended':
+    case 'call.ended': {
       cleanup()
-      state.value = 'idle'
       callId.value = ''
-      if (frame.reason && frame.reason !== 'hangup' && frame.reason !== 'disconnect') {
-        emit('error', t(`call.${frame.reason}` as 'call.rejected'))
+      // 挂断/断线也短暂展示「通话已结束」面板，与主动挂断的收尾一致；
+      // accepted-elsewhere 只终止响铃（通话并未结束），不进结束面板。
+      const p = endedPresentation(frame.reason)
+      if (p.panel) {
+        state.value = 'ended'
+        setTimeout(() => { if (state.value === 'ended') state.value = 'idle' }, 1800)
+      } else {
+        state.value = 'idle'
       }
+      if (p.toast) emit('error', t(p.toast as 'call.rejected'))
       break
+    }
   }
 }
 

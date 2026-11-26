@@ -15,6 +15,9 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 - **Malformed signaling guard**: SDP / ICE candidate strings are relayed verbatim through the server from the peer; malformed data used to throw unhandled exceptions inside `handleFrame`, leaving the call stuck on "connecting". Bad packets now parse to null: a bad candidate is dropped, a bad SDP ends the call (pure `safeParseJson` helper in `logic.ts` with tests).
 - **Multi-device ring sync**: after the callee answers, other ringing devices immediately receive `call.ended{reason:"accepted-elsewhere"}` and stop ringing (previously they rang until the 60s incoming timeout). The server also tightens validation: answer/ICE forged by non-answering devices during ringing is dropped (ws regression tests added).
 - **Declarative render depth guard**: plugin description trees (`card` / `list` / `tabs`) are capped at 8 nesting levels, rendering a placeholder beyond it, so a deeply nested description can no longer blow up rendering recursion.
+- **Call teardown consistency**: peer hangup/disconnect now briefly shows the "Call ended" panel too (previously it vanished silently, inconsistent with hanging up yourself); "answered elsewhere" only shows its dedicated toast without the ended panel. The presentation decision is extracted as the pure `endedPresentation` helper with tests.
+- **Re-entrancy guards on start/accept**: `startCall` / `accept` are guarded so rapid double clicks no longer fire two signaling rounds during the await window (previously producing a spurious "busy" toast).
+- **Declarative Select fallback**: if the lazy-loaded TDesign `Select` fails to load, fall back to a native select styled with theme tokens instead of a perpetual loading placeholder.
 
 ### Performance
 

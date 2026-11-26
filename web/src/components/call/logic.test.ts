@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ServerFrame } from '@/types/proto'
 import {
-  formatDuration, isCallFrame, normalizeMediaType, safeParseJson, shouldHandleFrame,
+  endedPresentation, formatDuration, isCallFrame, normalizeMediaType, safeParseJson, shouldHandleFrame,
   type FrameFilterContext,
 } from './logic'
 
@@ -70,5 +70,20 @@ describe('safeParseJson', () => {
     expect(safeParseJson('not-json{')).toBe(null)
     expect(safeParseJson(undefined)).toBe(null)
     expect(safeParseJson('')).toBe(null)
+  })
+})
+
+describe('endedPresentation', () => {
+  it('挂断/断线：只展示结束面板，不弹错误提示（与主动挂断一致）', () => {
+    expect(endedPresentation('hangup')).toEqual({ panel: true, toast: null })
+    expect(endedPresentation('disconnect')).toEqual({ panel: true, toast: null })
+  })
+  it('accepted-elsewhere：只给专属提示，不进结束面板', () => {
+    expect(endedPresentation('accepted-elsewhere')).toEqual({ panel: false, toast: 'call.accepted-elsewhere' })
+  })
+  it('其它原因：面板 + 具体提示；无 reason 时只给面板', () => {
+    expect(endedPresentation('timeout')).toEqual({ panel: true, toast: 'call.timeout' })
+    expect(endedPresentation('error')).toEqual({ panel: true, toast: 'call.error' })
+    expect(endedPresentation(undefined)).toEqual({ panel: true, toast: null })
   })
 })

@@ -75,6 +75,18 @@ export function safeParseJson<T>(raw: string | undefined): T | null {
   }
 }
 
+/**
+ * call.ended 的呈现决策：是否展示「通话已结束」面板 + 错误提示文案 key。
+ * 挂断/断线与主动挂断（finish）一致，短暂展示结束面板、不弹错误；
+ * accepted-elsewhere 只终止响铃（通话并未结束），仅给专属提示；
+ * 其余原因（timeout / error / …）面板 + 具体提示都给。
+ */
+export function endedPresentation(reason: string | undefined): { panel: boolean; toast: string | null } {
+  if (reason === 'accepted-elsewhere') return { panel: false, toast: 'call.accepted-elsewhere' }
+  if (reason === 'hangup' || reason === 'disconnect') return { panel: true, toast: null }
+  return { panel: true, toast: reason ? `call.${reason}` : null }
+}
+
 /** 秒 → mm:ss（通话时长）。 */
 export function formatDuration(sec: number): string {
   const m = Math.floor(sec / 60)
