@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
 
 import UiIcon from '@/components/UiIcon.vue'
 import { currentLang } from '@/i18n'
-import { REPO } from '@/links'
+import { CHAT_APP, REPO } from '@/links'
 
 // 插件市场样式随路由分包加载
 import '@/styles/market.css'
@@ -22,7 +22,22 @@ interface MarketPlugin {
   perms: string[]
 }
 
-/** 插件目录：与 public/plugins/*.js 的 manifest 保持一致 */
+/** index.json 条目：由 scripts/sync-plugins.mjs 从 plugins/examples 的 manifest 生成 */
+interface IndexEntry {
+  file: string
+  name: string
+  version: string
+  description: string
+  permissions: string[]
+  allowedHosts: string[]
+  lang: 'js' | 'ts'
+}
+
+/**
+ * 内置目录：只有中英文案与分类是人工策划的；name / version / perms
+ * 运行时以 index.json（manifest 真源）为准——新增示例没配文案时
+ * 用 manifest 描述兜底，版本号永远不会再手写漂移。
+ */
 const PLUGINS: MarketPlugin[] = [
   {
     file: 'weather.plugin.js',
@@ -101,6 +116,39 @@ const PLUGINS: MarketPlugin[] = [
 const keyword = ref('')
 const cat = ref<'all' | 'demo'>('all')
 
+/** manifest 真源（构建时由 sync-plugins.mjs 生成）；拉取失败回退内置清单 */
+const remote = ref<IndexEntry[]>([])
+
+onMounted(async () => {
+  try {
+    const res = await fetch(`${import.meta.env.BASE_URL}content/plugins/index.json`, { cache: 'no-cache' })
+    if (!res.ok) return
+    const data = (await res.json()) as { plugins?: IndexEntry[] }
+    if (Array.isArray(data.plugins)) remote.value = data.plugins
+  } catch {
+    /* 回退到内置 PLUGINS */
+  }
+})
+
+/** 内置文案与 index.json 合并：名称/版本/权限以 manifest 为准 */
+const plugins = computed<MarketPlugin[]>(() => {
+  const byFile = new Map(remote.value.map((e) => [e.file, e]))
+  const seen = new Set<string>()
+  const out = PLUGINS.map((p) => {
+    seen.add(p.file)
+    const r = byFile.get(p.file)
+    return r ? { ...p, name: r.name, version: r.version, perms: r.permissions } : p
+  })
+  for (const r of remote.value) {
+    if (seen.has(r.file)) continue
+    out.push({
+      file: r.file, name: r.name, version: r.version, cat: 'demo',
+      zh: r.description, en: r.description, perms: r.permissions,
+    })
+  }
+  return out
+})
+
 const cats = computed(() => [
   { value: 'all' as const, label: t('mkt.cat.all') },
   { value: 'demo' as const, label: t('mkt.cat.demo') },
@@ -108,7 +156,7 @@ const cats = computed(() => [
 
 const filtered = computed(() => {
   const k = keyword.value.trim().toLowerCase()
-  return PLUGINS.filter((p) => {
+  return plugins.value.filter((p) => {
     if (cat.value !== 'all' && p.cat !== cat.value) return false
     if (!k) return true
     const desc = currentLang() === 'zh' ? p.zh : p.en
@@ -129,6 +177,18 @@ function descOf(p: MarketPlugin) {
 // 静态资源放在 content/ 下：/plugins 是前端路由，不能同时是目录
 function hrefOf(p: MarketPlugin) {
   return `${import.meta.env.BASE_URL}content/plugins/${p.file}`
+}
+
+/**
+ * 一键安装深链：把本站插件 URL 带进聊天应用。
+ * 插件 URL 用本站 origin（服务端去拉），应用地址用 CHAT_APP；
+ * 未登录时聊天应用的路由守卫会带 redirect 先去登录，回来继续装。
+ */
+function installHref(p: MarketPlugin) {
+  const pluginUrl = `${location.origin}${hrefOf(p)}`
+  const q = new URLSearchParams({ 'plugin-install': pluginUrl })
+  if (p.name) q.set('plugin-name', p.name)
+  return `${CHAT_APP}chat?${q.toString()}`
 }
 
 function sourceHref(p: MarketPlugin) {
@@ -163,7 +223,7 @@ function sourceHref(p: MarketPlugin) {
         </button>
       </div>
 
-      <span class="mkt__count">{{ filtered.length }} / {{ PLUGINS.length }}</span>
+      <span class="mkt__count">{{ filtered.length }} / {{ plugins.length }}</span>
     </section>
 
     <section class="mkt__grid">
@@ -191,7 +251,11 @@ function sourceHref(p: MarketPlugin) {
         </div>
 
         <footer class="mkt__card-actions">
-          <a class="btn btn--primary btn--sm" :href="hrefOf(p)" download>
+          <a class="btn btn--primary btn--sm" :href="installHref(p)">
+            <UiIcon name="puzzle" :size="14" />
+            {{ t('mkt.install') }}
+          </a>
+          <a class="btn btn--quiet btn--sm" :href="hrefOf(p)" download>
             <UiIcon name="download" :size="14" />
             {{ t('mkt.download') }}
           </a>

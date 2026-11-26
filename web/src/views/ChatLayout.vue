@@ -54,6 +54,31 @@ const faviconUrl = `${import.meta.env.BASE_URL}favicon.ico`
 /** 第二栏视图：会话列表 / 联系人（由图标栏驱动） */
 const paneView = ref<'chats' | 'contacts'>('chats')
 const pluginDrawerVisible = ref(false)
+/** 市场深链预填：URL 预填直到安装成功，名称只做提示横幅 */
+const presetInstallUrl = ref('')
+const presetInstallName = ref('')
+
+/** 消费官网市场带来的 ?plugin-install 深链（onMounted 与应用内导航时各试一次） */
+function consumePresetInstall() {
+  const u = route.query['plugin-install']
+  if (typeof u !== 'string' || !u) return
+  presetInstallUrl.value = u
+  const n = route.query['plugin-name']
+  presetInstallName.value = typeof n === 'string' ? n : ''
+  pluginDrawerVisible.value = true
+  // 用完即清 query：刷新不重弹；抽屉横幅由 presetInstallName 驱动直到安装成功
+  const q = { ...route.query }
+  delete q['plugin-install']
+  delete q['plugin-name']
+  void router.replace({ query: q }).catch(() => undefined)
+}
+
+watch(
+  () => route.query['plugin-install'],
+  () => {
+    if (route.query['plugin-install']) consumePresetInstall()
+  },
+)
 const addFriendVisible = ref(false)
 const favoriteDrawerVisible = ref(false)
 const notificationDrawerVisible = ref(false)
@@ -232,6 +257,10 @@ async function bootstrap() {
     // 导航失败（同路由重复跳转等）不影响页面，吞掉避免未处理 rejection
     void router.replace({ path: '/chat' }).catch(() => undefined)
   }
+  // 官网插件市场「一键装进应用」深链：/chat?plugin-install=<url>&plugin-name=<name>。
+  // 只打开抽屉并预填 URL，不自动安装——权限确认框始终是人工闸门；
+  // 未登录时路由守卫已先带 redirect 去登录，回来后这里才执行。
+  consumePresetInstall()
   bindGlobalListeners()
 }
 
@@ -407,7 +436,12 @@ onUnmounted(() => {
     >
       <DetailPanel />
     </div>
-    <PluginDrawer v-model="pluginDrawerVisible" />
+    <PluginDrawer
+      v-model="pluginDrawerVisible"
+      :initial-url="presetInstallUrl"
+      :initial-name="presetInstallName"
+      @preset-done="presetInstallName = ''"
+    />
     <FavoriteDrawer v-model="favoriteDrawerVisible" />
     <NotificationDrawer v-model="notificationDrawerVisible" />
     <AddFriendDialog v-model:visible="addFriendVisible" />

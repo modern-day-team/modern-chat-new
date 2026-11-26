@@ -16,6 +16,9 @@ import { usePluginsStore } from '@/stores/plugins'
 import type { PageDesc, Plugin } from '@/types/proto'
 
 const visible = defineModel<boolean>({ default: false })
+/** 市场一键安装深链预填：URL 永久生效，名称只做提示横幅 */
+const props = defineProps<{ initialUrl?: string; initialName?: string }>()
+const emit = defineEmits<{ 'preset-done': [] }>()
 const router = useRouter()
 const auth = useAuthStore()
 const pluginsStore = usePluginsStore()
@@ -25,6 +28,15 @@ const { t, te } = useAppI18n()
 const urlInput = ref('')
 const installing = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
+
+// 深链预填：URL 一到就填进输入框（横幅提示来源，安装仍需用户手点）
+watch(
+  () => props.initialUrl,
+  (u) => {
+    if (u) urlInput.value = u
+  },
+  { immediate: true },
+)
 
 /**
  * 用按钮主动触发隐藏的文件选择框。
@@ -104,28 +116,45 @@ async function onPickFile(ev: Event) {
 async function installFromUrl() {
   const url = urlInput.value.trim()
   if (!url) return
-  await installConfirm(async () => {
+  const ok = await installConfirm(async () => {
     const r = await pluginApi.fromUrl(url)
     urlInput.value = ''
     return r
   })
+  // 市场深链的安装落定（成功与否）：横幅使命结束
+  if (ok) emit('preset-done')
 }
 
-/** 安装 / 升级 → 弹权限清单，用户确认后才生效（§8.4） */
-async function installConfirm(action: () => Promise<{ plugin: Plugin; updated: boolean; permsChanged: boolean }>) {
+/** 语义化版本比较：old 大于 new 时为降级安装 */
+function isDowngrade(oldV: string, newV: string): boolean {
+  const a = oldV.split('.').map(Number)
+  const b = newV.split('.').map(Number)
+  for (let i = 0; i < 3; i++) {
+    const x = a[i] ?? 0
+    const y = b[i] ?? 0
+    if (x !== y) return x > y
+  }
+  return false
+}
+
+/** 安装 / 升级 → 弹权限清单，用户确认后才生效（§8.4）。
+ *  返回是否走完弹窗（供市场深链判断是否收横幅）。 */
+async function installConfirm(action: () => Promise<{ plugin: Plugin; updated: boolean; permsChanged: boolean; oldVersion?: string }>): Promise<boolean> {
   installing.value = true
   let plugin: Plugin
   let updated = false
   let permsChanged = false
+  let oldVersion = ''
   try {
     const r = await action()
     plugin = r.plugin
     updated = r.updated
     permsChanged = r.permsChanged
+    oldVersion = r.oldVersion ?? ''
   } catch (e) {
     void MessagePlugin.error(te(e) || t('plugin.installFailed'))
     installing.value = false
-    return
+    return false
   }
   installing.value = false
   // 安装已经成功：即便清单刷新失败，也要继续弹权限确认，否则用户以为没装上
@@ -156,21 +185,29 @@ async function installConfirm(action: () => Promise<{ plugin: Plugin; updated: b
       void MessagePlugin.error(te(e))
     }
   }
+  // 版本过渡提示：升级展示 old → new；市场旧包覆盖更高版本（降级）要额外警告
+  const verLine =
+    updated && oldVersion
+      ? isDowngrade(oldVersion, plugin.version)
+        ? t('plugin.downgradeWarn', { old: oldVersion, new: plugin.version })
+        : t('plugin.updateFromTo', { old: oldVersion, new: plugin.version })
+      : ''
+  const baseBody = needsReconfirm
+    ? t('plugin.updatePermChangedBody', {
+        perms: permText,
+        hosts: hostText,
+        desc: plugin.description || '',
+      })
+    : t('plugin.permBody', {
+        perms: permText,
+        hosts: hostText,
+        desc: plugin.description || '',
+      })
   const dialog = DialogPlugin.confirm({
     header: updated
       ? t('plugin.updateTitle', { name: plugin.name, version: plugin.version })
       : t('plugin.installTitle', { name: plugin.name, version: plugin.version }),
-    body: needsReconfirm
-      ? t('plugin.updatePermChangedBody', {
-          perms: permText,
-          hosts: hostText,
-          desc: plugin.description || '',
-        })
-      : t('plugin.permBody', {
-          perms: permText,
-          hosts: hostText,
-          desc: plugin.description || '',
-        }),
+    body: verLine ? `${verLine}\n\n${baseBody}` : baseBody,
     confirmBtn: updated ? t('plugin.confirmUpdate') : t('plugin.confirmEnable'),
     cancelBtn: needsReconfirm ? t('plugin.declineDisable') : updated ? t('plugin.laterReload') : t('plugin.laterEnable'),
     onConfirm: async () => {
@@ -197,6 +234,8 @@ async function installConfirm(action: () => Promise<{ plugin: Plugin; updated: b
     onCancel: declineReconfirm,
     onClose: declineReconfirm,
   })
+  // 弹窗已弹出（无论用户确认与否）：市场横幅使命结束
+  return true
 }
 
 /** 权限标签（未知权限原样显示） */
@@ -243,6 +282,9 @@ async function uninstall(plugin: Plugin) {
     <div class="mc-plugins">
       <!-- 安装 -->
       <div class="mc-plugins__install">
+        <div v-if="initialName" class="mc-plugins__market">
+          {{ t('plugin.marketPreset', { name: initialName }) }}
+        </div>
         <div class="mc-plugins__upload">
           <input
             ref="fileInput"
@@ -352,6 +394,15 @@ async function uninstall(plugin: Plugin) {
 
 .mc-plugins__upload input {
   display: none;
+}
+
+.mc-plugins__market {
+  padding: 8px 10px;
+  border-radius: var(--mc-radius-md);
+  background: var(--td-brand-color-1, rgba(0, 82, 217, 0.1));
+  color: var(--td-text-color-primary);
+  font-size: var(--mc-fs-sm);
+  line-height: 1.6;
 }
 
 .mc-plugins__url {

@@ -340,6 +340,8 @@ export const pluginApi = {
         updated: res.headers.get('X-Plugin-Updated') === 'true',
         // 升级覆盖了权限 / 域名白名单：旧授权不能默认延续到新代码（见 PluginDrawer）
         permsChanged: res.headers.get('X-Plugin-Perms-Changed') === 'true',
+        // 升级时服务端带回的旧版本号：确认框展示「版本过渡」，降级时额外警告
+        oldVersion: res.headers.get('X-Plugin-Old-Version') || undefined,
       }
     })
   },
@@ -356,6 +358,7 @@ export const pluginApi = {
         plugin: data as unknown as Plugin,
         updated: res.headers.get('X-Plugin-Updated') === 'true',
         permsChanged: res.headers.get('X-Plugin-Perms-Changed') === 'true',
+        oldVersion: res.headers.get('X-Plugin-Old-Version') || undefined,
       }
     }),
   setEnabled: (id: number, enabled: boolean) => http.patch<Plugin>(`/plugins/${id}`, { enabled }),

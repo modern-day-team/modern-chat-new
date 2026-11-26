@@ -537,6 +537,9 @@ export default {
     uninstallOk: 'Uninstalled',
     installTitle: 'Install “{name}” v{version}',
     updateTitle: 'Update “{name}” to v{version}',
+    marketPreset: 'From the plugin marketplace: {name}. Review the URL and the permission list below before installing.',
+    updateFromTo: 'Version change: v{old} → v{new}',
+    downgradeWarn: 'Warning: this is a downgrade (current v{old}, target v{new}); old data may be incompatible.',
     permBody: 'This plugin requests:\n{perms}\n\nNetwork allowlist: {hosts}\n\n{desc}',
     updatePermChangedBody:
       'Note: the new version changes permissions or the network allowlist; the previous grant does not carry over.\n\nNew permissions:\n{perms}\n\nNetwork allowlist: {hosts}\n\n{desc}\n\nConfirm to apply the new version; declining disables the plugin until you re-enable it.',

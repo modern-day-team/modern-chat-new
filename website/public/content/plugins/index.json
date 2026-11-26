@@ -1,0 +1,117 @@
+{
+  "plugins": [
+    {
+      "file": "ai-chat.plugin.js",
+      "name": "ai-chat",
+      "version": "1.0.0",
+      "description": "示例：服务端统一 AI 代理的全站对话页面",
+      "permissions": [
+        "ui:page",
+        "ai"
+      ],
+      "allowedHosts": [],
+      "lang": "js"
+    },
+    {
+      "file": "conv-stats.plugin.ts",
+      "name": "conv-stats",
+      "version": "1.0.0",
+      "description": "示例（TypeScript）：当前会话消息统计 + 消息右键菜单动作，演示 conv:read / ui:actions 与 table/progress/badge 组件",
+      "permissions": [
+        "ui:panel",
+        "conv:read",
+        "ui:actions",
+        "ui:host"
+      ],
+      "allowedHosts": [],
+      "lang": "ts"
+    },
+    {
+      "file": "dice.plugin.js",
+      "name": "dice",
+      "version": "1.0.0",
+      "description": "示例插件：掷骰子面板，把结果以自定义 dice 消息发到当前会话",
+      "permissions": [
+        "message:read",
+        "message:send",
+        "message:render",
+        "ui:panel"
+      ],
+      "allowedHosts": [],
+      "lang": "js"
+    },
+    {
+      "file": "page-kit.plugin.js",
+      "name": "page-kit",
+      "version": "1.0.0",
+      "description": "示例（SDK v3）：全站页面 + 服务端用户数据 KV + 面板入口",
+      "permissions": [
+        "ui:panel",
+        "ui:page",
+        "ui:host",
+        "data"
+      ],
+      "allowedHosts": [],
+      "lang": "js"
+    },
+    {
+      "file": "power-kit.plugin.js",
+      "name": "power-kit",
+      "version": "1.0.0",
+      "description": "示例（SDK v5）：会话/消息写操作 + 宿主文件上传 + tabs/steps/empty/loading/upload",
+      "permissions": [
+        "ui:panel",
+        "ui:page",
+        "conv:read",
+        "conv:write",
+        "message:send",
+        "file:upload"
+      ],
+      "allowedHosts": [],
+      "lang": "js"
+    },
+    {
+      "file": "search-kit.plugin.js",
+      "name": "search-kit",
+      "version": "1.0.0",
+      "description": "示例（SDK v2）：会话列表 / 全局消息搜索 / 草稿 / 剪贴板 / 存储管理 + 新描述式控件",
+      "permissions": [
+        "ui:panel",
+        "conv:read",
+        "message:read",
+        "ui:host",
+        "storage"
+      ],
+      "allowedHosts": [],
+      "lang": "js"
+    },
+    {
+      "file": "weather.plugin.js",
+      "name": "weather-demo",
+      "version": "1.0.0",
+      "description": "示例插件：侧边栏天气面板 + 自定义 weather 消息类型",
+      "permissions": [
+        "message:read",
+        "message:send",
+        "message:render",
+        "ui:panel",
+        "storage"
+      ],
+      "allowedHosts": [],
+      "lang": "js"
+    },
+    {
+      "file": "word-count.plugin.js",
+      "name": "word-count",
+      "version": "1.0.0",
+      "description": "示例插件：统计监听到的消息数与字数，侧边栏实时展示",
+      "permissions": [
+        "message:read",
+        "ui:panel",
+        "storage"
+      ],
+      "allowedHosts": [],
+      "lang": "js"
+    }
+  ]
+}

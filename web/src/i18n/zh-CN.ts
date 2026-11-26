@@ -541,6 +541,9 @@ export default {
     uninstallOk: '已卸载',
     installTitle: '安装「{name}」v{version}',
     updateTitle: '更新「{name}」到 v{version}',
+    marketPreset: '来自插件市场：{name}。请核对地址与下方权限清单后再安装。',
+    updateFromTo: '版本变更：v{old} → v{new}',
+    downgradeWarn: '注意：这是降级安装（当前 v{old}，目标 v{new}），旧数据可能不兼容。',
     permBody: '该插件申请以下权限：\n{perms}\n\n网络访问白名单：{hosts}\n\n{desc}',
     updatePermChangedBody:
       '注意：新版本更改了权限或网络白名单，旧授权不会自动延续。\n\n新版权限：\n{perms}\n\n网络访问白名单：{hosts}\n\n{desc}\n\n确认后新版本生效；拒绝则立即停用插件，重新启用时才运行新版本。',

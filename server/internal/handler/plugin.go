@@ -153,6 +153,8 @@ func (h *PluginHandler) createFromCode(c *gin.Context, code string, source strin
 		permsChanged := !jsonSetEqual(existing.Permissions, string(perms)) ||
 			!jsonSetEqual(existing.AllowedHosts, string(hosts))
 		detail = fmt.Sprintf("version=%s->%s; %s", existing.Version, m.Version, detail)
+		// 旧版本号随响应头带回：前端确认框展示「v旧 → v新」过渡，降级时额外警告
+		oldVersion := existing.Version
 		existing.Version = m.Version
 		existing.Description = m.Description
 		existing.CodeText = code
@@ -167,6 +169,7 @@ func (h *PluginHandler) createFromCode(c *gin.Context, code string, source strin
 			"uid", me, "plugin", existing.ID, "name", m.Name, "version", m.Version,
 			"permsChanged", permsChanged, "source", source)
 		c.Header("X-Plugin-Updated", "true")
+		c.Header("X-Plugin-Old-Version", oldVersion)
 		if permsChanged {
 			c.Header("X-Plugin-Perms-Changed", "true")
 		}

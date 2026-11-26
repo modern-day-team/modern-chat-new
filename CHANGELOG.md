@@ -10,6 +10,9 @@
 
 ### 新功能
 
+- **官网插件市场「一键装进应用」闭环**：市场卡片新增一键安装按钮，经深链 `/app/chat?plugin-install=<插件URL>&plugin-name=<名称>` 打开聊天应用的插件抽屉并自动预填 URL——未登录先跳登录（redirect 回流），回来继续装；**不自动安装**，权限确认框始终是人工闸门。深链只预填不执行，杜绝第三方页面诱导静默装插件。
+- **市场元数据单一真源**：新增 `scripts/sync-plugins.mjs`——从 `plugins/examples/` 源码的 manifest（首个块注释 JSON）校验并生成官网 `content/plugins/index.json`，同时同步源码副本；官网市场卡片的名称 / 版本 / 权限改为运行时以 index.json 为准（缺失文案用 manifest 描述兜底），版本号不再手写。CI 新增 `sync-plugins --check` 步骤，副本或索引与源码漂移直接红。
+- **升级版本过渡可见**：`POST /api/plugins/upload|from-url` 升级响应新增 `X-Plugin-Old-Version` 头，前端确认框展示「v旧 → v新」；降级安装（市场旧包覆盖更高版本）额外警告提示。
 - **表情回应开放**：消息气泡下的 emoji 表态（👍 ❤️ 😂 😮 😢 🎉）正式可用。链路此前已完整实现——WS `reaction` 帧（每人每条消息最多一个表情，set/remove，服务端幂等广播）、REST 历史分页聚合 `{emoji,count,mine}`、气泡下方回应条与预设表情选择器——原按设计文档划在二期、以 `FEATURES.reactions=false` 隐藏；现打开开关默认展示。WS/REST 契约无任何变化，跨端契约金样本已含 reaction 帧。
 
 ### 修复
