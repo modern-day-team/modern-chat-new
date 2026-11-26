@@ -8,6 +8,10 @@ This file records the important changes of ModernChat. Format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Performance
+
+- **Smaller chat first screen**: the plugin declarative renderer's TDesign `Select` (≈140 KB) was previously statically imported via `MessageRow`, pulling it into the chat first-screen critical path even though `select` nodes in plugin messages are uncommon. It is now lazy-loaded on mount via `DeclarativeSelect.vue`, loading only when a plugin actually renders a `select` node — the `select` chunk is off the critical path (lazy chunk 104 KB / gzip 32 KB), so the first screen no longer pays for a rare plugin control.
+
 ### Code structure cleanup (refactor only)
 - Backend calls: merged the shared teardown of `endCall` / `endCallForDevice` into `finishCall` (state cleanup + broadcast ended to both parties); removed the uncalled `newCallID` dead code.
 - Frontend calls: extracted `components/call/logic.ts` (types, frame-filter rule `shouldHandleFrame`, `formatDuration`, `normalizeMediaType`); `CallOverlay.vue` now consumes pure functions so filtering rules are centralized and testable instead of scattered per-branch `if`s. Added 7 vitest cases.

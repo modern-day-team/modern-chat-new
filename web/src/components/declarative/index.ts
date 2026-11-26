@@ -12,13 +12,13 @@ import {
   Checkbox as TCheckbox,
   Divider as TDivider,
   Input as TInput,
-  Select as TSelect,
   Switch as TSwitch,
   Textarea as TTextarea,
 } from 'tdesign-vue-next'
 
 import i18n from '@/i18n'
 import type { UIDescNode } from '@/types/proto'
+import DeclarativeSelect from './DeclarativeSelect.vue'
 
 function safeProps(raw: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
@@ -86,9 +86,7 @@ export const DeclarativeNodes = defineComponent({
           } catch {
             options = []
           }
-          return h(TSelect, {
-            size: 'small',
-            clearable: true,
+          return h(DeclarativeSelect, {
             placeholder: str('placeholder'),
             value: str('value'),
             options: options.map((o) => ({ label: o, value: o })),

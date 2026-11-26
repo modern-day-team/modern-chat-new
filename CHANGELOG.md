@@ -8,6 +8,10 @@
 
 ## [未发布]
 
+### 性能优化
+
+- **聊天首屏体积下降**：插件声明式渲染器里的 TDesign `Select`（约 140 KB）原先经 `MessageRow` 静态引入，被拉进聊天首屏关键路径，即使插件消息里的 `select` 节点并不常见。改为 `DeclarativeSelect.vue` 挂载时按需动态加载，仅插件确实渲染 `select` 节点时才加载该 chunk——首屏不再为罕见控件买单，`select` chunk 移出关键路径（懒加载 chunk 104 KB / gzip 32 KB）。
+
 ### 代码结构优化（纯重构）
 
 - 后端通话：合并 `endCall` / `endCallForDevice` 的公共收尾为 `finishCall`（清理状态 + 双方广播 ended），删除未被调用的 `newCallID` 死代码；结束路径只有一处实现。

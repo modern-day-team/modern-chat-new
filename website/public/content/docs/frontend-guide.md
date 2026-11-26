@@ -197,7 +197,7 @@ components/declarative    插件声明式 UI 渲染器（内核）
 
 | 主题 | 做法 | 现状 |
 |---|---|---|
-| 组件体积 | 迁移到自研 `Ui*` 后，TDesign 只剩后台表格/页签与认证页表单；**不写 `app.use(TDesign)`**，仍在用的组件按需 import | TDesign 已不占首屏 |
+| 组件体积 | 迁移到自研 `Ui*` 后，TDesign 只剩后台表格/页签与认证页表单；**不写 `app.use(TDesign)`**，仍在用的组件按需 import。插件声明式渲染器（`components/declarative`）里的 `Select` 体积大（约 140 KB）且插件消息里不常见，经 `MessageRow` 静态引入会被拉进聊天首屏——已改为 `DeclarativeSelect.vue` 挂载时按需动态加载，仅插件确实渲染 `select` 节点时才加载该 chunk | TDesign 主体不占首屏；`Select` 已懒加载移出首屏 |
 | 分包 | `manualChunks` 只固定框架核心为 `vendor`；后台页按路由分包，不进首屏 | 首屏约 **161 KB / 21 请求**（未压缩） |
 | 传输压缩 | 构建生成 `.gz` / `.br`，nginx `gzip_static on` 优先发预压缩文件 | 首屏 **161 KB → 约 65 KB** |
 | 长列表 | 消息流用 `vue-virtual-scroller`；实测 2000 条历史只渲染 21 个 DOM | 已在 `MessagePane` |
@@ -411,6 +411,7 @@ UiCheckbox  UiInputNumber  UiTooltip  UiPopup  UiDialog  UiDrawer
 
 **代码分割 / Tree Shaking**：
 - 主 web：10 条路由全部 `() => import()`；框架核心固定 `vendor`，`tdesign-icons-vue-next` 独立 `icons` chunk 避免跨路由重复下载；TDesign 组件仍跟随引用它的路由分包（首屏登录页不下载后台 Table/Drawer）。
+- 插件声明式渲染器的 `Select`（约 140 KB）原先经 `MessageRow` 静态引入被拉进聊天首屏，改为 `DeclarativeSelect.vue` 挂载时 `import('tdesign-vue-next/es/select')` 按需加载，仅插件渲染 `select` 节点时加载；实测 `select` chunk 从首屏关键路径移出，懒加载 chunk 104 KB（gzip 32 KB），首屏不再为罕见插件控件买单。
 - 官网：三个页面改路由懒加载；`marked` 动态 import 并模块级缓存；页面 CSS（home/docs/market）由各自 View import，首屏 CSS 只留令牌/基础/外壳。取消被抬高的 `chunkSizeWarningLimit: 900`，让大包重新暴露。
 - 实测：官网首屏 JS 244KB 单包 → `index 34KB + vue-vendor 151KB`（vendor 可长期缓存），`marked 37KB` 仅文档页加载；首屏 CSS 37.6KB → 22.2KB。
 
