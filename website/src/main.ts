@@ -8,6 +8,8 @@ import { applyTheme, readMode } from './theme'
 // 首屏样式：令牌 → 基础层 → 站点外壳。
 // docs.css / market.css / home.css 由各自页面按需 import，不进入首屏 CSS。
 import './styles/tokens.css'
+// 栅格系统（与主仓库 web/src/assets/grid.css 逐字节相同）
+import './styles/grid.css'
 import './styles/base.css'
 import './styles/site.css'
 

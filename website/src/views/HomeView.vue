@@ -200,8 +200,8 @@ const eco = computed(() => [
     <!-- ============ 首屏 ============ -->
     <section class="hero">
       <div class="hero__backdrop" aria-hidden="true" />
-      <div class="container">
-        <div class="hero__inner">
+      <div class="mc-container hero__grid mc-grid">
+        <div class="hero__inner mc-col-5">
           <p class="hero__eyebrow">
             <span class="pill">{{ t('hero.badge') }}</span>
             {{ t('hero.eyebrow') }}
@@ -236,7 +236,7 @@ const eco = computed(() => [
           </div>
         </div>
 
-        <div class="hero__stage">
+        <div class="hero__stage mc-col-7">
           <ProductPreview />
         </div>
       </div>
@@ -244,8 +244,8 @@ const eco = computed(() => [
 
     <!-- ============ 能力 ============ -->
     <section id="capabilities" class="section section--plain">
-      <div class="container cap">
-        <div class="cap__side">
+      <div class="mc-container cap mc-grid">
+        <div class="cap__side mc-col-3">
           <p class="eyebrow">{{ t('cap.eyebrow') }}</p>
           <h2>{{ t('cap.title') }}</h2>
           <p>{{ t('cap.desc') }}</p>
@@ -255,7 +255,7 @@ const eco = computed(() => [
           </RouterLink>
         </div>
 
-        <div class="cap__groups">
+        <div class="cap__groups mc-col-9">
           <div v-for="g in capGroups" :key="g.title" class="cap__group">
             <p class="cap__group-title">{{ g.title }}</p>
             <ul class="cap__list">
@@ -274,17 +274,17 @@ const eco = computed(() => [
 
     <!-- ============ 插件系统 ============ -->
     <section id="plugins" class="section section--tint">
-      <div class="container">
+      <div class="mc-container">
         <div class="sec-head">
           <p class="eyebrow">{{ t('plug.eyebrow') }}</p>
           <h2>{{ t('plug.title') }}</h2>
           <p>{{ t('plug.sub') }}</p>
         </div>
 
-        <div class="plug">
-          <CodeCard name="weather.plugin.js" :html="pluginHtml" :raw="plain(pluginHtml)" />
+        <div class="plug mc-grid">
+          <CodeCard class="plug__code mc-col-7" name="weather.plugin.js" :html="pluginHtml" :raw="plain(pluginHtml)" />
 
-          <div class="plug__side">
+          <div class="plug__side mc-col-5">
             <div class="plug__block">
               <h3>{{ t('plug.model') }}</h3>
               <ul class="plug__checks">
@@ -329,7 +329,7 @@ const eco = computed(() => [
 
     <!-- ============ 部署 ============ -->
     <section id="deploy" class="section">
-      <div class="container">
+      <div class="mc-container">
         <div class="sec-head">
           <p class="eyebrow">{{ t('dep.eyebrow') }}</p>
           <h2>{{ t('dep.title') }}</h2>
@@ -360,8 +360,8 @@ const eco = computed(() => [
             <p class="dep__note">{{ t('dep.note') }}</p>
           </div>
 
-          <ul class="dep__checks">
-            <li v-for="o in ops" :key="o.title">
+          <ul class="dep__checks mc-grid">
+            <li v-for="o in ops" :key="o.title" class="mc-col-3">
               <UiIcon :name="o.icon" :size="16" />
               <div>
                 <h3>{{ o.title }}</h3>
@@ -375,7 +375,7 @@ const eco = computed(() => [
 
     <!-- ============ 生态 ============ -->
     <section class="section section--tint">
-      <div class="container">
+      <div class="mc-container">
         <div class="sec-head">
           <p class="eyebrow">{{ t('eco.eyebrow') }}</p>
           <h2>{{ t('eco.title') }}</h2>
@@ -405,7 +405,7 @@ const eco = computed(() => [
 
     <!-- ============ 收尾 ============ -->
     <section class="band">
-      <div class="container band__inner">
+      <div class="mc-container band__inner mc-row mc-row--between mc-row--wide">
         <div>
           <h2>{{ t('band.title') }}</h2>
           <p>{{ t('band.sub') }}</p>

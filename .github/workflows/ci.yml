@@ -66,9 +66,9 @@ jobs:
       - name: go vet
         working-directory: server
         run: go vet ./...
-      - name: go test（单元测试）
+      - name: go test（单元测试，含竞态检测）
         working-directory: server
-        run: go test ./...
+        run: go test -race ./...
       - name: go test（integration，真实 MySQL）
         working-directory: server
         run: go test -tags integration ./test/ -count=1

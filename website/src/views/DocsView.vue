@@ -312,8 +312,8 @@ watch(
 </script>
 
 <template>
-  <main class="container doc">
-    <aside class="doc__side">
+  <main class="mc-container doc mc-grid">
+    <aside class="doc__side mc-col-3">
       <nav class="doc__nav" aria-label="Docs">
         <template v-for="(item, i) in DOCS" :key="i">
           <div v-if="item.group" class="doc__group">{{ label(item) }}</div>
@@ -325,10 +325,12 @@ watch(
       <p class="doc__side-note">{{ t('docs.zhNote') }}</p>
     </aside>
 
-    <article class="doc__main">
-      <p class="doc__crumb">{{ t('docs.crumb') }}</p>
-      <h1 class="doc__title">{{ label(items[activeIndex] ?? items[0]) }}</h1>
-      <p class="doc__desc">{{ descOf(items[activeIndex] ?? items[0]) }}</p>
+    <article class="doc__main mc-col-9">
+      <header class="mc-page-head doc__head">
+        <p class="doc__crumb">{{ t('docs.crumb') }}</p>
+        <h1 class="mc-page-head__title doc__title">{{ label(items[activeIndex] ?? items[0]) }}</h1>
+        <p class="doc__desc">{{ descOf(items[activeIndex] ?? items[0]) }}</p>
+      </header>
 
       <div class="md" @click="onBodyClick">
         <p v-if="loading" class="doc__loading">{{ t('docs.loading') }}</p>

@@ -210,7 +210,7 @@
   transform: translateY(-6px);
 }
 
-@media (max-width: 960px) {
+@media (max-width: 767px) {
   .nav__links,
   .nav__repo {
     display: none;
@@ -291,7 +291,7 @@
   font-size: var(--fs-200);
 }
 
-@media (max-width: 960px) {
+@media (max-width: 767px) {
   .foot__inner {
     grid-template-columns: repeat(2, 1fr);
     gap: var(--sp-6);
@@ -960,7 +960,7 @@
 }
 
 /* ---- 响应式：先收面板，再收列表，最后只剩聊天 ---- */
-@media (max-width: 1120px) {
+@media (max-width: 1279px) {
   .pv {
     --pv-list: 236px;
     --pv-panel: 224px;
@@ -970,7 +970,7 @@
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1023px) {
   .pv .pv__app {
     grid-template-columns: var(--pv-rail) var(--pv-list) minmax(0, 1fr);
   }
@@ -979,7 +979,7 @@
   }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 767px) {
   .pv .pv__app {
     grid-template-columns: var(--pv-rail) minmax(0, 1fr);
     height: 380px;
@@ -992,7 +992,7 @@
   }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 479px) {
   .pv .pv__app {
     grid-template-columns: minmax(0, 1fr);
     height: 340px;

@@ -55,7 +55,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
 <template>
   <header class="nav">
-    <div class="container nav__inner">
+    <div class="mc-container nav__inner">
       <RouterLink class="brand" to="/" :aria-label="t('site.title')">
         <span class="brand__mark">
           <img src="/favicon.ico" alt="" width="22" height="22" />
@@ -108,7 +108,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
     <transition name="sheet">
       <div v-if="open" class="nav__sheet">
-        <div class="container nav__sheet-inner">
+        <div class="mc-container nav__sheet-inner">
           <RouterLink
             v-for="item in items"
             :key="item.key"

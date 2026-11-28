@@ -78,7 +78,8 @@
   --fs-600: 17px; /* 小节标题 */
   --fs-700: 20px; /* 区块标题（小） */
   --fs-800: clamp(24px, 2.4vw, 30px); /* 区块标题 */
-  --fs-900: clamp(36px, 4.4vw, 54px); /* 首屏主标题 */
+  --fs-900: clamp(36px, 4.4vw, 54px); /* 首屏主标题（通栏 / 窄屏堆叠） */
+  --fs-850: clamp(30px, 3.4vw, 40px); /* 首屏分栏时的主标题（列宽只有 5/12，字号要收一档） */
 
   /* ---------- 圆角：4 档 + 胶囊 ---------- */
   --r-sm: 6px;
@@ -113,10 +114,14 @@
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* ---------- 布局 ---------- */
-  --container: 1160px;
-  --gutter: 24px;
-  --nav-h: 60px;
+  /* ---------- 布局 ----------
+     容器宽度与页边距桥接到栅格系统（grid.css），官网自己不再定义数值；
+     1160 = 标准档，页边距 16 → 24px 随断点变化。 */
+  --container: var(--mc-container);
+  --gutter: var(--mc-gutter);
+  --nav-h: 60px; /* 4 × 15 */
+  /* 焦点环：输入类控件得到焦点时的柔光，与全局 :focus-visible 描边同一色相 */
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent);
 
   /* ---------- 字体 ---------- */
   --font: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, system-ui, sans-serif;

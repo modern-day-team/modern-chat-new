@@ -39,8 +39,8 @@ const columns = [
 
 <template>
   <footer class="foot">
-    <div class="container foot__inner">
-      <div class="foot__brand">
+    <div class="mc-container foot__inner mc-grid">
+      <div class="foot__brand mc-col-4">
         <div class="foot__mark">
           <span class="brand__mark"><img src="/favicon.ico" alt="" width="22" height="22" /></span>
           <span>ModernChat</span>
@@ -52,14 +52,14 @@ const columns = [
         </div>
       </div>
 
-      <div v-for="col in columns" :key="col.title" class="foot__col">
+      <div v-for="col in columns" :key="col.title" class="foot__col mc-col-2">
         <h3>{{ t(col.title) }}</h3>
         <RouterLink v-for="l in col.links" :key="l.label" :to="l.to">
           {{ t(l.label) }}
         </RouterLink>
       </div>
 
-      <div class="foot__col">
+      <div class="foot__col mc-col-2">
         <h3>{{ t('footer.repo') }}</h3>
         <a :href="REPO" target="_blank" rel="noopener">GitHub</a>
         <a :href="RELEASES" target="_blank" rel="noopener">{{ t('footer.releases') }}</a>
@@ -68,7 +68,7 @@ const columns = [
       </div>
     </div>
 
-    <div class="container foot__bottom">
+    <div class="mc-container foot__bottom mc-row mc-row--between">
       <span>© 2026 Sun-Si-Cheng · ModernChat</span>
       <span class="mono">v{{ VERSION }}</span>
     </div>

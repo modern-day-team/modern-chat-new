@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "description": "示例（SDK v5）：会话/消息写操作 + 宿主文件上传 + tabs/steps/empty/loading/upload",
   "permissions": ["ui:panel", "ui:page", "conv:read", "conv:write", "message:send", "file:upload"],
-  "allowedHosts": []
+  "allowedHosts": [],
+  "engines": { "sdk": ">=5" }
 } */
 
 /**

@@ -269,7 +269,8 @@ pre {
 }
 
 .sec-head {
-  max-width: 620px;
+  /* 小节标题限在 form 档（640） */
+  max-width: var(--mc-container-form);
 }
 
 .sec-head h2 {

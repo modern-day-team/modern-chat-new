@@ -10,6 +10,8 @@
         "ai"
       ],
       "allowedHosts": [],
+      "engines": {},
+      "dependencies": [],
       "lang": "js"
     },
     {
@@ -24,6 +26,8 @@
         "ui:host"
       ],
       "allowedHosts": [],
+      "engines": {},
+      "dependencies": [],
       "lang": "ts"
     },
     {
@@ -38,6 +42,8 @@
         "ui:panel"
       ],
       "allowedHosts": [],
+      "engines": {},
+      "dependencies": [],
       "lang": "js"
     },
     {
@@ -52,6 +58,8 @@
         "data"
       ],
       "allowedHosts": [],
+      "engines": {},
+      "dependencies": [],
       "lang": "js"
     },
     {
@@ -68,6 +76,10 @@
         "file:upload"
       ],
       "allowedHosts": [],
+      "engines": {
+        "sdk": ">=5"
+      },
+      "dependencies": [],
       "lang": "js"
     },
     {
@@ -83,6 +95,8 @@
         "storage"
       ],
       "allowedHosts": [],
+      "engines": {},
+      "dependencies": [],
       "lang": "js"
     },
     {
@@ -98,6 +112,8 @@
         "storage"
       ],
       "allowedHosts": [],
+      "engines": {},
+      "dependencies": [],
       "lang": "js"
     },
     {
@@ -111,6 +127,8 @@
         "storage"
       ],
       "allowedHosts": [],
+      "engines": {},
+      "dependencies": [],
       "lang": "js"
     }
   ]

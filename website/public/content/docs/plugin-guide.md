@@ -53,6 +53,12 @@ function __mcActivate(api: McApi): void {
 | `description` | ≤255 字符 |
 | `permissions` | 非空，取值见 §3 |
 | `allowedHosts` | ≤20 项，`example.com` 或 `*.example.com`；`api.request` 只放行这里列出的域名，同时会写进沙箱 CSP 的 `connect-src`（未声明时插件完全不能发起网络请求）。**媒体播放同源同表**：写进 CSP `media-src`，插件可用 `<audio>` / `<video>` 播放这些域名下的媒体（见 §3.1） |
+| `engines` | 可选，宿主能力要求。当前只支持 `{"sdk": ">=5"}`：**安装时**校验，宿主 SDK 不满足直接 400。未知键报错（拼错的键会让作者误以为检查生效） |
+| `dependencies` | 可选，≤10 项，写法 `"name"` 或 `"name@^1.0.0"`。依赖名的字符集是 `[A-Za-z0-9_.-]`，不能自依赖或重复。**安装不检查，启用才检查**（见下） |
+
+> **为什么依赖只在启用时拦**：一次导入多个插件时，使用者可能先落库、被依赖者后装；安装阶段就拦会让「批量导入」没法做。启用时则要求依赖**已安装 + 版本符合 + 已启用**三者齐备——装了但停用的依赖同样提供不了能力，放过去只会在运行时炸。服务端返回 403 并列出具体原因，前端抽屉在点开关前就会标出「依赖未就绪」。
+>
+> `engines` 与 `dependencies` 在用户插件和服务端插件里**同一套语法**（共用 `plugin.ParseDependencies` / `ParseRequirement`），服务端插件的依赖指向其它服务端插件。版本约束只实现 `*` `=` `>` `>=` `<` `<=` `~` `^` 七种，语义与 npm 一致（`^0.x` 锁次版本）；不支持预发布版本与 `||`。
 
 安装后插件**默认停用**，前端会弹权限清单，用户确认后才开始启用运行。升级（同名覆盖）时如果**权限或 `allowedHosts` 与已授权版本不同**，服务端会带 `X-Plugin-Perms-Changed: true`，前端强制重新确认：确认后新版本生效，拒绝则插件立即停用（新代码不会在旧授权下自动运行）。站长可全局下架（对所有用户立即生效）。
 
@@ -218,6 +224,14 @@ SDK 当前为 **v5**：`api.version === '5'` 时可用完整页面、账号数�
 
 ## 7. 调试与进阶
 
+- **开发循环（推荐）**：`scripts/dev-plugin.mjs` 把「每次改动都去网页里复制粘贴安装」换成命令行：
+  ```bash
+  # 保存即推送：服务端重新安装并启用，刷新页面即可加载新代码
+  node scripts/dev-plugin.mjs watch my.plugin.js --url http://localhost:8080 --token "$JWT"
+  # 只校验。带 --url 时走服务端同一套规则；不带则用离线镜像规则（CI 可用）
+  node scripts/dev-plugin.mjs check my.plugin.js [--url ... --token ...]
+  ```
+  `push` / `watch` 会登录、上传、按需启用；依赖未就绪时**只安装不启用**并打印原因。在线校验走 `POST /api/plugins/validate`（干跑，不落库、不改状态），与安装共用服务端的 Go 校验，因此不会出现「本地过了、安装 400」。认证优先级 `--token` > `MC_TOKEN` > `--user/--pass`（开启两步验证的账号请直接用 token）。
 - **调试**：插件 iframe 默认隐藏，打开 DevTools 的 frame 列表可选中它看 `console`；`__mcActivate` 抛错时控制台会有 `[plugin:名称] boot warning`
 - **自定义消息类型**：`api.registerMessageRenderer('weather', p => desc)` 注册，`api.send(convId, data, 'weather')` 发送；类型名需匹配 `^[a-z0-9_-]+$`
 - **存储**：`api.storage` 只存字符串，对象自己 `JSON.stringify`；v2 可用 `keys()` / `remove()` 清理本插件数据，仍受每插件 256KB 总配额约束
@@ -283,6 +297,8 @@ SDK 当前为 **v5**：`api.version === '5'` 时可用完整页面、账号数�
 }
 ```
 
+`dependencies` 可选，语法与用户插件一致（`["other-plugin@^1.0.0"]`），指向**其它服务端插件**；安装时只校验语法，管理员启用时才检查对方是否已安装并启用。`engines` 不适用于服务端插件（它的兼容性取决于宿主版本而不是插件 SDK，而宿主版本在本地开发时是 `dev`，强校验会让本地装不上）。
+
 ## S2b. WASM manifest 与宿主 ABI
 
 WASM 示例见 `server-examples/qr-kit/`（源码 + manifest + 构建脚本）。目录内执行：
@@ -342,8 +358,9 @@ GOOS=wasip1 GOARCH=wasm go build -o qr-kit.wasm .
 ## 8. 发布与升级
 
 1. 把单文件放到任意可访问的 URL（或直接在插件面板上传）
-2. 用户：「插件」→ 上传文件 / 粘贴 URL → 确认权限
-3. **升级**：同名插件再次安装即覆盖（`id` 不变、保留启停），响应头带 `X-Plugin-Updated: true`；**权限 / `allowedHosts` 有变化**时另带 `X-Plugin-Perms-Changed: true`，已启用的插件必须重新确认——确认后重载新代码，拒绝则立即停用（见 §2）
+2. 用户三种入口：「插件」→ 上传文件 / 粘贴 URL → 确认权限；或官网插件市场「一键装进应用」——深链 `${CHAT_APP}chat?plugin-install=<插件URL>&plugin-name=<名称>` 自动打开抽屉并预填 URL，仍需手点安装并确认权限（确认框是唯一人工闸门，不存在静默安装）
+3. **升级**：同名插件再次安装即覆盖（`id` 不变、保留启停），响应头带 `X-Plugin-Updated: true` 与 `X-Plugin-Old-Version: <旧版本>`（前端确认框展示版本过渡，降级安装会额外警告）；**权限 / `allowedHosts` 有变化**时另带 `X-Plugin-Perms-Changed: true`，已启用的插件必须重新确认——确认后重载新代码，拒绝则立即停用（见 §2）
 4. 站长在后台可按插件名**全局下架**或**强制卸载**
+5. **市场收录**：官方示例插件放在 `plugins/examples/`（manifest 写在源码首个块注释），跑 `node scripts/sync-plugins.mjs` 同步官网副本并生成 `index.json`（市场卡片与一键安装的数据源；CI 用 `--check` 校验副本与索引不漂移），再在官网 `PluginsView.vue` 的 `PLUGINS` 表补中英文案。`index.json` 同时带 `engines` / `dependencies`，市场卡片会显示「SDK ≥x」与依赖标签——**兼容性与依赖信息只有 manifest 一个真源**，不要在官网文案里手写版本要求。
 
 > 安全边界：插件跑在 `sandbox="allow-scripts"` 且**没有** `allow-same-origin` 的 iframe 里，origin 是 opaque，拿不到 JWT、读不到主站存储、碰不到其他插件；引导代码通过 `srcdoc` 注入，`</script` 会被转义；CSP 为 `default-src 'none'`，网络出口只有 `allowedHosts`；服务端不出站；TS 转译在服务端完成，转译失败会直接拒绝安装并提示行号。

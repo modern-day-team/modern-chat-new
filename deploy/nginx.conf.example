@@ -65,6 +65,9 @@ server {
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "no-referrer" always;
     add_header Permissions-Policy "geolocation=(), camera=(), microphone=()" always;
+    # 强制后续访问走 HTTPS：后端只有在看到 X-Forwarded-Proto=https 时才会给
+    # 会话 cookie 加 Secure，浏览器先被 HSTS 拽回 HTTPS 才能避免 cookie 明文外泄。
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
     # CSP 模板：**默认注释掉**。插件沙箱用 iframe srcdoc + 内联脚本运行插件代码，
     # srcdoc 会继承父页面 CSP，若 script-src 不含 'unsafe-inline' 插件系统会整体失效。
@@ -86,6 +89,8 @@ server {
         add_header X-Content-Type-Options "nosniff" always;
         add_header Referrer-Policy "no-referrer" always;
         add_header Permissions-Policy "geolocation=(), camera=(), microphone=()" always;
+        # 同上：location 内声明了 add_header 就不再继承 server 级头部
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     }
 
     # 带指纹的静态资源长缓存（正则同时命中官网 /assets/ 和聊天 /app/assets/）
@@ -98,12 +103,14 @@ server {
         add_header X-Content-Type-Options "nosniff" always;
         add_header Referrer-Policy "no-referrer" always;
         add_header Permissions-Policy "geolocation=(), camera=(), microphone=()" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     }
 
     # Service Worker 必须禁用缓存，否则升级后旧 SW 继续生效（web/public/sw.js）
     location = /app/sw.js {
         add_header Cache-Control "no-cache, no-store, must-revalidate" always;
         add_header X-Content-Type-Options "nosniff" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     }
 
     # ===== 对象存储私有空间反代（可选，如启用七牛私有空间）=====
@@ -118,6 +125,9 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        # TLS 在 nginx 终止、回源是明文；不传这个头后端会以为请求是 HTTP，
+        # 于是登录 cookie 不带 Secure，可被同域 http:// 请求带出。
+        proxy_set_header X-Forwarded-Proto $scheme;
         client_max_body_size 2m;   # 插件上传 1MB + 余量
     }
 
@@ -127,8 +137,20 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
         client_max_body_size 210m;
         proxy_request_buffering off;
+    }
+
+    # 本地存储的上传文件。文件落在 server/data/uploads（环境变量 DATA_DIR 之下），
+    # 不在站点 root 里，所以不能交给 nginx 静态服务，必须回源；
+    # /uploads 还要求登录 cookie，回源才能带上鉴权。
+    location /uploads/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 
     # WebSocket（/ws 握手 + 升级）
@@ -144,6 +166,7 @@ server {
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 300s;   # 心跳 25s，留足余量
         proxy_send_timeout 300s;
     }

@@ -20,6 +20,10 @@ interface MarketPlugin {
   zh: string
   en: string
   perms: string[]
+  /** engines.sdk（宿主 SDK 要求），来自 manifest；空串表示无要求 */
+  sdk?: string
+  /** dependencies：依赖的插件与版本范围 */
+  deps?: string[]
 }
 
 /** index.json 条目：由 scripts/sync-plugins.mjs 从 plugins/examples 的 manifest 生成 */
@@ -30,6 +34,8 @@ interface IndexEntry {
   description: string
   permissions: string[]
   allowedHosts: string[]
+  engines?: Record<string, string>
+  dependencies?: string[]
   lang: 'js' | 'ts'
 }
 
@@ -137,13 +143,23 @@ const plugins = computed<MarketPlugin[]>(() => {
   const out = PLUGINS.map((p) => {
     seen.add(p.file)
     const r = byFile.get(p.file)
-    return r ? { ...p, name: r.name, version: r.version, perms: r.permissions } : p
+    if (!r) return p
+    // 兼容性/依赖同样以 manifest 为准：市场卡片上就能看出「需 SDK ≥5」「依赖谁」
+    return {
+      ...p,
+      name: r.name,
+      version: r.version,
+      perms: r.permissions,
+      sdk: r.engines?.sdk ?? '',
+      deps: r.dependencies ?? [],
+    }
   })
   for (const r of remote.value) {
     if (seen.has(r.file)) continue
     out.push({
       file: r.file, name: r.name, version: r.version, cat: 'demo',
       zh: r.description, en: r.description, perms: r.permissions,
+      sdk: r.engines?.sdk ?? '', deps: r.dependencies ?? [],
     })
   }
   return out
@@ -197,14 +213,14 @@ function sourceHref(p: MarketPlugin) {
 </script>
 
 <template>
-  <main class="container mkt">
-    <header class="mkt__head">
+  <main class="mc-container mkt">
+    <header class="mc-page-head mkt__head">
       <p class="eyebrow">{{ t('nav.plugins') }}</p>
-      <h1>{{ t('mkt.h1') }}</h1>
+      <h1 class="mc-page-head__title">{{ t('mkt.h1') }}</h1>
       <p>{{ t('mkt.sub') }}</p>
     </header>
 
-    <section class="mkt__tools">
+    <section class="mkt__tools mc-row mc-row--wide">
       <label class="field">
         <UiIcon name="search" :size="15" />
         <input v-model="keyword" type="search" :placeholder="t('mkt.search')" />
@@ -226,8 +242,8 @@ function sourceHref(p: MarketPlugin) {
       <span class="mkt__count">{{ filtered.length }} / {{ plugins.length }}</span>
     </section>
 
-    <section class="mkt__grid">
-      <article v-for="p in filtered" :key="p.file" class="mkt__card">
+    <section class="mkt__grid mc-grid">
+      <article v-for="p in filtered" :key="p.file" class="mkt__card mc-panel mc-col-4">
         <header class="mkt__card-head">
           <span class="mkt__icon"><UiIcon name="puzzle" :size="18" /></span>
           <div>
@@ -247,6 +263,11 @@ function sourceHref(p: MarketPlugin) {
             :class="{ 'tag-perm--net': perm === 'net' }"
           >
             {{ perm }}
+          </span>
+          <!-- 兼容性与依赖：告诉用户在旧客户端上装不上、或还缺哪个插件 -->
+          <span v-if="p.sdk" class="tag-perm" :title="t('mkt.sdkTitle')">SDK {{ p.sdk }}</span>
+          <span v-for="d in p.deps ?? []" :key="`dep-${d}`" class="tag-perm" :title="t('mkt.depTitle')">
+            ⟵ {{ d }}
           </span>
         </div>
 
@@ -270,8 +291,8 @@ function sourceHref(p: MarketPlugin) {
 
     <section class="mkt__how">
       <h2>{{ t('mkt.how-title') }}</h2>
-      <div class="steps">
-        <div v-for="s in steps" :key="s.n" class="step">
+      <div class="steps mc-grid">
+        <div v-for="s in steps" :key="s.n" class="step mc-col-4">
           <span class="step__n">{{ s.n }}</span>
           <h3>{{ s.title }}</h3>
           <p>{{ s.desc }}</p>
@@ -279,7 +300,7 @@ function sourceHref(p: MarketPlugin) {
       </div>
     </section>
 
-    <section class="mkt__pub">
+    <section class="mkt__pub mc-panel mc-row mc-row--between mc-row--wide">
       <div>
         <h2>{{ t('mkt.pub-title') }}</h2>
         <p>
