@@ -111,7 +111,7 @@ async function onImageChange(ev: Event) {
 </script>
 
 <template>
-  <UiPopup v-model:visible="visible" placement="bottom-right">
+  <UiPopup v-model:visible="visible" placement="bottom-right" :label="t('settings.appBackground')">
     <button
       v-if="compact"
       type="button"
@@ -210,7 +210,7 @@ async function onImageChange(ev: Event) {
   gap: 8px;
   padding: 4px 10px 4px 5px;
   border: 1px solid var(--td-component-border);
-  border-radius: 999px;
+  border-radius: var(--mc-radius-pill);
   background: var(--td-bg-color-container);
   font: inherit;
   font-size: 13px;
@@ -325,7 +325,7 @@ async function onImageChange(ev: Event) {
   padding: 4px 10px;
   font-size: 12px;
   font-family: inherit;
-  border-radius: 999px;
+  border-radius: var(--mc-radius-pill);
   border: 1px solid var(--td-component-border);
   background: var(--td-bg-color-container);
   color: var(--td-text-color-secondary);
@@ -344,7 +344,7 @@ async function onImageChange(ev: Event) {
 .abg-pattern.is-active {
   background: var(--td-brand-color);
   border-color: var(--td-brand-color);
-  color: #fff;
+  color: var(--td-text-color-anti);
 }
 
 .abg-pattern:focus-visible,
@@ -377,7 +377,7 @@ async function onImageChange(ev: Event) {
   align-items: center;
   padding: 4px 10px;
   border: 1px solid var(--td-component-border);
-  border-radius: 999px;
+  border-radius: var(--mc-radius-pill);
   background: var(--td-bg-color-container);
   font-size: 12px;
   color: var(--td-text-color-secondary);

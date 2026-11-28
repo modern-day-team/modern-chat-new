@@ -209,7 +209,7 @@ onBeforeUnmount(() => {
 
 .mc-voice.is-mine {
   background: var(--td-brand-color);
-  color: #fff;
+  color: var(--td-text-color-anti);
 }
 
 .mc-voice.is-failed {

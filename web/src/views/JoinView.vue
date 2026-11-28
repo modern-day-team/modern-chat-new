@@ -82,6 +82,10 @@ function goChat() {
       <p v-if="error" class="mc-join__error">{{ error }}</p>
 
       <div class="mc-join__actions">
+        <!-- 加载失败且没有群信息时，提供内联重试入口 -->
+        <UiButton v-if="error && !info" theme="primary" block @click="loadInfo">
+          {{ t('admin.retry') }}
+        </UiButton>
         <UiButton v-if="info" theme="primary" block :loading="joining" @click="join">
           {{ t('join.action') }}
         </UiButton>
@@ -92,23 +96,22 @@ function goChat() {
 </template>
 
 <style scoped>
+/* 邀请页：外框 mc-container--narrow，窄屏左右留白 = --mc-gutter，卡片不再写死宽度 */
 .mc-join {
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: var(--mc-page-y) 0;
   background: var(--td-bg-color-page);
 }
 
 .mc-join__card {
-  width: 360px;
-  max-width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 18px;
-  padding: 28px 24px;
+  gap: var(--mc-sp-4);
+  padding: var(--mc-sp-8) var(--mc-sp-6);
   border: 1px solid var(--mc-hairline);
   border-radius: var(--mc-radius-lg);
   background: var(--td-bg-color-container);
@@ -117,16 +120,18 @@ function goChat() {
 
 .mc-join__title {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--mc-fs-heading);
   font-weight: 600;
+  line-height: var(--mc-lh-tight);
+  letter-spacing: -0.02em;
 }
 
 .mc-join__group {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px;
+  gap: var(--mc-sp-3);
+  padding: var(--mc-sp-3);
   border-radius: var(--mc-radius-md);
   background: var(--td-bg-color-secondarycontainer);
 }
@@ -135,11 +140,11 @@ function goChat() {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--mc-sp-1);
 }
 
 .mc-join__name {
-  font-size: 15px;
+  font-size: var(--mc-fs-emphasis);
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -148,15 +153,17 @@ function goChat() {
 
 .mc-join__error {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--mc-fs-sm);
+  line-height: var(--mc-lh-normal);
   color: var(--td-error-color);
   text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .mc-join__actions {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--mc-sp-2);
 }
 </style>

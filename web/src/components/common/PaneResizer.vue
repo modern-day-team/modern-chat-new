@@ -131,6 +131,7 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 .mc-resizer:focus-visible {
+  /* 可键盘聚焦；默认轮廓换成下方 ::after 的内描边 ring */
   outline: none;
 }
 

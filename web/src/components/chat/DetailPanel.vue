@@ -781,6 +781,7 @@ async function leave() {
           class="mc-detail__group-avatar is-editable"
           :disabled="avatarUploading"
           :title="t('group.changeAvatar')"
+          :aria-label="t('group.changeAvatar')"
           @click="pickGroupAvatar"
         >
           <AvatarBadge :name="conv.name ?? '#'" :src="conv.avatar" color="#2ba471" :size="48" />
@@ -920,7 +921,7 @@ async function leave() {
               {{ f.name }}
             </a>
             <span class="mc-detail__file-meta text-placeholder">
-              {{ fmtSize(f.size) }} · {{ f.uploaderName }}
+              {{ fmtSize(f.size) }} | {{ f.uploaderName }}
             </span>
             <button
               v-if="canDeleteFile(f)"
@@ -1376,6 +1377,7 @@ async function leave() {
 }
 
 .mc-detail__announce-input:focus {
+  /* 聚焦态由边框色承担（输入类控件的等价 ring），故去默认轮廓 */
   outline: none;
   border-color: var(--td-brand-color);
 }
@@ -1470,7 +1472,7 @@ async function leave() {
 .mc-detail__badge {
   flex-shrink: 0;
   padding: 1px 6px;
-  border-radius: 999px;
+  border-radius: var(--mc-radius-pill);
   background: var(--td-bg-color-secondarycontainer);
   font-size: 11px;
   font-weight: 400;

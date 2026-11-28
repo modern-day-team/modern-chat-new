@@ -89,7 +89,7 @@ const activeGroup = ref<AdminGroupRow | null>(null)
 
 const drawerHeader = computed(() =>
   activeGroup.value
-    ? `${t('admin.groupDetailTitle')} · ${activeGroup.value.name}`
+    ? `${t('admin.groupDetailTitle')} | ${activeGroup.value.name}`
     : t('admin.groupDetailTitle'),
 )
 

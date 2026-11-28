@@ -110,7 +110,7 @@ function onClick(e: MouseEvent) {
     background-color var(--mc-dur-instant) var(--mc-ease-out),
     border-color var(--mc-dur-instant) var(--mc-ease-out),
     color var(--mc-dur-instant) var(--mc-ease-out),
-    transform 100ms var(--mc-ease-out);
+    transform var(--mc-dur-instant) var(--mc-ease-out);
 }
 
 .ui-btn:disabled {
@@ -147,7 +147,8 @@ function onClick(e: MouseEvent) {
 
 @media (prefers-reduced-motion: reduce) {
   .ui-btn__spin {
-    animation-duration: 2s;
+    /* 停掉旋转，保留静态圆环形态 */
+    animation: none;
   }
 }
 </style>

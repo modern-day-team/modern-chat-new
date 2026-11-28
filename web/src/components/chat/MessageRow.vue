@@ -10,7 +10,7 @@
  * 宿主的成员昵称缓存 / 已读回执等经 inject 的稳定函数读取（见
  * messageRowContext.ts，依赖跟踪发生在本组件作用域）。
  */
-import { computed, inject, reactive } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 
 import AvatarBadge from '@/components/common/AvatarBadge.vue'
 import LazyVideo from './LazyVideo.vue'
@@ -44,8 +44,40 @@ const props = defineProps<{
 const ctx = inject(messageRowKey)
 if (!ctx) throw new Error('MessageRow 必须在 MessagePane 内使用（缺 messageRowCtx）')
 
-/** 图片加载淡入：骨架底色 → 原图，避免白块闪烁（稳定渲染） */
-const loadedImages = reactive(new Set<number>())
+/**
+ * 图片加载淡入：骨架底色 → 原图，避免白块闪烁（稳定渲染）。
+ *
+ * 键必须稳定：乐观消息（id 为负）在服务端回显后会被替换成 id 为正的新对象，
+ * 但组件实例与 <img> 都不重建。若仍以 msg.id 为键，id 一变 has() 就为 false，
+ * 已缓存图片又不会再触发 load，气泡会永久停在透明状态。
+ * 优先用 clientMsgId，缺省才退回 id。
+ */
+const imageKey = computed(() => props.msg.clientMsgId || String(props.msg.id))
+const loadedImages = reactive(new Set<string>())
+/** 加载失败单独记一份：给出可见提示，而不是留一个永久空白的骨架块 */
+const failedImages = reactive(new Set<string>())
+const imageEl = ref<HTMLImageElement | null>(null)
+
+function onImageLoad() {
+  loadedImages.add(imageKey.value)
+}
+
+function onImageError() {
+  failedImages.add(imageKey.value)
+}
+
+/**
+ * msg.id 变化（乐观消息回显）时不会重发 load 事件：
+ * 此时若图片其实已解码完成，主动补记新键，维持淡入终态。
+ */
+watch(
+  imageKey,
+  async () => {
+    await nextTick()
+    if (imageEl.value?.complete && imageEl.value.naturalWidth > 0) loadedImages.add(imageKey.value)
+  },
+  { immediate: true },
+)
 
 const convStore = useConversationsStore()
 const auth = useAuthStore()
@@ -111,6 +143,71 @@ function retrySend(m: Message) {
 }
 
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉']
+
+// ===== 触摸长按菜单 =====
+//
+// 桌面端右键即可弹出操作菜单，但触摸设备没有 contextmenu（部分浏览器还会
+// 长按后弹原生菜单）。这里用 pointer 事件补一个 500ms 长按入口，复用同一个
+// openMenu；位移超过阈值即视为滚动，取消长按，避免滑动列表时误弹。
+
+const LONG_PRESS_MS = 500
+const LONG_PRESS_MOVE_PX = 10
+let pressTimer: ReturnType<typeof setTimeout> | undefined
+let pressX = 0
+let pressY = 0
+/** 长按已弹菜单：吞掉紧随其后的 click，防止点图触发大图预览 */
+let suppressClick = false
+
+function clearPressTimer() {
+  if (pressTimer) {
+    clearTimeout(pressTimer)
+    pressTimer = undefined
+  }
+}
+
+function onPointerDown(e: PointerEvent) {
+  // 鼠标右键/左键已有原生入口；多选模式下点击行为是勾选，不抢长按
+  if (props.selectMode || e.pointerType === 'mouse') return
+  const m = props.msg
+  if (m.isRecalled || m.id <= 0) return
+  // 长按在行内按钮上时不弹菜单，交给按钮自己的行为
+  const target = e.target as HTMLElement | null
+  if (target?.closest('button, a, input, textarea, select, [role="button"]')) return
+  pressX = e.clientX
+  pressY = e.clientY
+  clearPressTimer()
+  pressTimer = setTimeout(() => {
+    pressTimer = undefined
+    suppressClick = true
+    ctx!.openMenu(
+      new MouseEvent('contextmenu', { clientX: pressX, clientY: pressY, bubbles: true, cancelable: true }),
+      m,
+    )
+  }, LONG_PRESS_MS)
+}
+
+function onPointerMove(e: PointerEvent) {
+  if (!pressTimer) return
+  if (Math.hypot(e.clientX - pressX, e.clientY - pressY) > LONG_PRESS_MOVE_PX) clearPressTimer()
+}
+
+function onRowClickCapture(e: MouseEvent) {
+  if (!suppressClick) return
+  suppressClick = false
+  e.preventDefault()
+  e.stopPropagation()
+}
+
+/** 多选模式的键盘勾选：只在行本身获得焦点时响应，避免内部按钮的回车冒泡重复勾选 */
+function onRowKeydown(e: KeyboardEvent) {
+  if (!props.selectMode || e.target !== e.currentTarget) return
+  if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+    e.preventDefault()
+    ctx!.toggleSelect(props.msg)
+  }
+}
+
+onBeforeUnmount(clearPressTimer)
 </script>
 
 <template>
@@ -123,8 +220,18 @@ const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉']
       'is-selected': selectMode && selected,
       'is-selecting': selectMode,
     }"
+    :role="selectMode ? 'checkbox' : undefined"
+    :tabindex="selectMode ? 0 : undefined"
+    :aria-checked="selectMode ? selected : undefined"
+    :aria-label="selectMode ? t('message.select') : undefined"
+    @click.capture="onRowClickCapture"
     @click="selectMode && ctx!.toggleSelect(msg)"
+    @keydown="onRowKeydown"
     @contextmenu.prevent="ctx!.openMenu($event, msg)"
+    @pointerdown="onPointerDown"
+    @pointermove="onPointerMove"
+    @pointerup="clearPressTimer"
+    @pointercancel="clearPressTimer"
   >
     <!-- 多选标记 -->
     <span
@@ -188,14 +295,19 @@ const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉']
              图片未加载时高度为 0 → 永远进不了视口 → 永远不会加载（死循环）。
              虚拟滚动本身已经保证只渲染视口附近的消息，无需再 lazy。 -->
         <img
+          ref="imageEl"
           :src="msg.content"
-          alt=""
+          :alt="t('message.openImage')"
           decoding="async"
-          :class="{ 'is-loaded': loadedImages.has(msg.id) }"
-          @load="loadedImages.add(msg.id)"
+          :class="{ 'is-loaded': loadedImages.has(imageKey), 'is-failed': failedImages.has(imageKey) }"
+          @load="onImageLoad"
+          @error="onImageError"
           @click="ctx!.onMediaClick(msg, $event)"
           @contextmenu.prevent.stop="ctx!.openImageMenu($event, msg)"
         />
+        <span v-if="failedImages.has(imageKey)" class="mc-msg__media-failed" role="img">
+          {{ t('common.opFailed') }}
+        </span>
       </div>
 
       <!-- 语音：自定义气泡（宽度随时长、进度条、同时只播一条） -->
@@ -213,14 +325,19 @@ const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉']
       <!-- 表情：透明底、无气泡（和图片区分：表情是"贴"在对话里的） -->
       <div v-else-if="msg.msgType === 'sticker'" class="mc-msg__sticker">
         <img
+          ref="imageEl"
           :src="msg.content"
-          alt=""
+          :alt="t('message.quoteSticker')"
           decoding="async"
-          :class="{ 'is-loaded': loadedImages.has(msg.id) }"
-          @load="loadedImages.add(msg.id)"
+          :class="{ 'is-loaded': loadedImages.has(imageKey), 'is-failed': failedImages.has(imageKey) }"
+          @load="onImageLoad"
+          @error="onImageError"
           @click="ctx!.onMediaClick(msg, $event)"
           @contextmenu.prevent.stop="ctx!.openImageMenu($event, msg)"
         />
+        <span v-if="failedImages.has(imageKey)" class="mc-msg__media-failed" role="img">
+          {{ t('common.opFailed') }}
+        </span>
       </div>
 
       <!-- 合并转发卡片：固定高度摘要，详情走抽屉 -->
@@ -302,13 +419,13 @@ const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉']
           :aria-label="t('message.resend')"
           @click.stop="retrySend(msg)"
         >
-          {{ t('message.sendFailed') }} · {{ t('message.resend') }}
+          {{ t('message.sendFailed') }} | {{ t('message.resend') }}
         </button>
         <template v-else-if="mine && convType === 1">
-          {{ ctx!.messageStatus(msg) }} ·
+          {{ ctx!.messageStatus(msg) }} |
         </template>
         {{ fmtTime(msg.createdAt) }}
-        <span v-if="msg.editedAt"> · {{ t('message.edited') }}</span>
+        <span v-if="msg.editedAt"> | {{ t('message.edited') }}</span>
       </div>
     </div>
   </div>
@@ -388,6 +505,8 @@ const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉']
 
 /* ===== 图片 / 语音消息 ===== */
 .mc-msg__media {
+  /* 加载失败提示浮在固定占位区上 */
+  position: relative;
   width: min(240px, 62vw);
   /* 固定 4:3 占位：图片是异步到达的，只留 min-height 会在加载完成后把虚拟列表整段撑高 */
   aspect-ratio: 4 / 3;
@@ -422,8 +541,29 @@ const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉']
 }
 
 .mc-msg__media img.is-loaded,
-.mc-msg__sticker img.is-loaded {
+.mc-msg__sticker img.is-loaded,
+.mc-msg__media img.is-failed,
+.mc-msg__sticker img.is-failed {
   opacity: 1;
+}
+
+/* 加载失败：不留下永久空白的骨架块，给一行可见提示 */
+.mc-msg__media-failed {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  font-size: var(--mc-fs-sm);
+  line-height: normal;
+  color: var(--td-text-color-placeholder);
+  text-align: center;
+  background: var(--td-bg-color-container);
+}
+
+.mc-msg__sticker {
+  position: relative;
 }
 
 /* 视频：固定 16:9 占位，竖屏视频以黑边居中（object-fit: contain） */
@@ -494,7 +634,7 @@ const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉']
   background: var(--td-brand-color);
   border-color: transparent;
   border-top-right-radius: 4px;
-  color: #fff;
+  color: var(--td-text-color-anti);
 }
 
 .mc-msg__bubble.pending {
@@ -544,7 +684,7 @@ const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉']
 .mc-msg__check.is-on {
   border-color: var(--td-brand-color);
   background: var(--td-brand-color);
-  color: #fff;
+  color: var(--td-text-color-anti);
 }
 
 /* ===== 转发：气泡上的来源标注 ===== */
@@ -590,7 +730,7 @@ const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉']
 }
 
 .mc-msg.mine .mc-msg__at {
-  color: #fff;
+  color: var(--td-text-color-anti);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -604,7 +744,7 @@ const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉']
   color: var(--td-text-color-placeholder);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.15s;
+  transition: opacity var(--mc-dur-instant) var(--mc-ease-out);
   user-select: none;
   white-space: nowrap;
 }
@@ -652,7 +792,7 @@ const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉']
   gap: 3px;
   padding: 1px 7px;
   border: 1px solid var(--mc-hairline);
-  border-radius: 999px;
+  border-radius: var(--mc-radius-pill);
   background: var(--td-bg-color-secondarycontainer);
   color: var(--td-text-color-primary);
   font: inherit;
@@ -741,5 +881,16 @@ const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉']
   margin-top: 4px;
   user-select: none;
   letter-spacing: 0.01em;
+}
+
+/* 触摸设备没有 hover：撤回 / 加表情这类 hover 才显形的入口必须常显，
+   否则手机端只能长按菜单，行内入口全部不可达。
+   注意写在 MessageRow 自己的 scoped 样式里——写在 MessagePane 里只能命中
+   子组件根元素，碰不到这里的内部节点。 */
+@media (hover: none) {
+  .mc-msg__recall,
+  .mc-msg__reaction-add {
+    opacity: 1;
+  }
 }
 </style>

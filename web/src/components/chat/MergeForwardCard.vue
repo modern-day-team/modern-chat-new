@@ -71,7 +71,7 @@ function mediaClass(item: MergeCardItem): string {
   <UiDrawer v-model:visible="open" :header="card?.title || t('message.mergeForward')" :size="560">
     <div v-if="card" class="mc-card__detail">
       <p class="mc-card__detail-head text-placeholder">
-        {{ t('message.cardCount', { n: count }) }} · {{ t('message.cardSnapshot') }}
+        {{ t('message.cardCount', { n: count }) }} | {{ t('message.cardSnapshot') }}
       </p>
       <div v-for="(item, i) in card.items" :key="i" class="mc-card__entry">
         <div class="mc-card__entry-meta text-placeholder">

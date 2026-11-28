@@ -62,7 +62,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 
 .settings-segmented button.is-active {
   background: var(--td-brand-color);
-  color: #fff;
+  color: var(--td-text-color-anti);
   font-weight: 600;
   opacity: 1;
   box-shadow: var(--mc-shadow-1);

@@ -61,18 +61,18 @@ function close() {
   max-width: 260px;
   padding: 4px 8px;
   border-radius: var(--mc-radius-sm);
-  background: rgba(24, 24, 26, 0.94);
-  color: #fff;
+  background: var(--mc-overlay-strong);
+  color: var(--td-text-color-anti);
   font-size: 12px;
   line-height: 1.4;
   white-space: nowrap;
   pointer-events: none;
-  box-shadow: 0 6px 18px -8px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--mc-elev-2);
 }
 
 .ui-tip-enter-active,
 .ui-tip-leave-active {
-  transition: opacity 100ms var(--mc-ease-in-out);
+  transition: opacity var(--mc-dur-instant) var(--mc-ease-in-out);
 }
 
 .ui-tip-enter-from,

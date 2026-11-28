@@ -111,7 +111,7 @@ onBeforeUnmount(() => clearTimeout(releaseTimer))
   border-radius: 50%;
   background: var(--td-bg-color-container);
   border: 2px solid var(--td-brand-color);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--mc-elev-1);
   transition: transform var(--mc-dur-instant) var(--mc-ease-out);
 }
 
@@ -155,6 +155,7 @@ onBeforeUnmount(() => clearTimeout(releaseTimer))
 }
 
 .ui-slider:focus-visible {
+  /* 可键盘聚焦；默认轮廓换成下方 thumb 的品牌色光环 */
   outline: none;
 }
 

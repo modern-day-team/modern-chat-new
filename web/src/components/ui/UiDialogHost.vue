@@ -89,6 +89,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   background: var(--td-bg-color-container);
   border: 1px solid var(--mc-hairline);
   box-shadow: var(--mc-shadow-3);
+  /* tabindex="-1" 仅作编程聚焦容器，不参与 Tab 序，去默认轮廓 */
   outline: none;
 }
 

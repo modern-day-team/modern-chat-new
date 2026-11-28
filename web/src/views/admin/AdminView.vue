@@ -1032,13 +1032,26 @@ async function installServerPlugin() {
   manifestInstalling.value = true
   try {
     const row = await adminApi.serverPlugins.install(raw)
-    if (wasmFile.value) await adminApi.serverPlugins.uploadWasm(row.id, wasmFile.value)
+    if (wasmFile.value) {
+      try {
+        await adminApi.serverPlugins.uploadWasm(row.id, wasmFile.value)
+      } catch (e) {
+        // 两步是「先落 manifest、再传 wasm」：第二步失败会留下一个半装插件，
+        // 管理员既看不出状态、重装 manifest 还会产生重复记录。这里删除刚创建的
+        // manifest 回滚到安装前，保证安装动作的原子性；回滚失败也不掩盖原始错误。
+        await adminApi.serverPlugins.remove(row.id).catch(() => undefined)
+        await fetchServerPlugins()
+        throw e
+      }
+    }
     void MessagePlugin.success(t('admin.serverInstallOk'))
     manifestText.value = ''
     wasmFile.value = null
     await fetchServerPlugins()
     refreshAfterWrite()
   } catch (e) {
+    // 安装失败也让列表回到服务端真实状态（含上面的回滚）
+    await fetchServerPlugins()
     void MessagePlugin.error(te(e))
   } finally {
     manifestInstalling.value = false
@@ -1179,7 +1192,7 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
           class="mc-admin__build num"
           :title="t('admin.buildVersion')"
         >
-          {{ buildInfo.version }} · {{ buildInfo.commit }}
+          {{ buildInfo.version }} | {{ buildInfo.commit }}
         </span>
         <UiButton
           variant="outline"
@@ -1809,7 +1822,7 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
             </div>
             <div class="mc-ops__stat">
               <span>{{ t('admin.opsOrphans') }}</span>
-              <b>{{ storageStats.orphans }} · {{ fmtBytes(storageStats.orphanBytes) }}</b>
+              <b>{{ storageStats.orphans }} | {{ fmtBytes(storageStats.orphanBytes) }}</b>
             </div>
           </div>
           <div class="mc-settings__actions">
@@ -2090,7 +2103,7 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
             </div>
             <div v-if="updateStatus.mode === 'release' && updateStatus.repo" class="mc-admin__update-row">
               <span>{{ t('admin.updateSource') }}</span>
-              <span class="num">GitHub · {{ updateStatus.repo }}</span>
+              <span class="num">GitHub | {{ updateStatus.repo }}</span>
             </div>
             <div v-if="updateStatus.error" class="mc-admin__update-row">
               <span>{{ t('admin.updateError') }}</span>
@@ -2153,7 +2166,7 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
             <template v-else>
               <div class="mc-admin__update-row">
                 <span>{{ t('admin.updateRemoteVersion') }}</span>
-                <span class="num">{{ updateCheck.remoteTag }} · {{ updateCheck.remote }}</span>
+                <span class="num">{{ updateCheck.remoteTag }} | {{ updateCheck.remote }}</span>
               </div>
               <div class="mc-admin__update-row">
                 <span>{{ t('admin.updateRemoteMsg') }}</span>
@@ -2277,9 +2290,10 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
 
 <style scoped>
 .mc-admin {
-  max-width: 1120px;
+  /* 后台是数据密集页：栅格 wide 档（1440）留出统计卡与表格的呼吸空间 */
+  max-width: var(--mc-container-wide);
   margin: 0 auto;
-  padding: 28px 24px 56px;
+  padding: var(--mc-sp-8) var(--mc-gutter) var(--mc-sp-12);
 }
 
 .mc-admin__header {
@@ -2409,7 +2423,7 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
 }
 
 .mc-admin__tab.is-active {
-  color: #fff;
+  color: var(--td-text-color-anti);
   background: var(--td-brand-color);
   font-weight: 600;
   opacity: 1;
@@ -2531,7 +2545,7 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
   padding: 10px 12px;
   font: inherit;
   font-size: var(--mc-fs-body);
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-family: var(--mc-font-mono);
   line-height: 1.5;
   resize: vertical;
   background: var(--td-bg-color-page);
@@ -2709,7 +2723,7 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
   flex-shrink: 0;
 }
 
-@media (max-width: 560px) {
+@media (max-width: 479px) {
   .mc-admin__filter-select {
     width: 100%;
   }
@@ -2785,6 +2799,7 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
 }
 
 .mc-settings__textarea:focus {
+  /* 聚焦态由边框色承担（输入类控件的等价 ring），故上面去默认轮廓 */
   border-color: var(--td-brand-color);
 }
 
@@ -2908,7 +2923,7 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
   border: none;
   background: transparent;
   font: inherit;
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-family: var(--mc-font-mono);
   color: var(--td-brand-color);
   text-align: left;
   cursor: pointer;
@@ -3040,7 +3055,7 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
   padding: 12px 14px;
   max-height: 320px;
   overflow: auto;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--mc-font-mono);
   font-size: 12px;
   line-height: 1.6;
   white-space: pre-wrap;
@@ -3120,15 +3135,15 @@ async function toggleGlobalDisabled(row: AdminPluginRow) {
   line-height: 1.6;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1023px) {
   .mc-admin__stats {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 560px) {
+@media (max-width: 479px) {
   .mc-admin {
-    padding: 20px 12px 40px;
+    padding: var(--mc-sp-5) var(--mc-sp-3) var(--mc-sp-10);
   }
 
   .mc-admin__header {

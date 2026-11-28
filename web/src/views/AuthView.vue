@@ -359,6 +359,13 @@ async function pollQr() {
     if (s.status === 'confirmed' && s.token && s.user) {
       stopQrPolling()
       auth.applyAuth({ token: s.token, user: s.user })
+      // qr/status 不写 Cookie，而 WS 已改为凭 HttpOnly Cookie 握手：
+      // 先打一次带 Authorization 的 /me 让后端补发 mc_auth，再进聊天页。
+      try {
+        await auth.fetchMe()
+      } catch {
+        /* 网络故障时保留登录态，聊天页会自行重试 */
+      }
       void MessagePlugin.success(t('auth.qrLoginOk'))
       await router.replace('/chat')
     } else if (s.status === 'expired') {
@@ -395,341 +402,340 @@ onBeforeUnmount(stopQrPolling)
       <QuickPrefs />
     </div>
 
-    <main class="auth-card">
-      <div class="auth-card__brand">
-        <img class="auth-card__mark" :src="faviconUrl" alt="" width="32" height="32" />
-        <span class="auth-card__product">{{ siteName }}</span>
-      </div>
+    <main class="mc-container mc-container--narrow">
+    <div class="auth-card">
+        <div class="auth-card__brand">
+          <img class="auth-card__mark" :src="faviconUrl" alt="" width="32" height="32" />
+          <span class="auth-card__product">{{ siteName }}</span>
+        </div>
 
-      <!-- 两步验证：密码正确后的第二因子表单（默认关闭，开启后登录出现） -->
-      <template v-if="twofaStep">
-        <h1 class="auth-card__title">{{ t('auth.twofaLoginTitle') }}</h1>
-        <p class="auth-card__notice text-placeholder">{{ t('auth.twofaLoginDesc') }}</p>
+        <!-- 两步验证：密码正确后的第二因子表单（默认关闭，开启后登录出现） -->
+        <template v-if="twofaStep">
+          <h1 class="auth-card__title">{{ t('auth.twofaLoginTitle') }}</h1>
+          <p class="auth-card__notice text-placeholder">{{ t('auth.twofaLoginDesc') }}</p>
 
-        <template v-if="!twofaUsingRecovery">
-          <p class="auth-card__notice text-placeholder">
-            {{
-              twofaMethod === 'app'
-                ? t('auth.twofaMethodApp')
-                : twofaMethod === 'email'
-                  ? t('auth.twofaMethodEmail')
-                  : t('auth.twofaNotConfigured')
-            }}
-          </p>
-          <UiInput
-            v-model="twofaCode"
-            size="large"
-            :maxlength="twofaUsingRecovery ? 20 : 6"
-            :placeholder="twofaUsingRecovery ? t('auth.twofaRecoveryCode') : t('auth.enterCode')"
-            clearable
-            @enter="verifyTwofa"
-          >
-          </UiInput>
-          <UiButton
-            class="auth-card__submit"
-            theme="primary"
-            block
-            size="large"
-            :loading="twofaVerifying"
-            @click="verifyTwofa"
-          >
-            {{ t('auth.twofaVerify') }}
-          </UiButton>
-          <p v-if="twofaMethod === 'email'" class="auth-card__notice text-placeholder">
-            <button
-              type="button"
-              class="auth-card__link-btn"
-              :disabled="twofaEmailCooldown > 0"
-              @click="sendTwofaEmail"
+          <template v-if="!twofaUsingRecovery">
+            <p class="auth-card__notice text-placeholder">
+              {{
+                twofaMethod === 'app'
+                  ? t('auth.twofaMethodApp')
+                  : twofaMethod === 'email'
+                    ? t('auth.twofaMethodEmail')
+                    : t('auth.twofaNotConfigured')
+              }}
+            </p>
+            <UiInput
+              v-model="twofaCode"
+              size="large"
+              :maxlength="twofaUsingRecovery ? 20 : 6"
+              :placeholder="twofaUsingRecovery ? t('auth.twofaRecoveryCode') : t('auth.enterCode')"
+              clearable
+              @enter="verifyTwofa"
             >
-              {{ twofaEmailCooldown > 0 ? t('auth.twofaResendIn', { n: twofaEmailCooldown }) : t('auth.twofaSendCode') }}
+            </UiInput>
+            <UiButton
+              class="auth-card__submit"
+              theme="primary"
+              block
+              size="large"
+              :loading="twofaVerifying"
+              @click="verifyTwofa"
+            >
+              {{ t('auth.twofaVerify') }}
+            </UiButton>
+            <p v-if="twofaMethod === 'email'" class="auth-card__notice text-placeholder">
+              <button
+                type="button"
+                class="auth-card__link-btn"
+                :disabled="twofaEmailCooldown > 0"
+                @click="sendTwofaEmail"
+              >
+                {{ twofaEmailCooldown > 0 ? t('auth.twofaResendIn', { n: twofaEmailCooldown }) : t('auth.twofaSendCode') }}
+              </button>
+            </p>
+            <p class="auth-card__notice text-placeholder">
+              <button type="button" class="auth-card__link-btn" @click="useRecovery">
+                {{ t('auth.twofaUseRecovery') }}
+              </button>
+            </p>
+          </template>
+          <template v-else>
+            <p class="auth-card__notice text-placeholder">{{ t('auth.twofaRecoveryDesc') }}</p>
+            <UiInput
+              v-model="twofaCode"
+              size="large"
+              :maxlength="20"
+              :placeholder="t('auth.twofaRecoveryCode')"
+              clearable
+              @enter="verifyTwofa"
+            >
+            </UiInput>
+            <UiButton
+              class="auth-card__submit"
+              theme="primary"
+              block
+              size="large"
+              :loading="twofaVerifying"
+              @click="verifyTwofa"
+            >
+              {{ t('auth.twofaVerify') }}
+            </UiButton>
+            <p class="auth-card__notice text-placeholder">
+              <button
+                type="button"
+                class="auth-card__link-btn"
+                @click="twofaUsingRecovery = false; twofaCode = ''"
+              >
+                {{ t('auth.twofaBackToCode') }}
+              </button>
+            </p>
+          </template>
+          <div class="auth-card__links">
+            <button type="button" class="auth-card__link-btn" @click="backToPassword">
+              {{ t('auth.twofaBackToLogin') }}
             </button>
-          </p>
-          <p class="auth-card__notice text-placeholder">
-            <button type="button" class="auth-card__link-btn" @click="useRecovery">
-              {{ t('auth.twofaUseRecovery') }}
+          </div>
+        </template>
+        <template v-else-if="qrOpen">
+          <h1 class="auth-card__title">{{ t('auth.qrLogin') }}</h1>
+          <div class="auth-card__qr">
+            <img v-if="qrImg" :src="qrImg" alt="" width="200" height="200" />
+            <p v-if="qrState === 'pending'" class="auth-card__notice text-placeholder">
+              {{ t('auth.qrPending') }}
+            </p>
+            <template v-else>
+              <p class="auth-card__notice is-error">{{ t('auth.qrExpired') }}</p>
+              <UiButton theme="primary" :loading="qrBusy" @click="openQrLogin">
+                {{ t('auth.qrRefresh') }}
+              </UiButton>
+            </template>
+          </div>
+          <p class="auth-card__notice text-placeholder">{{ t('auth.qrHint') }}</p>
+          <div class="auth-card__links">
+            <button type="button" class="auth-card__link-btn" @click="closeQrLogin">
+              {{ t('auth.qrBack') }}
             </button>
-          </p>
+          </div>
         </template>
         <template v-else>
-          <p class="auth-card__notice text-placeholder">{{ t('auth.twofaRecoveryDesc') }}</p>
-          <UiInput
-            v-model="twofaCode"
-            size="large"
-            :maxlength="20"
-            :placeholder="t('auth.twofaRecoveryCode')"
-            clearable
-            @enter="verifyTwofa"
-          >
-          </UiInput>
+        <h1 class="auth-card__title">
+          {{ mode === 'login' ? t('auth.loginTitle') : t('auth.registerTitle') }}
+        </h1>
+
+        <!-- 旧站迁移自动登录：处理中 / 票据失效时才出现（成功会直接跳聊天页） -->
+        <div v-if="migrating" class="auth-card__notice">{{ t('auth.migrateChecking') }}</div>
+        <div v-else-if="migrateFailed" class="auth-card__notice is-error">
+          <span>{{ t('auth.migrateFailed') }}</span>
+          <UiButton size="small" variant="text" @click="migrateFailed = false">
+            {{ t('auth.migrateManualLogin') }}
+          </UiButton>
+        </div>
+
+        <TForm
+          ref="form"
+          :key="mode"
+          class="auth-card__form"
+          :data="data"
+          :rules="rules"
+          label-width="0"
+          @submit="onSubmit"
+        >
+          <TFormItem name="username">
+            <UiInput
+              v-model="data.username"
+              size="large"
+              :placeholder="t('auth.username')"
+              clearable
+              @enter="form?.submit()"
+            >
+              <template #prefix-icon><UserIcon /></template>
+            </UiInput>
+          </TFormItem>
+
+          <TFormItem v-if="mode === 'register'" name="nickname">
+            <UiInput
+              v-model="registerForm.nickname"
+              size="large"
+              :placeholder="t('auth.nickname')"
+              clearable
+              @enter="form?.submit()"
+            >
+              <template #prefix-icon><UserIcon /></template>
+            </UiInput>
+          </TFormItem>
+
+          <!-- 站点开启「注册需邮箱验证」时才出现：邮箱 + 验证码 -->
+          <TFormItem v-if="mode === 'register' && needEmail" name="email">
+            <UiInput
+              v-model="registerForm.email"
+              size="large"
+              type="email"
+              :placeholder="t('auth.email')"
+              clearable
+              @enter="needCode ? sendEmailCode() : form?.submit()"
+            >
+              <template #prefix-icon><MailIcon /></template>
+            </UiInput>
+          </TFormItem>
+
+          <TFormItem v-if="mode === 'register' && needCode" name="emailCode">
+            <div class="auth-card__code-row">
+              <UiInput
+                v-model="registerForm.emailCode"
+                size="large"
+                :maxlength="6"
+                :placeholder="t('auth.emailCode')"
+                @enter="form?.submit()"
+              />
+              <UiButton
+                variant="outline"
+                size="large"
+                :loading="sendingCode"
+                :disabled="codeCooldown > 0"
+                @click="sendEmailCode"
+              >
+                {{ codeCooldown > 0 ? t('auth.resendIn', { n: codeCooldown }) : t('auth.sendCode') }}
+              </UiButton>
+            </div>
+          </TFormItem>
+
+          <!-- 站点开启邀请码注册时才出现 -->
+          <TFormItem v-if="mode === 'register' && site.config.requireInviteCode" name="inviteCode">
+            <UiInput
+              v-model="registerForm.inviteCode"
+              size="large"
+              :placeholder="t('auth.inviteCode')"
+              clearable
+            >
+              <template #prefix-icon><LockOnIcon /></template>
+            </UiInput>
+          </TFormItem>
+
+          <TFormItem name="password" :help="mode === 'register' ? t('auth.passwordHelp') : undefined">
+            <UiInput
+              v-model="data.password"
+              size="large"
+              type="password"
+              :placeholder="t('auth.password')"
+              @enter="form?.submit()"
+            >
+              <template #prefix-icon><LockOnIcon /></template>
+            </UiInput>
+          </TFormItem>
+
+          <TFormItem v-if="mode === 'register'" name="confirm">
+            <UiInput
+              v-model="registerForm.confirm"
+              size="large"
+              type="password"
+              :placeholder="t('auth.confirmPassword')"
+              @enter="form?.submit()"
+            >
+              <template #prefix-icon><LockOnIcon /></template>
+            </UiInput>
+          </TFormItem>
+
+          <!-- 协议同意：紧邻密码与提交按钮之间 -->
+          <div class="auth-card__agree">
+            <UiCheckbox v-model="agreed" size="small">
+              <span class="auth-card__agree-text">
+                {{ t('legal.agreePrefix') }}
+                <!-- 新标签打开，避免打断登录流程 -->
+                <RouterLink :to="'/terms'" target="_blank" @click.stop>{{ t('legal.termsLink') }}</RouterLink>
+                {{ t('legal.and') }}
+                <RouterLink :to="'/privacy'" target="_blank" @click.stop>{{ t('legal.privacyLink') }}</RouterLink>
+              </span>
+            </UiCheckbox>
+          </div>
+
           <UiButton
             class="auth-card__submit"
             theme="primary"
+            type="submit"
             block
             size="large"
-            :loading="twofaVerifying"
-            @click="verifyTwofa"
+            :loading="loading"
+            :disabled="migrating"
           >
-            {{ t('auth.twofaVerify') }}
+            {{ mode === 'login' ? t('auth.actionLogin') : t('auth.actionRegister') }}
           </UiButton>
-          <p class="auth-card__notice text-placeholder">
+        </TForm>
+
+        <!-- 统一登录：状态异步探测，先占住按钮位置（visibility 切换而非插入），避免推低下方链接 -->
+        <UiButton
+          v-if="mode === 'login'"
+          class="auth-card__sso"
+          :class="{ 'is-placeholder': !ssoEnabled }"
+          variant="outline"
+          size="large"
+          block
+          :disabled="migrating"
+          @click="startSso"
+        >
+          {{ t('auth.ssoLogin') }}
+        </UiButton>
+
+        <div class="auth-card__links">
+          <template v-if="mode === 'login'">
+            <RouterLink to="/forgot">{{ t('auth.forgot') }}</RouterLink>
+            <!-- 站点关闭注册时不再露出入口；配置没拉回来之前也不露出（默认值已改为 false） -->
             <button
+              v-if="site.loaded && site.config.allowRegister"
               type="button"
               class="auth-card__link-btn"
-              @click="twofaUsingRecovery = false; twofaCode = ''"
+              @click="switchMode('register')"
             >
-              {{ t('auth.twofaBackToCode') }}
+              {{ t('auth.signupLink') }}
             </button>
-          </p>
-        </template>
-        <div class="auth-card__links">
-          <button type="button" class="auth-card__link-btn" @click="backToPassword">
-            {{ t('auth.twofaBackToLogin') }}
-          </button>
-        </div>
-      </template>
-      <template v-else-if="qrOpen">
-        <h1 class="auth-card__title">{{ t('auth.qrLogin') }}</h1>
-        <div class="auth-card__qr">
-          <img v-if="qrImg" :src="qrImg" alt="" width="200" height="200" />
-          <p v-if="qrState === 'pending'" class="auth-card__notice text-placeholder">
-            {{ t('auth.qrPending') }}
-          </p>
+            <!-- 扫码登录入口：手机端已登录时扫桌面二维码即可登录 -->
+            <button type="button" class="auth-card__link-btn" @click="openQrLogin">
+              {{ t('auth.qrLogin') }}
+            </button>
+          </template>
           <template v-else>
-            <p class="auth-card__notice is-error">{{ t('auth.qrExpired') }}</p>
-            <UiButton theme="primary" :loading="qrBusy" @click="openQrLogin">
-              {{ t('auth.qrRefresh') }}
-            </UiButton>
+            <span class="text-placeholder">{{ t('auth.haveAccount') }}</span>
+            <button type="button" class="auth-card__link-btn" @click="switchMode('login')">
+              {{ t('auth.loginLink') }}
+            </button>
           </template>
         </div>
-        <p class="auth-card__notice text-placeholder">{{ t('auth.qrHint') }}</p>
-        <div class="auth-card__links">
-          <button type="button" class="auth-card__link-btn" @click="closeQrLogin">
-            {{ t('auth.qrBack') }}
-          </button>
-        </div>
-      </template>
-      <template v-else>
-      <h1 class="auth-card__title">
-        {{ mode === 'login' ? t('auth.loginTitle') : t('auth.registerTitle') }}
-      </h1>
-
-      <!-- 旧站迁移自动登录：处理中 / 票据失效时才出现（成功会直接跳聊天页） -->
-      <div v-if="migrating" class="auth-card__notice">{{ t('auth.migrateChecking') }}</div>
-      <div v-else-if="migrateFailed" class="auth-card__notice is-error">
-        <span>{{ t('auth.migrateFailed') }}</span>
-        <UiButton size="small" variant="text" @click="migrateFailed = false">
-          {{ t('auth.migrateManualLogin') }}
-        </UiButton>
-      </div>
-
-      <TForm
-        ref="form"
-        :key="mode"
-        class="auth-card__form"
-        :data="data"
-        :rules="rules"
-        label-width="0"
-        @submit="onSubmit"
-      >
-        <TFormItem name="username">
-          <UiInput
-            v-model="data.username"
-            size="large"
-            :placeholder="t('auth.username')"
-            clearable
-            @enter="form?.submit()"
-          >
-            <template #prefix-icon><UserIcon /></template>
-          </UiInput>
-        </TFormItem>
-
-        <TFormItem v-if="mode === 'register'" name="nickname">
-          <UiInput
-            v-model="registerForm.nickname"
-            size="large"
-            :placeholder="t('auth.nickname')"
-            clearable
-            @enter="form?.submit()"
-          >
-            <template #prefix-icon><UserIcon /></template>
-          </UiInput>
-        </TFormItem>
-
-        <!-- 站点开启「注册需邮箱验证」时才出现：邮箱 + 验证码 -->
-        <TFormItem v-if="mode === 'register' && needEmail" name="email">
-          <UiInput
-            v-model="registerForm.email"
-            size="large"
-            type="email"
-            :placeholder="t('auth.email')"
-            clearable
-            @enter="needCode ? sendEmailCode() : form?.submit()"
-          >
-            <template #prefix-icon><MailIcon /></template>
-          </UiInput>
-        </TFormItem>
-
-        <TFormItem v-if="mode === 'register' && needCode" name="emailCode">
-          <div class="auth-card__code-row">
-            <UiInput
-              v-model="registerForm.emailCode"
-              size="large"
-              :maxlength="6"
-              :placeholder="t('auth.emailCode')"
-              @enter="form?.submit()"
-            />
-            <UiButton
-              variant="outline"
-              size="large"
-              :loading="sendingCode"
-              :disabled="codeCooldown > 0"
-              @click="sendEmailCode"
-            >
-              {{ codeCooldown > 0 ? t('auth.resendIn', { n: codeCooldown }) : t('auth.sendCode') }}
-            </UiButton>
-          </div>
-        </TFormItem>
-
-        <!-- 站点开启邀请码注册时才出现 -->
-        <TFormItem v-if="mode === 'register' && site.config.requireInviteCode" name="inviteCode">
-          <UiInput
-            v-model="registerForm.inviteCode"
-            size="large"
-            :placeholder="t('auth.inviteCode')"
-            clearable
-          >
-            <template #prefix-icon><LockOnIcon /></template>
-          </UiInput>
-        </TFormItem>
-
-        <TFormItem name="password" :help="mode === 'register' ? t('auth.passwordHelp') : undefined">
-          <UiInput
-            v-model="data.password"
-            size="large"
-            type="password"
-            :placeholder="t('auth.password')"
-            @enter="form?.submit()"
-          >
-            <template #prefix-icon><LockOnIcon /></template>
-          </UiInput>
-        </TFormItem>
-
-        <TFormItem v-if="mode === 'register'" name="confirm">
-          <UiInput
-            v-model="registerForm.confirm"
-            size="large"
-            type="password"
-            :placeholder="t('auth.confirmPassword')"
-            @enter="form?.submit()"
-          >
-            <template #prefix-icon><LockOnIcon /></template>
-          </UiInput>
-        </TFormItem>
-
-        <!-- 协议同意：紧邻密码与提交按钮之间 -->
-        <div class="auth-card__agree">
-          <UiCheckbox v-model="agreed" size="small">
-            <span class="auth-card__agree-text">
-              {{ t('legal.agreePrefix') }}
-              <!-- 新标签打开，避免打断登录流程 -->
-              <RouterLink :to="'/terms'" target="_blank" @click.stop>{{ t('legal.termsLink') }}</RouterLink>
-              {{ t('legal.and') }}
-              <RouterLink :to="'/privacy'" target="_blank" @click.stop>{{ t('legal.privacyLink') }}</RouterLink>
-            </span>
-          </UiCheckbox>
-        </div>
-
-        <UiButton
-          class="auth-card__submit"
-          theme="primary"
-          type="submit"
-          block
-          size="large"
-          :loading="loading"
-          :disabled="migrating"
-        >
-          {{ mode === 'login' ? t('auth.actionLogin') : t('auth.actionRegister') }}
-        </UiButton>
-      </TForm>
-
-      <!-- 统一登录：状态异步探测，先占住按钮位置（visibility 切换而非插入），避免推低下方链接 -->
-      <UiButton
-        v-if="mode === 'login'"
-        class="auth-card__sso"
-        :class="{ 'is-placeholder': !ssoEnabled }"
-        variant="outline"
-        size="large"
-        block
-        :disabled="migrating"
-        @click="startSso"
-      >
-        {{ t('auth.ssoLogin') }}
-      </UiButton>
-
-      <div class="auth-card__links">
-        <template v-if="mode === 'login'">
-          <RouterLink to="/forgot">{{ t('auth.forgot') }}</RouterLink>
-          <!-- 站点关闭注册时不再露出入口；配置没拉回来之前也不露出（默认值已改为 false） -->
-          <button
-            v-if="site.loaded && site.config.allowRegister"
-            type="button"
-            class="auth-card__link-btn"
-            @click="switchMode('register')"
-          >
-            {{ t('auth.signupLink') }}
-          </button>
-          <!-- 扫码登录入口：手机端已登录时扫桌面二维码即可登录 -->
-          <button type="button" class="auth-card__link-btn" @click="openQrLogin">
-            {{ t('auth.qrLogin') }}
-          </button>
         </template>
-        <template v-else>
-          <span class="text-placeholder">{{ t('auth.haveAccount') }}</span>
-          <button type="button" class="auth-card__link-btn" @click="switchMode('login')">
-            {{ t('auth.loginLink') }}
-          </button>
-        </template>
-      </div>
-      </template>
+    </div>
     </main>
   </div>
 </template>
 
 <style scoped>
-/* ===== 扫码登录 ===== */
-.auth-card__qr {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-}
-.auth-card__qr img {
-  border-radius: var(--mc-radius-md);
-  /* 二维码留白（margin:1）自带浅色底，深浅主题下都可扫 */
-}
-
-/* ===== 场景层：两段纯色（天 / 水）由一条地平线分开，无渐变、无装饰光斑 ===== */
+/* ===== 页面骨架：外框走统一容器的 narrow 档（--mc-container-narrow），
+   窄屏左右留白 = --mc-gutter；卡片本身不再写死宽度 ===== */
 .auth-page {
   position: relative;
   min-height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 32px 20px 56px;
+  /* 窄屏内容靠上（顶部有固定的偏好切换），≥480 再垂直居中 */
+  justify-content: flex-start;
+  padding: 64px var(--mc-gutter) 32px;
   overflow-y: auto;
+}
+
+@media (min-width: 480px) {
+  .auth-page {
+    justify-content: center;
+    padding-block: 32px 48px;
+  }
 }
 
 /* ===== 顶部偏好（语言 / 主题） ===== */
 .auth-top {
   position: fixed;
-  top: 14px;
-  right: 16px;
+  top: var(--mc-sp-4);
+  right: var(--mc-gutter);
   z-index: 2;
   display: flex;
   align-items: center;
-  padding: 4px 6px;
+  padding: var(--mc-sp-1) var(--mc-sp-2);
   border-radius: var(--mc-radius-sm);
   background: var(--td-bg-color-container);
   border: 1px solid var(--td-component-border);
@@ -740,14 +746,22 @@ onBeforeUnmount(stopQrPolling)
 .auth-card {
   position: relative;
   z-index: 1;
-  width: 420px;
-  max-width: 100%;
-  padding: 34px 32px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--mc-sp-4);
+  width: 100%;
+  padding: var(--mc-sp-6) var(--mc-sp-5) var(--mc-sp-4);
   background: var(--td-bg-color-container);
   border: 1px solid var(--td-component-border);
   border-radius: var(--mc-radius-lg);
-  /* 浮于场景之上，允许一层柔和阴影 */
-  box-shadow: 0 12px 40px rgba(6, 18, 34, 0.22);
+}
+
+@media (min-width: 480px) {
+  .auth-card {
+    padding: var(--mc-sp-8) var(--mc-sp-6) var(--mc-sp-6);
+    /* 浮于场景之上，允许一层柔和阴影 */
+    box-shadow: var(--mc-elev-2);
+  }
 }
 
 /* 品牌块居中，与居中的标题、表单形成同一条轴 */
@@ -755,8 +769,7 @@ onBeforeUnmount(stopQrPolling)
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  margin-bottom: 22px;
+  gap: var(--mc-sp-2);
 }
 
 /* 产品图标：ico 原图 32px，按 1:1 显示最清晰；1px 描边避免深色卡片上糊成一块 */
@@ -766,15 +779,16 @@ onBeforeUnmount(stopQrPolling)
   border-radius: var(--mc-radius-sm);
   flex-shrink: 0;
   display: block;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
+  /* 1px 描边走 hairline 令牌：非投影，不用 elev 档 */
+  box-shadow: 0 0 0 1px var(--mc-hairline);
 }
 
 :root[theme-mode='dark'] .auth-card__mark {
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14);
+  box-shadow: 0 0 0 1px var(--mc-hairline-strong);
 }
 
 .auth-card__product {
-  font-size: 16px;
+  font-size: var(--mc-fs-emphasis);
   font-weight: 600;
   letter-spacing: 0.01em;
   color: var(--td-text-color-secondary);
@@ -782,22 +796,24 @@ onBeforeUnmount(stopQrPolling)
 
 .auth-card__title {
   margin: 0;
-  font-size: 26px;
+  font-size: var(--mc-fs-heading);
+  font-weight: 600;
+  line-height: var(--mc-lh-tight);
   letter-spacing: -0.02em;
   text-align: center;
 }
 
-/* 迁移自动登录状态条：紧贴标题下方，不抢表单的视觉重心 */
+/* 迁移自动登录状态条 / 说明文字：紧贴标题下方，不抢表单的视觉重心 */
 .auth-card__notice {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--mc-sp-1);
   flex-wrap: wrap;
-  margin-top: 16px;
-  padding: 10px 12px;
+  margin-top: 0;
+  padding: var(--mc-sp-2) var(--mc-sp-3);
   border-radius: var(--mc-radius-sm);
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: var(--mc-fs-sm);
+  line-height: var(--mc-lh-normal);
   color: var(--td-text-color-secondary);
   background: var(--td-bg-color-secondarycontainer);
   border: 1px solid var(--mc-hairline);
@@ -809,13 +825,25 @@ onBeforeUnmount(stopQrPolling)
   background: var(--td-error-color-1, var(--td-bg-color-secondarycontainer));
 }
 
-/* 表单与标题之间留白；字段间距用 flex gap 统一控制
+/* ===== 扫码登录 ===== */
+.auth-card__qr {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mc-sp-2);
+}
+.auth-card__qr img {
+  display: block;
+  margin: 0 auto;
+  border-radius: var(--mc-radius-md);
+  /* 二维码留白（margin:1）自带浅色底，深浅主题下都可扫 */
+}
+
+/* 表单字段间距用 flex gap 统一控制
  * （TDesign 的 FormItem margin 在此布局下不生效，会导致字段贴死） */
 .auth-card__form {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  margin-top: 24px;
+  gap: var(--mc-sp-4);
   animation: auth-form-in var(--mc-dur-base) var(--mc-ease-out);
 }
 
@@ -844,7 +872,7 @@ onBeforeUnmount(stopQrPolling)
 .auth-card__code-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--mc-sp-2);
 }
 
 .auth-card__code-row > :first-child {
@@ -860,12 +888,12 @@ onBeforeUnmount(stopQrPolling)
 /* 协议同意行：位于密码之后、提交按钮之前 */
 .auth-card__agree {
   margin: 0;
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: var(--mc-fs-sm);
+  line-height: var(--mc-lh-normal);
 }
 
 .auth-card__agree-text {
-  margin-left: 4px;
+  margin-left: var(--mc-sp-1);
   color: var(--mc-text-faint);
 }
 
@@ -880,16 +908,20 @@ onBeforeUnmount(stopQrPolling)
 }
 
 .auth-card__links {
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid var(--mc-hairline);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  font-size: 14px;
+  gap: var(--mc-sp-2) var(--mc-sp-4);
+  margin-top: 0;
+  padding-top: var(--mc-sp-4);
+  border-top: 1px solid var(--mc-hairline);
+  font-size: var(--mc-fs-body);
   color: var(--td-text-color-secondary);
+}
+
+.auth-card__links a {
+  color: var(--mc-link);
 }
 
 /* 切换模式是动作而非跳转，用按钮保持语义与键盘可达 */
@@ -902,30 +934,17 @@ onBeforeUnmount(stopQrPolling)
   cursor: pointer;
 }
 
-.auth-card__link-btn:hover {
+.auth-card__link-btn:hover,
+.auth-card__links a:hover,
+.auth-card__agree-text a:hover {
   text-decoration: underline;
 }
 
-.auth-card__link-btn:focus-visible {
+.auth-card__link-btn:focus-visible,
+.auth-card__links a:focus-visible,
+.auth-card__agree-text a:focus-visible {
   outline: 2px solid var(--td-brand-color);
   outline-offset: 2px;
-  border-radius: 2px;
-}
-
-/* ===== 窄屏：卡片贴边，弱化阴影 ===== */
-@media (max-width: 520px) {
-  .auth-page {
-    padding: 64px 12px 32px;
-    justify-content: flex-start;
-  }
-
-  .auth-card {
-    padding: 24px 20px 16px;
-    box-shadow: none;
-  }
-
-  .auth-card__title {
-    font-size: var(--mc-fs-heading);
-  }
+  border-radius: var(--mc-radius-sm);
 }
 </style>

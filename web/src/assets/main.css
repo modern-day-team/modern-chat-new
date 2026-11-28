@@ -47,6 +47,18 @@ a {
   /* 背景图上的柔化层：普通页面跟随亮暗主题，认证场景固定压暗 */
   --mc-app-image-scrim: rgba(255, 255, 255, 0.72);
   --mc-auth-image-scrim: rgba(4, 10, 18, 0.45);
+  /* 品牌色 10% 透明档：头像徽标、品牌软底（与 Hub/sso 仓库同值） */
+  --mc-brand-soft: color-mix(in srgb, var(--td-brand-color) 10%, transparent);
+  /* 遮罩/灯箱黑底：亮暗共用（黑遮罩不随主题反转） */
+  --mc-overlay: rgba(0, 0, 0, 0.45);
+  /* 深底浮层（tooltip 等）：比遮罩更实，保证文字对比度，亮暗共用 */
+  --mc-overlay-strong: rgba(24, 24, 26, 0.94);
+  /* 灯箱底：全屏看图需要比普通遮罩更暗的底，亮暗共用 */
+  --mc-overlay-deep: rgba(0, 0, 0, 0.82);
+  /* 通话视频区底色：视频流未就绪时的固定深底，不随主题反转 */
+  --mc-call-bg: #101216;
+  /* 等宽字体：日志、ID、代码类文案统一从这里取值 */
+  --mc-font-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
 
   /* ===== 动效令牌：组件里的过渡与入场动画统一从这里取值 =====
      三档时长按「感知」分：状态反馈 / 位移 / 大尺度。

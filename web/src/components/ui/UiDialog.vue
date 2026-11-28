@@ -147,7 +147,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--mc-overlay);
 }
 
 .ui-dialog {
@@ -159,6 +159,7 @@ onBeforeUnmount(() => {
   background: var(--mc-material);
   backdrop-filter: var(--mc-blur);
   box-shadow: var(--mc-elev-3);
+  /* tabindex="-1" 仅作编程聚焦容器，不参与 Tab 序，去默认轮廓 */
   outline: none;
 }
 
@@ -214,12 +215,12 @@ onBeforeUnmount(() => {
 
 .ui-dlg-enter-active,
 .ui-dlg-leave-active {
-  transition: opacity 140ms var(--mc-ease-in-out);
+  transition: opacity var(--mc-dur-instant) var(--mc-ease-in-out);
 }
 
 .ui-dlg-enter-active .ui-dialog,
 .ui-dlg-leave-active .ui-dialog {
-  transition: transform 140ms var(--mc-ease-in-out);
+  transition: transform var(--mc-dur-instant) var(--mc-ease-in-out);
 }
 
 .ui-dlg-enter-from,

@@ -227,7 +227,7 @@ onBeforeUnmount(() => {
 .add-friend__tag {
   flex-shrink: 0;
   padding: 4px 8px;
-  border-radius: 999px;
+  border-radius: var(--mc-radius-pill);
   background: var(--td-bg-color-secondarycontainer);
   font-size: var(--mc-fs-sm);
   color: var(--td-text-color-secondary);

@@ -479,8 +479,8 @@ onUnmounted(() => {
   top: 0;
   bottom: 0;
   z-index: 30;
-  box-shadow: 0 16px 48px -16px rgba(0, 0, 0, 0.38);
-  animation: mc-drawer-in 160ms var(--mc-ease-out);
+  box-shadow: var(--mc-elev-3);
+  animation: mc-drawer-in var(--mc-dur-base) var(--mc-ease-out);
 }
 
 .mc-pane--left.is-drawer {
@@ -507,9 +507,9 @@ onUnmounted(() => {
   z-index: 60;
   transform: translateX(-50%);
   padding: 5px 14px;
-  border-radius: 999px;
-  background: var(--td-warning-color, #ed9e20);
-  color: #fff;
+  border-radius: var(--mc-radius-pill);
+  background: var(--td-warning-color);
+  color: var(--td-text-color-anti);
   font-size: 12px;
   line-height: 1.5;
   white-space: nowrap;
@@ -528,9 +528,9 @@ onUnmounted(() => {
   align-items: center;
   transform: translateX(-50%);
   padding: 5px 6px 5px 14px;
-  border-radius: 999px;
-  background: var(--td-error-color, #d54941);
-  color: #fff;
+  border-radius: var(--mc-radius-pill);
+  background: var(--td-error-color);
+  color: var(--td-text-color-anti);
   font-size: 12px;
   line-height: 1.5;
   box-shadow: var(--mc-elev-2);
@@ -541,7 +541,7 @@ onUnmounted(() => {
   position: absolute;
   inset: 0;
   z-index: 25;
-  background: rgba(0, 0, 0, 0.16);
+  background: var(--mc-overlay);
 }
 
 /* 详情抽屉的入口（浮在主区右上角） */
@@ -713,8 +713,8 @@ onUnmounted(() => {
   text-decoration-color: currentcolor;
 }
 
-/* 平板：收起详情面板与分组栏（抽屉形态被用户展开时仍然显示） */
-@media (max-width: 1024px) {
+/* 平板（<lg）：收起详情面板与分组栏（抽屉形态被用户展开时仍然显示） */
+@media (max-width: 1023px) {
   .mc-layout > .mc-pane--right:not(.is-drawer) {
     display: none;
   }
@@ -729,8 +729,8 @@ onUnmounted(() => {
   }
 }
 
-/* 手机：第二栏与消息区互斥显示；图标栏保留 */
-@media (max-width: 768px) {
+/* 手机（<md）：第二栏与消息区互斥显示；图标栏保留 */
+@media (max-width: 767px) {
   /* 详情抽屉按视口收窄：280px 在 360px 屏上会顶满，留一点主区可见（点空白可关闭） */
   .mc-layout > .mc-pane--right.is-drawer {
     width: min(88vw, 320px);

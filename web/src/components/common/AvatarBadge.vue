@@ -82,7 +82,7 @@ watch(
   object-fit: cover;
   display: block;
   /* 与默认头像自带的浅蓝圆底一致，避免四角透出 */
-  background: #e4efff;
+  background: var(--mc-brand-soft);
 }
 
 /* 图片加载失败时的兜底：首字母 + 用户取色 */
@@ -93,7 +93,7 @@ watch(
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
+  color: var(--td-text-color-anti);
 }
 
 .mc-avatar__dot {

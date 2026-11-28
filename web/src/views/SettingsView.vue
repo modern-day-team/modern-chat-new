@@ -277,7 +277,7 @@ function sessionLabel(s: UserSession): string {
   const client = s.clientType?.replace(/\s*[·•]\s*/g, ' · ').trim() ?? ''
   // 旧会话可能存成 "Chrome Windows"，补回分隔符但保持原始值可读
   const normalized = /^[A-Za-z]+\s+[A-Za-z]+$/.test(client) ? client.replace(' ', ' · ') : client
-  return normalized && normalized !== 'browser' ? `${part} · ${normalized}` : part
+  return normalized && normalized !== 'browser' ? `${part} | ${normalized}` : part
 }
 
 function sessionIcon(s: UserSession) {
@@ -696,9 +696,9 @@ const visibleSessions = computed(() =>
 )
 
 const build = ref<VersionInfo | null>(null)
-const webVersion = `${__WEB_VERSION__} · ${__WEB_COMMIT__}`
+const webVersion = `${__WEB_VERSION__} | ${__WEB_COMMIT__}`
 const versionText = computed(() => {
-  const server = build.value ? `${build.value.version} · ${build.value.commit}` : '—'
+  const server = build.value ? `${build.value.version} | ${build.value.commit}` : '—'
   return `${t('settings.webVersion')}: ${webVersion}\n${t('settings.serverVersion')}: ${server}`
 })
 
@@ -926,8 +926,8 @@ function goBack() {
                   {{ t('settings.currentDeviceTag') }}
                 </UiTag>
               </span>
-              <span class="session-item__meta" :title="`${s.appVersion || '-'} · ${s.ip || '-'} · ${s.lastSeenAt}`">
-                {{ s.appVersion || '-' }} · {{ sessionIp(s) }} · {{ sessionTime(s.lastSeenAt) }}
+              <span class="session-item__meta" :title="`${s.appVersion || '-'} | ${s.ip || '-'} | ${s.lastSeenAt}`">
+                {{ s.appVersion || '-' }} | {{ sessionIp(s) }} | {{ sessionTime(s.lastSeenAt) }}
               </span>
             </div>
             <UiButton
@@ -1209,7 +1209,7 @@ function goBack() {
         </SettingsRow>
         <SettingsRow :title="t('settings.serverVersion')">
           <span class="settings-row__value num">
-            {{ build ? `${build.version} · ${build.commit}` : '—' }}
+            {{ build ? `${build.version} | ${build.commit}` : '—' }}
           </span>
         </SettingsRow>
         <SettingsRow :title="t('settings.copyVersion')" link @click="copyVersion">
@@ -1281,14 +1281,15 @@ function goBack() {
   flex: 1;
 }
 
-/* ≥1200px：左侧锚点 + 右侧内容；窄屏自动回到单列 */
+/* 页面骨架走栅格：标准档容器（1160）、槽宽留白与列距（P5 栅格，见 docs/UI设计方案.md §3.6）。
+   ≥1024：左侧锚点 + 右侧内容；窄屏自动回到单列 */
 .settings-layout {
-  max-width: 1240px;
+  max-width: var(--mc-container);
   margin: 0 auto;
-  padding: 28px 20px 0;
+  padding: var(--mc-page-y) var(--mc-gutter) 0;
   display: grid;
   grid-template-columns: 184px minmax(0, 1fr);
-  gap: 24px;
+  gap: var(--mc-gutter-y) var(--mc-gutter);
   align-items: start;
 }
 
@@ -1376,7 +1377,7 @@ function goBack() {
 }
 
 :root[theme-mode='dark'] .settings-card {
-  border-color: rgba(255, 255, 255, 0.06);
+  border-color: var(--mc-hairline);
 }
 
 .settings-card--danger {
@@ -1529,7 +1530,7 @@ function goBack() {
   padding: 12px 14px;
   background: var(--td-bg-color-secondarycontainer);
   border-radius: var(--mc-radius-md);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--mc-font-mono);
   line-height: 1.8;
   white-space: pre-wrap;
 }
@@ -1635,9 +1636,9 @@ function goBack() {
   padding-top: 4px;
 }
 
-@media (max-width: 1199px) {
+@media (max-width: 1023px) {
   .settings-layout {
-    max-width: 880px;
+    max-width: var(--mc-container-compact);
     display: block;
   }
 
@@ -1646,9 +1647,9 @@ function goBack() {
   }
 }
 
-@media (max-width: 560px) {
+@media (max-width: 479px) {
   .settings-layout {
-    padding: 16px 12px 0;
+    padding: var(--mc-sp-4) var(--mc-sp-3) 0;
   }
 
   .settings-card {

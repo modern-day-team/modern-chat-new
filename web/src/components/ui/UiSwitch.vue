@@ -64,8 +64,8 @@ function toggle() {
 /* 轨道：颜色变化走对称曲线（只变颜色，不需要方向感），按压内缩走 ease-out */
 .ui-switch__track {
   transition:
-    background-color 180ms var(--mc-ease-in-out),
-    transform 100ms var(--mc-ease-out);
+    background-color var(--mc-dur-base) var(--mc-ease-in-out),
+    transform var(--mc-dur-instant) var(--mc-ease-out);
 }
 
 /* 按压：整颗轻微内缩 */

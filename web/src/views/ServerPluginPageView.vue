@@ -19,19 +19,26 @@ const { t, te } = useAppI18n()
 const pluginId = computed(() => String(route.params.pluginId ?? ''))
 const pageId = computed(() => String(route.params.pageId ?? ''))
 const loading = ref(true)
+/** 加载失败信息：除了 toast，内容区也要有内联错误块（可重试） */
+const loadError = ref('')
 const pages = ref<ServerPluginPage[]>([])
 const acting = ref(false)
 
-onMounted(async () => {
+async function load() {
+  loading.value = true
+  loadError.value = ''
   try {
     const list = await serverPluginApi.pages()
     pages.value = Array.isArray(list) ? list : []
   } catch (e) {
+    loadError.value = te(e)
     void MessagePlugin.error(te(e))
   } finally {
     loading.value = false
   }
-})
+}
+
+onMounted(load)
 
 const page = computed(() => {
   const found = pages.value.find((p) => String(p.pluginId) === pluginId.value && p.id === pageId.value) ?? null
@@ -80,6 +87,12 @@ function backToChat() {
     </header>
 
     <div v-if="loading" class="mc-server-page__state text-placeholder">{{ t('serverPluginPage.loading') }}</div>
+    <!-- 加载失败：内联错误块（复用空态样式风格）+ 重试 -->
+    <div v-else-if="loadError" class="mc-server-page__state mc-server-page__empty">
+      <div class="mc-server-page__empty-mark" aria-hidden="true">!</div>
+      <p class="mc-server-page__empty-title">{{ loadError }}</p>
+      <UiButton theme="primary" size="small" @click="load">{{ t('admin.retry') }}</UiButton>
+    </div>
     <div v-else-if="!page" class="mc-server-page__state mc-server-page__empty">
       <div class="mc-server-page__empty-mark" aria-hidden="true">◇</div>
       <p class="mc-server-page__empty-title">{{ t('serverPluginPage.notFoundTitle') }}</p>
@@ -174,7 +187,7 @@ function backToChat() {
   text-align: center;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 767px) {
   .mc-server-page__head {
     padding: 12px 16px;
   }

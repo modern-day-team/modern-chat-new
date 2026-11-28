@@ -20,14 +20,21 @@ const pageId = computed(() => String(route.params.pageId ?? ''))
 
 /** host.start 幂等：已在聊天页启动过时直接复用现有运行时，不重复挂载 iframe */
 const ready = ref(false)
-onMounted(async () => {
+/** 启动失败信息：内容区要有内联错误块（可重试），不能只靠空态兜底 */
+const loadError = ref('')
+async function start() {
+  ready.value = false
+  loadError.value = ''
   try {
     await host.start()
+  } catch {
+    // 启动失败也要落到明确错误态，不能永远卡在「加载中」
+    loadError.value = t('pluginPage.loadFailed')
   } finally {
-    // 加载失败也要落到明确空态，不能永远卡在「加载中」
     ready.value = true
   }
-})
+}
+onMounted(start)
 
 const page = computed(() => {
   if (!Number.isFinite(pluginId.value) || !pageId.value) return null
@@ -63,6 +70,12 @@ function backToChat() {
     </header>
 
     <div v-if="!ready" class="mc-plugin-page__state text-placeholder">{{ t('pluginPage.loading') }}</div>
+    <!-- 启动失败：内联错误块（复用空态样式风格）+ 重试 -->
+    <div v-else-if="loadError" class="mc-plugin-page__state mc-plugin-page__empty">
+      <div class="mc-plugin-page__empty-mark" aria-hidden="true">!</div>
+      <p class="mc-plugin-page__empty-title">{{ loadError }}</p>
+      <UiButton theme="primary" size="small" @click="start">{{ t('admin.retry') }}</UiButton>
+    </div>
     <div v-else-if="!page" class="mc-plugin-page__state mc-plugin-page__empty">
       <div class="mc-plugin-page__empty-mark" aria-hidden="true">◇</div>
       <p class="mc-plugin-page__empty-title">{{ t('pluginPage.notFoundTitle') }}</p>
@@ -157,7 +170,7 @@ function backToChat() {
   text-align: center;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 767px) {
   .mc-plugin-page__head {
     padding: 12px 16px;
   }

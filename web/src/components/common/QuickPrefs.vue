@@ -66,7 +66,7 @@ function onColorInput(e: Event) {
     </UiTooltip>
 
     <!-- 登录页背景：颜色 + 特效 -->
-    <UiPopup placement="bottom-right">
+    <UiPopup placement="bottom-right" :label="t('prefs.scene')">
       <UiTooltip :content="t('prefs.scene')">
         <UiButton variant="text" shape="square" :aria-label="t('prefs.scene')">
           <template #icon><PaletteIcon /></template>
@@ -149,7 +149,7 @@ function onColorInput(e: Event) {
   height: 26px;
   padding: 0;
   border-radius: var(--mc-radius-sm);
-  border: 1px solid rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--mc-hairline-strong);
   cursor: pointer;
   transition:
     box-shadow var(--mc-dur-fast) var(--mc-ease-out),
@@ -194,7 +194,7 @@ function onColorInput(e: Event) {
   padding: 4px 10px;
   font-size: 12px;
   font-family: inherit;
-  border-radius: 999px;
+  border-radius: var(--mc-radius-pill);
   border: 1px solid var(--td-component-border);
   background: var(--td-bg-color-container);
   color: var(--td-text-color-secondary);
@@ -213,7 +213,7 @@ function onColorInput(e: Event) {
 .scene-effect.is-active {
   background: var(--td-brand-color);
   border-color: var(--td-brand-color);
-  color: #fff;
+  color: var(--td-text-color-anti);
 }
 
 .scene-effect:focus-visible,

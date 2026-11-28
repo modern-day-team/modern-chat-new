@@ -61,7 +61,7 @@ const statusText = computed(() => {
     return mediaType.value === 'video' ? t('call.incomingVideo') : t('call.incomingAudio')
   }
   if (state.value === 'connecting') return t('call.connecting')
-  if (state.value === 'active') return `${t('call.connected')} · ${formatDuration(elapsed.value)}`
+  if (state.value === 'active') return `${t('call.connected')} | ${formatDuration(elapsed.value)}`
   return ''
 })
 
@@ -367,7 +367,7 @@ defineExpose({ handleFrame, startCall, onWsDisconnect })
           <CallIcon v-else size="32px" />
         </div>
         <p class="call-card__label">{{ statusText }}</p>
-        <h3 class="call-card__name">{{ peerName || `用户 ${peerId}` }}</h3>
+        <h3 class="call-card__name">{{ peerName || t('message.userFallback', { n: peerId }) }}</h3>
         <div class="call-card__actions">
           <UiButton theme="danger" shape="circle" size="large" :aria-label="t('call.reject')" @click="reject">
             <template #icon><CallOffIcon size="20px" /></template>
@@ -388,7 +388,7 @@ defineExpose({ handleFrame, startCall, onWsDisconnect })
       </div>
       <!-- 语音通话：无视频画面，展示对方头像 + 状态 -->
       <div v-else class="call-float__voice">
-        <AvatarBadge :name="peerName || `用户 ${peerId}`" :src="peerAvatar" :color="'var(--td-brand-color)'" :size="64" />
+        <AvatarBadge :name="peerName || t('message.userFallback', { n: peerId })" :src="peerAvatar" :color="'var(--td-brand-color)'" :size="64" />
         <span class="call-float__voice-label">{{ t('call.incomingAudio') }}</span>
       </div>
       <!-- 语音模式下播放远端声音 -->
@@ -420,7 +420,7 @@ defineExpose({ handleFrame, startCall, onWsDisconnect })
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.42);
+  background: var(--mc-overlay);
   backdrop-filter: var(--mc-blur);
   animation: mc-fade-in var(--mc-dur-base) var(--mc-ease-out);
 }
@@ -458,7 +458,7 @@ defineExpose({ handleFrame, startCall, onWsDisconnect })
   border: 1px solid var(--mc-hairline);
   animation: mc-fade-up var(--mc-dur-base) var(--mc-ease-out);
 }
-.call-float__videos { position: relative; width: 100%; aspect-ratio: 4 / 3; background: #101216; }
+.call-float__videos { position: relative; width: 100%; aspect-ratio: 4 / 3; background: var(--mc-call-bg); }
 .call-float__voice {
   display: flex;
   flex-direction: column;

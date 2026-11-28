@@ -134,7 +134,7 @@ const items = computed(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 999px;
+  border-radius: var(--mc-radius-pill);
   background: var(--td-bg-color-container);
   font-size: 11px;
   color: var(--mc-text-faint);

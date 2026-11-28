@@ -113,112 +113,121 @@ onMounted(() => {
       <QuickPrefs />
     </div>
 
-    <main class="auth-card">
-      <div class="auth-card__brand">
-        <img class="auth-card__mark" :src="faviconUrl" alt="" width="32" height="32" />
-        <span class="auth-card__product">{{ t('app.name') }}</span>
-      </div>
+    <main class="mc-container mc-container--narrow">
+    <div class="auth-card">
+        <div class="auth-card__brand">
+          <img class="auth-card__mark" :src="faviconUrl" alt="" width="32" height="32" />
+          <span class="auth-card__product">{{ t('app.name') }}</span>
+        </div>
 
-      <h1 class="auth-card__title">{{ title }}</h1>
-      <p class="auth-card__sub">{{ sub }}</p>
+        <h1 class="auth-card__title">{{ title }}</h1>
+        <p class="auth-card__sub">{{ sub }}</p>
 
-      <!-- 步骤指示：当前步实底，完成步打勾 -->
-      <ol class="auth-steps">
-        <li class="auth-steps__item" :class="{ 'is-active': step === 1, 'is-done': step === 2 }">
-          <span class="auth-steps__num">{{ step === 2 ? '✓' : '1' }}</span>
-          {{ t('forgot.step1Label') }}
-        </li>
-        <li class="auth-steps__item" :class="{ 'is-active': step === 2 }">
-          <span class="auth-steps__num">2</span>
-          {{ t('forgot.step2Label') }}
-        </li>
-      </ol>
+        <!-- 步骤指示：当前步实底，完成步打勾 -->
+        <ol class="auth-steps">
+          <li class="auth-steps__item" :class="{ 'is-active': step === 1, 'is-done': step === 2 }">
+            <span class="auth-steps__num">{{ step === 2 ? '✓' : '1' }}</span>
+            {{ t('forgot.step1Label') }}
+          </li>
+          <li class="auth-steps__item" :class="{ 'is-active': step === 2 }">
+            <span class="auth-steps__num">2</span>
+            {{ t('forgot.step2Label') }}
+          </li>
+        </ol>
 
-      <!-- 第一步：邮箱 -->
-      <TForm
-        v-if="step === 1"
-        ref="form"
-        class="auth-card__form"
-        :data="emailForm"
-        :rules="emailRules"
-        label-width="0"
-        @submit.prevent
-      >
-        <TFormItem name="email">
-          <UiInput v-model="emailForm.email" size="large" :placeholder="t('forgot.email')" clearable @enter="submitEmail">
-            <template #prefix-icon><MailIcon /></template>
-          </UiInput>
-        </TFormItem>
+        <!-- 第一步：邮箱 -->
+        <TForm
+          v-if="step === 1"
+          ref="form"
+          class="auth-card__form"
+          :data="emailForm"
+          :rules="emailRules"
+          label-width="0"
+          @submit.prevent
+        >
+          <TFormItem name="email">
+            <UiInput v-model="emailForm.email" size="large" :placeholder="t('forgot.email')" clearable @enter="submitEmail">
+              <template #prefix-icon><MailIcon /></template>
+            </UiInput>
+          </TFormItem>
 
-        <UiButton class="auth-card__submit" theme="primary" block size="large" :loading="loading" @click="submitEmail">
-          {{ t('forgot.sendLink') }}
-        </UiButton>
-      </TForm>
+          <UiButton class="auth-card__submit" theme="primary" block size="large" :loading="loading" @click="submitEmail">
+            {{ t('forgot.sendLink') }}
+          </UiButton>
+        </TForm>
 
-      <!-- 第二步：令牌 + 新密码 -->
-      <TForm
-        v-else
-        ref="form"
-        class="auth-card__form"
-        :data="resetForm"
-        :rules="resetRules"
-        label-width="0"
-        @submit.prevent
-      >
-        <TFormItem name="token">
-          <UiInput v-model="resetForm.token" size="large" :placeholder="t('forgot.token')" clearable>
-            <template #prefix-icon><KeyIcon /></template>
-          </UiInput>
-        </TFormItem>
+        <!-- 第二步：令牌 + 新密码 -->
+        <TForm
+          v-else
+          ref="form"
+          class="auth-card__form"
+          :data="resetForm"
+          :rules="resetRules"
+          label-width="0"
+          @submit.prevent
+        >
+          <TFormItem name="token">
+            <UiInput v-model="resetForm.token" size="large" :placeholder="t('forgot.token')" clearable>
+              <template #prefix-icon><KeyIcon /></template>
+            </UiInput>
+          </TFormItem>
 
-        <TFormItem name="newPassword">
-          <UiInput v-model="resetForm.newPassword" size="large" type="password" :placeholder="t('forgot.newPassword')">
-            <template #prefix-icon><LockOnIcon /></template>
-          </UiInput>
-        </TFormItem>
+          <TFormItem name="newPassword">
+            <UiInput v-model="resetForm.newPassword" size="large" type="password" :placeholder="t('forgot.newPassword')">
+              <template #prefix-icon><LockOnIcon /></template>
+            </UiInput>
+          </TFormItem>
 
-        <TFormItem name="confirm">
-          <UiInput v-model="resetForm.confirm" size="large" type="password" :placeholder="t('forgot.confirm')">
-            <template #prefix-icon><LockOnIcon /></template>
-          </UiInput>
-        </TFormItem>
+          <TFormItem name="confirm">
+            <UiInput v-model="resetForm.confirm" size="large" type="password" :placeholder="t('forgot.confirm')">
+              <template #prefix-icon><LockOnIcon /></template>
+            </UiInput>
+          </TFormItem>
 
-        <UiButton class="auth-card__submit" theme="primary" block size="large" :loading="loading" @click="submitReset">
-          {{ t('forgot.reset') }}
-        </UiButton>
-      </TForm>
+          <UiButton class="auth-card__submit" theme="primary" block size="large" :loading="loading" @click="submitReset">
+            {{ t('forgot.reset') }}
+          </UiButton>
+        </TForm>
 
-      <div class="auth-card__links">
-        <button v-if="step === 2" type="button" class="auth-card__link-btn" @click="backToStep1">
-          {{ t('forgot.backStep') }}
-        </button>
-        <RouterLink to="/login">{{ t('forgot.backToLogin') }}</RouterLink>
-      </div>
+        <div class="auth-card__links">
+          <button v-if="step === 2" type="button" class="auth-card__link-btn" @click="backToStep1">
+            {{ t('forgot.backStep') }}
+          </button>
+          <RouterLink to="/login">{{ t('forgot.backToLogin') }}</RouterLink>
+        </div>
+    </div>
     </main>
   </div>
 </template>
 
 <style scoped>
-/* 与登录页保持同一套尺寸与节奏 */
+/* 与登录页保持同一套骨架：外框 mc-container--narrow，窄屏左右留白 = --mc-gutter */
 .auth-page {
   position: relative;
   min-height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 32px 20px 56px;
+  justify-content: flex-start;
+  padding: 64px var(--mc-gutter) 32px;
   overflow-y: auto;
+}
+
+@media (min-width: 480px) {
+  .auth-page {
+    justify-content: center;
+    padding-block: 32px 48px;
+  }
 }
 
 .auth-top {
   position: fixed;
-  top: 14px;
-  right: 16px;
+  top: var(--mc-sp-4);
+  right: var(--mc-gutter);
   z-index: 2;
   display: flex;
   align-items: center;
-  padding: 4px 6px;
+  padding: var(--mc-sp-1) var(--mc-sp-2);
   border-radius: var(--mc-radius-sm);
   background: var(--td-bg-color-container);
   border: 1px solid var(--td-component-border);
@@ -228,13 +237,22 @@ onMounted(() => {
 .auth-card {
   position: relative;
   z-index: 1;
-  width: 420px;
-  max-width: 100%;
-  padding: 34px 32px 26px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--mc-sp-4);
+  width: 100%;
+  padding: var(--mc-sp-6) var(--mc-sp-5) var(--mc-sp-4);
   background: var(--td-bg-color-container);
   border: 1px solid var(--td-component-border);
   border-radius: var(--mc-radius-lg);
-  box-shadow: 0 12px 40px rgba(6, 18, 34, 0.22);
+}
+
+@media (min-width: 480px) {
+  .auth-card {
+    padding: var(--mc-sp-8) var(--mc-sp-6) var(--mc-sp-6);
+    box-shadow: var(--mc-elev-2);
+  }
 }
 
 /* 与登录页一致：品牌块与标题、表单同轴居中 */
@@ -242,8 +260,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  margin-bottom: 22px;
+  gap: var(--mc-sp-2);
 }
 
 /* 产品图标：ico 原图 32px，按 1:1 显示最清晰；1px 描边避免深色卡片上糊成一块 */
@@ -253,31 +270,35 @@ onMounted(() => {
   border-radius: var(--mc-radius-sm);
   flex-shrink: 0;
   display: block;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
+  /* 1px 描边走 hairline 令牌：非投影，不用 elev 档 */
+  box-shadow: 0 0 0 1px var(--mc-hairline);
 }
 
 :root[theme-mode='dark'] .auth-card__mark {
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14);
+  box-shadow: 0 0 0 1px var(--mc-hairline-strong);
 }
 
 .auth-card__product {
-  font-size: 16px;
+  font-size: var(--mc-fs-emphasis);
   font-weight: 600;
   letter-spacing: 0.01em;
   color: var(--td-text-color-secondary);
 }
 
 .auth-card__title {
-  margin: 0 0 10px;
-  font-size: 26px;
+  margin: 0;
+  font-size: var(--mc-fs-heading);
+  font-weight: 600;
+  line-height: var(--mc-lh-tight);
   letter-spacing: -0.02em;
   text-align: center;
 }
 
 .auth-card__sub {
-  margin: 0;
-  font-size: 14px;
-  line-height: 1.6;
+  /* 副标题紧贴标题：收掉卡片 gap 的一半 */
+  margin: calc(-1 * var(--mc-sp-2)) 0 0;
+  font-size: var(--mc-fs-sm);
+  line-height: var(--mc-lh-normal);
   color: var(--mc-text-faint);
   text-align: center;
 }
@@ -285,19 +306,21 @@ onMounted(() => {
 /* ===== 步骤条 ===== */
 .auth-steps {
   display: flex;
-  gap: 8px;
-  margin: 18px 0 0;
+  gap: var(--mc-sp-2);
+  width: 100%;
+  margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 13px;
+  font-size: var(--mc-fs-sm);
 }
 
 .auth-steps__item {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 10px;
+  justify-content: center;
+  gap: var(--mc-sp-1);
+  padding: var(--mc-sp-2);
   border-radius: var(--mc-radius-sm);
   background: var(--td-bg-color-secondarycontainer);
   color: var(--mc-text-faint);
@@ -310,14 +333,14 @@ onMounted(() => {
 }
 
 .auth-steps__num {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: var(--mc-fs-caption);
   font-variant-numeric: tabular-nums;
   background: var(--td-bg-color-container);
   color: var(--mc-text-faint);
@@ -325,12 +348,12 @@ onMounted(() => {
 
 .auth-steps__item.is-active {
   background: var(--td-brand-color);
-  color: #fff;
+  color: var(--td-text-color-anti);
 }
 
 .auth-steps__item.is-active .auth-steps__num {
   background: rgba(255, 255, 255, 0.22);
-  color: #fff;
+  color: var(--td-text-color-anti);
 }
 
 .auth-steps__item.is-done {
@@ -347,8 +370,8 @@ onMounted(() => {
 .auth-card__form {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  margin-top: 24px;
+  gap: var(--mc-sp-4);
+  width: 100%;
   animation: auth-form-in var(--mc-dur-base) var(--mc-ease-out);
 }
 
@@ -378,16 +401,20 @@ onMounted(() => {
 }
 
 .auth-card__links {
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid var(--mc-hairline);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  font-size: 14px;
+  gap: var(--mc-sp-2) var(--mc-sp-4);
+  margin-top: 0;
+  padding-top: var(--mc-sp-4);
+  border-top: 1px solid var(--mc-hairline);
+  font-size: var(--mc-fs-body);
   color: var(--td-text-color-secondary);
+}
+
+.auth-card__links a {
+  color: var(--mc-link);
 }
 
 .auth-card__link-btn {
@@ -399,34 +426,15 @@ onMounted(() => {
   cursor: pointer;
 }
 
-.auth-card__link-btn:hover {
+.auth-card__link-btn:hover,
+.auth-card__links a:hover {
   text-decoration: underline;
 }
 
-.auth-card__link-btn:focus-visible {
+.auth-card__link-btn:focus-visible,
+.auth-card__links a:focus-visible {
   outline: 2px solid var(--td-brand-color);
   outline-offset: 2px;
-  border-radius: 2px;
-}
-
-/* ===== 窄屏 ===== */
-@media (max-width: 520px) {
-  .auth-page {
-    padding: 64px 12px 32px;
-    justify-content: flex-start;
-  }
-
-  .auth-card {
-    padding: 24px 20px 16px;
-    box-shadow: none;
-  }
-
-  .auth-card__title {
-    font-size: var(--mc-fs-heading);
-  }
-
-  .auth-steps {
-    font-size: 12px;
-  }
+  border-radius: var(--mc-radius-sm);
 }
 </style>

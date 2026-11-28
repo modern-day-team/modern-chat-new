@@ -62,7 +62,7 @@ function goBack() {
     <article class="legal-doc">
       <h1 class="legal-doc__title">{{ doc.title }}</h1>
       <p class="legal-doc__meta text-placeholder num">
-        {{ t('legal.updated') }} {{ doc.updatedAt }} · {{ t('legal.effective') }} {{ legalMeta.effectiveDate }}
+        {{ t('legal.updated') }} {{ doc.updatedAt }} | {{ t('legal.effective') }} {{ legalMeta.effectiveDate }}
       </p>
 
       <p v-if="prefs.lang === 'en-US'" class="legal-doc__notice">{{ t('legal.zhPrevails') }}</p>
@@ -108,8 +108,9 @@ function goBack() {
 
 /* 长文放在一块浅色纸面上，背景图 / 纹理不会干扰阅读 */
 .legal-doc {
-  max-width: 800px;
-  margin: 24px auto;
+  /* 长文限在 compact 档（840） */
+  max-width: var(--mc-container-compact);
+  margin: var(--mc-sp-6) auto;
   padding: 36px 40px 28px;
   color: var(--td-text-color-primary);
   font-size: 14px;
@@ -177,10 +178,10 @@ function goBack() {
   color: var(--td-text-color-secondary);
 }
 
-@media (max-width: 720px) {
+@media (max-width: 767px) {
   .legal-doc {
-    padding: 24px 20px 20px;
-    margin: 16px 12px;
+    padding: var(--mc-sp-6) var(--mc-sp-5) var(--mc-sp-5);
+    margin: var(--mc-sp-4) var(--mc-gutter);
   }
 
   .legal-doc__title {

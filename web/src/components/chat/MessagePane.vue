@@ -21,6 +21,7 @@ import { messageRowKey, type MessageRowCtx } from './messageRowContext'
 import { buildMergeCard, MERGE_MAX_ITEMS } from './mergeCard'
 import { ensureRendered } from './pluginRenders'
 import { useLayoutStore } from '@/stores/layout'
+import { usePrefsStore } from '@/stores/prefs'
 import { useWsStore } from '@/stores/ws'
 import type { Conversation, Message } from '@/types/proto'
 
@@ -28,6 +29,7 @@ const auth = useAuthStore()
 const convStore = useConversationsStore()
 const favorites = useFavoritesStore()
 const layout = useLayoutStore()
+const prefs = usePrefsStore()
 const ws = useWsStore()
 const siteStore = useSiteStore()
 const host = usePluginHost()
@@ -427,8 +429,9 @@ const announceMeta = computed(() => {
   const who = c.announcementBy || ''
   if (!c.announcementAt) return who
   const d = new Date(c.announcementAt)
-  const day = `${d.getMonth() + 1}月${d.getDate()}日`
-  return `${who} · ${day} ${fmtTime(c.announcementAt)}`
+  // 日期随界面语言变化：中文「11月28日」、英文「11/28」，不再写死中文
+  const day = new Intl.DateTimeFormat(prefs.lang, { month: 'numeric', day: 'numeric' }).format(d)
+  return `${who} | ${day} ${fmtTime(c.announcementAt)}`
 })
 
 // ===== 多选 / 合并转发 =====
@@ -1101,6 +1104,7 @@ provide(messageRowKey, {
       <button
         type="button"
         class="mc-announce__head"
+        :aria-label="t('chat.announcement')"
         :aria-expanded="announceOpen"
         @click="announceOpen = !announceOpen"
       >
@@ -1147,6 +1151,9 @@ provide(messageRowKey, {
       :items="displayItems"
       :min-item-size="88"
       key-field="key"
+      role="log"
+      aria-live="polite"
+      aria-relevant="additions"
       @scroll="onScroll"
     >
       <template #before>
@@ -1502,7 +1509,7 @@ provide(messageRowKey, {
   align-items: center;
   justify-content: center;
   padding: 32px;
-  background: rgba(0, 0, 0, 0.82);
+  background: var(--mc-overlay-deep);
   cursor: zoom-out;
 }
 
@@ -1510,12 +1517,12 @@ provide(messageRowKey, {
   max-width: 100%;
   max-height: 100%;
   border-radius: var(--mc-radius-lg);
-  box-shadow: 0 24px 64px -24px rgba(0, 0, 0, 0.6);
+  box-shadow: var(--mc-elev-3);
 }
 
 .mc-lb-enter-active,
 .mc-lb-leave-active {
-  transition: opacity 160ms var(--mc-ease-out);
+  transition: opacity var(--mc-dur-base) var(--mc-ease-out);
 }
 
 .mc-lb-enter-from,
@@ -1620,7 +1627,7 @@ provide(messageRowKey, {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--mc-overlay);
 }
 
 .mc-forward__panel {
@@ -1733,6 +1740,7 @@ provide(messageRowKey, {
 }
 
 .mc-report__input:focus {
+  /* 聚焦态由边框色承担（输入类控件的等价 ring），故上面去默认轮廓 */
   border-color: var(--td-brand-color);
 }
 
@@ -1748,12 +1756,6 @@ provide(messageRowKey, {
 .mc-msg.is-recalled {
   justify-content: center;
   padding: 5px 0;
-}
-
-@media (hover: none) {
-  .mc-msg__reaction-add {
-    opacity: 1;
-  }
 }
 
 /* 新会话空态：图标 + 一句话，不铺满整块背景 */

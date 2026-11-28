@@ -86,8 +86,8 @@ function onError() {
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.55);
-  color: #fff;
+  background: var(--mc-overlay);
+  color: var(--td-text-color-anti);
   font-size: 18px;
   padding-left: 3px;
 }

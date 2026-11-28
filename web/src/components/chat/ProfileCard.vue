@@ -165,8 +165,8 @@ function goSettings() {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.5);
-  color: #fff;
+  background: var(--mc-overlay);
+  color: var(--td-text-color-anti);
   opacity: 0;
   transition: opacity var(--mc-dur-fast) var(--mc-ease-out);
 }

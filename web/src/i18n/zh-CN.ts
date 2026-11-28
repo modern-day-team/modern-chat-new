@@ -32,7 +32,7 @@ export default {
       pluginDesc: '自己写 JS 插件：图片、机器人、主题，装上即生效',
       secure: '安全边界',
       secureDesc: '沙箱运行 + 权限白名单，插件碰不到你的登录态',
-      foot: '前后端分离 · 自托管',
+      foot: '前后端分离 | 自托管',
     },
     loginTitle: '登录你的账号',
     registerTitle: '创建你的账号',
@@ -264,7 +264,7 @@ export default {
   message: {
     composerPlaceholder: '输入消息…',
     send: '发送',
-    sendHint: 'Enter 发送 · Shift+Enter 换行',
+    sendHint: 'Enter 发送 | Shift+Enter 换行',
     sendHintShort: 'Shift+Enter 换行',
     // 图片 / 语音
     sendImage: '发送图片',
@@ -526,6 +526,13 @@ export default {
     noDesc: '暂无描述',
     globalDisabled: '已被站长下架',
     uninstall: '卸载',
+    depLine: '依赖插件：',
+    depMissing: '{name} 未安装',
+    depVersion: '{name} 版本不符',
+    depDisabled: '{name} 未启用',
+    depSep: '；',
+    depBlocked: '依赖未就绪：{list}',
+    depInstalledLater: '插件已安装并保持停用。依赖未就绪：{list}',
     perms: {
       'message:read': '读取新消息',
       'message:send': '发送消息',
@@ -567,6 +574,7 @@ export default {
   pluginPage: {
     backToChat: '返回聊天',
     loading: '正在加载插件…',
+    loadFailed: '插件加载失败，请重试。',
     notFoundTitle: '页面不存在',
     notFoundHint: '该插件页面可能已被移除，或插件尚未启用。',
   },
@@ -657,7 +665,7 @@ export default {
     statOnline: '在线',
     statOnlineSub: '当前连接数',
     statConvs: '会话',
-    statConvSub: '单聊 {s} · 群聊 {g}',
+    statConvSub: '单聊 {s} | 群聊 {g}',
     statMsgs: '消息总数',
     statPlugins: '插件安装',
     statPluginSub: '启用 {n}',

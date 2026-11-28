@@ -112,7 +112,7 @@ onBeforeUnmount(() => {
   z-index: 2500;
   display: flex;
   justify-content: flex-end;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--mc-overlay);
 }
 
 .ui-drawer {
@@ -171,12 +171,12 @@ onBeforeUnmount(() => {
 
 .ui-dw-enter-active,
 .ui-dw-leave-active {
-  transition: opacity 160ms var(--mc-ease-in-out);
+  transition: opacity var(--mc-dur-base) var(--mc-ease-in-out);
 }
 
 .ui-dw-enter-active .ui-drawer,
 .ui-dw-leave-active .ui-drawer {
-  transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform var(--mc-dur-base) var(--mc-ease-out);
 }
 
 .ui-dw-enter-from,

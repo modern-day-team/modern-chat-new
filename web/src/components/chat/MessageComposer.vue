@@ -12,6 +12,12 @@ import { useSiteStore } from '@/stores/site'
 import type { ConversationMember } from '@/types/proto'
 
 const convStore = useConversationsStore()
+/**
+ * 本组件实例所属的会话 id：必须在这里捕获。
+ * 切会话是 store 先改 currentConvId、本组件随后因 :key 重建/卸载；
+ * 卸载时再读 currentConvId 已经是新会话，会把旧会话的未决草稿落定到新会话上。
+ */
+const myConvId = convStore.currentConvId
 const auth = useAuthStore()
 const siteStore = useSiteStore()
 const { t } = useAppI18n()
@@ -47,8 +53,8 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   clearInterval(muteTickTimer)
-  // 切会话（输入框随 :key 重建）前落定未决草稿：去抖窗口内的最后几个字不能丢
-  convStore.flushDraft(convStore.currentConvId)
+  // 切会话（输入框随 :key 重建）前落定本实例的未决草稿：去抖窗口内的最后几个字不能丢
+  convStore.flushDraft(myConvId)
 })
 
 /** 群全员禁言：普通成员不能发言，群主/管理员不受影响 */
@@ -77,8 +83,10 @@ watch(
   },
 )
 
-// 从草稿恢复：切换会话回来时，之前打了一半的内容还在
-const text = ref(convStore.currentConvId ? convStore.draftOf(convStore.currentConvId) : '')
+// 从草稿恢复：切换会话回来时，之前打了一半的内容还在。
+// 先落定未决草稿再读，避免刚切走 300ms 内的内容还停在 pendingDrafts 里看不到。
+if (myConvId) convStore.flushDraft(myConvId)
+const text = ref(myConvId ? convStore.draftOf(myConvId) : '')
 const lastTypingAt = ref(0)
 const inputRef = ref<HTMLTextAreaElement | null>(null)
 /** 中文输入法组合期间按 Enter 是选词，不应发送 */
@@ -96,15 +104,15 @@ function resize() {
 watch(text, (v) => {
   void nextTick(resize)
   // 编辑态不回写草稿，否则会把原本打了一半的内容覆盖成被编辑消息的正文
-  if (convStore.currentConvId && !editing.value) convStore.setDraft(convStore.currentConvId, v)
+  if (myConvId && !editing.value) convStore.setDraft(myConvId, v)
 })
 
 // 插件写草稿后同步输入区；编辑态跳过，避免覆盖正在编辑的消息正文
 watch(
   () => convStore.draftRevision,
   () => {
-    if (!convStore.currentConvId || editing.value) return
-    text.value = convStore.draftOf(convStore.currentConvId)
+    if (!myConvId || editing.value) return
+    text.value = convStore.draftOf(myConvId)
     void nextTick(resize)
   },
 )
@@ -359,7 +367,7 @@ let recordingCancelled = false
 const recLabel = computed(() => {
   const m = Math.floor(recSeconds.value / 60)
   const s = String(recSeconds.value % 60).padStart(2, '0')
-  return `${m}:${s} · ${t('message.stopRecord')}`
+  return `${m}:${s} | ${t('message.stopRecord')}`
 })
 
 function clearRecTimer() {
@@ -1081,6 +1089,7 @@ function onKeydown(e: KeyboardEvent) {
   min-height: 24px;
   max-height: 144px;
   border: none;
+  /* 聚焦态由外层 composer 的 focus-within 描边承担，故去默认轮廓 */
   outline: none;
   resize: none;
   overflow-y: auto;
