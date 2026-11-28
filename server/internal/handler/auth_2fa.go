@@ -257,10 +257,22 @@ func (h *AuthHandler) TwofaDisable(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "密码不正确")
 		return
 	}
-	me.TwofaEnabled = false
-	me.TwofaMethod = ""
-	me.TwofaSecret = ""
-	if err := h.users.Save(me); err != nil {
+	// bcrypt 要几十到上百毫秒，期间管理员可能已封禁/重置密码。重新读整行再
+	// 落库，避免把 context 里这份旧行的 banned_until / token_version /
+	// password_hash 覆盖回去（整行 Save 会写所有列）。
+	u, err := h.users.ByID(me.ID)
+	if err != nil {
+		internal(c, err)
+		return
+	}
+	if u == nil {
+		fail(c, http.StatusUnauthorized, "用户不存在")
+		return
+	}
+	u.TwofaEnabled = false
+	u.TwofaMethod = ""
+	u.TwofaSecret = ""
+	if err := h.users.Save(u); err != nil {
 		internal(c, err)
 		return
 	}

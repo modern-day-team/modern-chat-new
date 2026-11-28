@@ -532,7 +532,7 @@ func (r *Runtime) hostHTTP(ctx context.Context, wp *wasmPlugin, raw []byte) ([]b
 	if err := checkEndpoint(in.URL, wp.manifest.AllowedHosts); err != nil {
 		return nil, err
 	}
-	status, body, err := plugin.SafeRequest(in.Method, in.URL, in.Body, in.Headers, wasmMaxHostResp)
+	status, body, err := plugin.SafeRequestWithHosts(in.Method, in.URL, in.Body, in.Headers, wasmMaxHostResp, wp.manifest.AllowedHosts)
 	if err != nil {
 		return nil, err
 	}

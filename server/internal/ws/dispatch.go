@@ -83,9 +83,9 @@ type clientFrame struct {
 // 现在所有上行帧（含 ping）都先走连接级复核，失败即回 error 帧并断开。
 //
 // 修复缺陷（F2）：除 chat 外的上行帧此前零限流，认证用户单连接即可高频驱动
-// 查库与全员广播。typing/read/recall/edit/reaction/delivered 六类帧先过每连接
-// 令牌桶再分发；ping / 未知帧本身无库操作、无广播，其每帧的连接级复核已由
-// connStateAt 的短 TTL 缓存降频。
+// 查库与全员广播。typing/read/recall/edit/reaction/delivered 六类帧、通话信令、
+// ping 与未知类型帧都先过每连接令牌桶再分发（后两者虽无库操作，但会回写帧，
+// 同样可被脚本放大）。
 func (h *Hub) Dispatch(c *Client, data []byte) {
 	var f clientFrame
 	if err := json.Unmarshal(data, &f); err != nil {
@@ -97,6 +97,11 @@ func (h *Hub) Dispatch(c *Client, data []byte) {
 	}
 	switch f.Type {
 	case "ping":
+		// ping 回帧会触发一次网络写；不设限时客户端可高频刷 ping 放大写压力。
+		// 心跳 25s 一次，20/s 的桶不会误伤；超限直接丢弃，不回 error。
+		if !c.allowCtrlFrame() {
+			return
+		}
 		c.trySend(mustJSON(ginH{"type": "pong"}))
 	case "chat":
 		h.handleChat(c, &f)
@@ -119,6 +124,10 @@ func (h *Hub) Dispatch(c *Client, data []byte) {
 		}
 		h.dispatchCall(c, &f)
 	default:
+		// 未知类型每帧回一个 error，同样是可被脚本放大的写压力，纳入同一令牌桶。
+		if !c.allowCtrlFrame() {
+			return
+		}
 		h.sendError(c, "未知帧类型")
 	}
 }
@@ -657,52 +666,78 @@ func (h *Hub) handleReaction(c *Client, f *clientFrame) {
 	})
 }
 
-// checkConnState 连接级封禁 / token_version 复核（handleChat 落库前调用）。
+// checkConnState 连接级封禁 / token_version / 会话撤销复核（每个上行帧调用）。
 //
 // 修复缺陷：IsBanned / TokenVersion 此前只在 serve.go 握手段校验，连接建立后
 // admin 封禁或重置密码（tv+1）对既有连接无效 —— 忽略 kicked 帧即可继续发消息、
-// 写库、fan-out。本函数在每次 chat 落库前复核一次：
+// 写库、fan-out。本函数在每次上行帧分发前复核一次：
 //   - 用户已封禁 → error 帧 + 断开；
-//   - 库中 tv 与握手缓存 tv 不一致 → error 帧 + 断开（密码被重置 / 强制重登）。
+//   - 库中 tv 与握手缓存 tv 不一致 → error 帧 + 断开（密码被重置 / 强制重登）；
+//   - 会话表存在时，sid 已撤销（revoked_at 非空）→ error 帧 + 断开。
 //
-// deps.Users 允许为 nil（NewHub(nil) 单测 / 未注入），此时跳过复核以保持兼容。
+// 会话撤销此前只靠一次性的 KickSession 广播，广播丢失（多实例未配 Redis、
+// pub/sub 故障）或与握手竞态漏踢时连接会永久有效；这里补上连接级兜底。
+//
+// deps.Users / sessions 都可能为 nil（NewHub(nil) 单测 / 未注入），此时跳过对应检查。
 //
 // 修复缺陷（F2 伴随优化）：本函数对每个上行帧都会执行，typing 等高频帧每帧
 // 一次 Users.ByID 是可观的固定 DB 开销。成功复核结果在 connStateTTL 内复用，
-// 失败路径（封禁 / tv 变更 / 用户已删除）不缓存且都会断开连接，不影响时效。
+// 失败路径（封禁 / tv 变更 / 用户已删除 / 会话撤销）不缓存且都会断开连接，不影响时效。
 func (h *Hub) checkConnState(c *Client, convID uint) bool {
-	if h.deps == nil || h.deps.Users == nil {
+	if h.deps == nil && h.sessions.Load() == nil {
 		return true
 	}
 	if time.Since(time.Unix(0, c.connStateAt.Load())) < connStateTTL {
 		return true
 	}
-	// 连接状态复核只判封禁 / token 版本，用 Basic 查询避开 avatar 读放大
-	u, err := h.deps.Users.ByIDBasic(c.UserID)
+	reason, err := h.loadConnState(c)
 	if err != nil {
 		slog.Error("ws conn state lookup", "err", err.Error(), "uid", c.UserID)
 		h.sendError(c, "服务器开小差了，请稍后再试")
 		return false
 	}
-	if u == nil {
-		// 账号已被删除：旧连接必须立即失效
-		h.denyConn(c, convID, "登录已失效，请重新登录")
-		return false
-	}
-	if u.IsBanned() {
-		slog.Warn("ws chat rejected: banned", "uid", c.UserID, "conv", convID)
-		h.denyConn(c, convID, "账号已被封禁")
-		return false
-	}
-	if u.TokenVersion != c.tv {
-		slog.Warn("ws chat rejected: stale token version",
-			"uid", c.UserID, "conn_tv", c.tv, "db_tv", u.TokenVersion)
-		h.denyConn(c, convID, "登录已失效，请重新登录")
+	if reason != "" {
+		slog.Warn("ws frame rejected: conn state changed",
+			"uid", c.UserID, "conv", convID, "sid", c.sid, "reason", reason)
+		h.denyConn(c, convID, reason)
 		return false
 	}
 	// 全部通过才缓存复核时刻；失败分支都要断连，无需缓存。
 	c.connStateAt.Store(time.Now().UnixNano())
 	return true
+}
+
+// loadConnState 查询并判断连接是否仍有效：reason 为空表示通过；
+// err 非 nil 表示查询失败、本次无法判定（调用方不应据此断连）。
+// 只读不发送，因此可安全地在分片锁外 / 定时巡检里调用。
+func (h *Hub) loadConnState(c *Client) (reason string, err error) {
+	if h.deps != nil && h.deps.Users != nil {
+		// 连接状态复核只判封禁 / token 版本，用 Basic 查询避开 avatar 读放大
+		u, uErr := h.deps.Users.ByIDBasic(c.UserID)
+		if uErr != nil {
+			return "", uErr
+		}
+		if u == nil {
+			// 账号已被删除：旧连接必须立即失效
+			return "登录已失效，请重新登录", nil
+		}
+		if u.IsBanned() {
+			return "账号已被封禁", nil
+		}
+		if u.TokenVersion != c.tv {
+			return "登录已失效，请重新登录", nil
+		}
+	}
+	if sessions := h.sessions.Load(); sessions != nil && c.sid != "" {
+		sess, sErr := sessions.ActiveBySID(c.sid)
+		if sErr != nil {
+			return "", sErr
+		}
+		if sess == nil {
+			return "该设备已退出登录，请重新登录", nil
+		}
+	}
+	return "", nil
 }
 
 // denyConn 回 error 帧并强制断开该连接（连接级复核失败时使用）。

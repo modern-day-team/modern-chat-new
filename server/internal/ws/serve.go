@@ -1,7 +1,10 @@
 package ws
 
 import (
+	"errors"
+	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 
@@ -24,7 +27,14 @@ const (
 	// 管理员把长度调到几千后，合法长消息会触发 gorilla 的 read limit 直接断连，
 	// 用户连 error 帧都收不到。64 KB 留足余量，不做无上限放大。
 	maxMsgSize = 64 * 1024
+	// maxSilentLifetime 连接始终没有任何上行帧的最长存活时间。正常客户端
+	// 25s 一次心跳必然刷新它；只有「只收不发」的连接会到期被断开并强制重新
+	// 握手鉴权，避免撤销/封禁复核被完全绕过。
+	maxSilentLifetime = 10 * time.Minute
 )
+
+// errMsgTooBig 解压后超过 maxMsgSize 的上行帧（readFrame 返回后直接断开连接）。
+var errMsgTooBig = errors.New("ws: 上行帧超过大小上限")
 
 // firstNonEmpty 返回第一个非空串（query 优先于请求头）。
 func firstNonEmpty(values ...string) string {
@@ -36,6 +46,24 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+// quotaIP 返回用于连接配额的握手来源地址；回环地址视为同机反向代理返回空串。
+// Serve 只拿得到 http.Request，拿不到 gin 的 ClientIP（TRUSTED_PROXIES 解析在
+// router 层），若把反代的回环地址当来源，所有经 nginx 的用户会被合并成一个
+// IP 而互相挤占配额；跨机反代场景应在反代侧做按 IP 限流。
+func quotaIP(remoteAddr string) string {
+	host := remoteAddr
+	if h, _, err := net.SplitHostPort(remoteAddr); err == nil {
+		host = h
+	}
+	if host == "" {
+		return ""
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return ""
+	}
+	return host
+}
+
 // upgraderFor 构造带 Origin 白名单的升级器：
 // 浏览器 WS 升级必带 Origin，非白名单来源拒绝（防跨站 WebSocket 劫持）；
 // 无 Origin（curl / 服务端客户端）放行，仍受 token 鉴权保护。
@@ -45,6 +73,8 @@ func upgraderFor(allowed []string) websocket.Upgrader {
 		WriteBufferSize: 1024,
 		// permessage-deflate（设计文档 §9.2）：浏览器默认请求该扩展，
 		// 开启后文本帧自动压缩；连接数压顶时可置 false 换取 CPU。
+		// 注意：开启后上行帧可能是压缩的，gorilla 的 SetReadLimit 只统计线路字节，
+		// 解压后的实际大小由 readFrame 另行限制（见 serve.go 底部）。
 		EnableCompression: true,
 		CheckOrigin: func(r *http.Request) bool {
 			origin := r.Header.Get("Origin")
@@ -75,6 +105,18 @@ func Serve(
 	var sessionStore *store.SessionStore
 	if len(sessions) > 0 {
 		sessionStore = sessions[0]
+	}
+	// 会话表回填给 Hub：连接级复核（dispatch.go 的 loadConnState）与定时巡检
+	// 需要按 sid 查撤销状态。Hub 在 main 中先于 router 构造，注入点只能在这里。
+	hub.setSessions(sessionStore)
+	// 握手频率限制放在鉴权之前：每次握手都会查库，宁可让伪造 token 的洪水
+	// 在解析/查库之前就被挡掉。
+	// 连接并发配额需要 uid，放在鉴权之后（见下）。
+	ip := quotaIP(r.RemoteAddr)
+	if !hub.allowHandshake(ip) {
+		slog.Warn("ws handshake rate limited", "remote", r.RemoteAddr)
+		http.Error(w, `{"error":"操作过于频繁，请稍后再试"}`, http.StatusTooManyRequests)
+		return
 	}
 	// token 优先取 query（兼容现有前端），没有时回退到登录下发的同源 cookie。
 	// 走 cookie 可避免 token 出现在反向代理 / 访问日志的 URL 里；
@@ -144,6 +186,19 @@ func Serve(
 		return
 	}
 
+	// 连接准入：按账号与来源 IP 限制并发连接数。
+	// 此前同一账号可无限建连，认证用户即可用 goroutine / 发送积压把内存打满。
+	if n := hub.ConnCount(u.ID); n >= maxConnsPerUser {
+		slog.Warn("ws conn limit per user", "uid", u.ID, "conns", n)
+		http.Error(w, `{"error":"连接数过多，请稍后再试"}`, http.StatusServiceUnavailable)
+		return
+	}
+	if !hub.acquireIPSlot(ip) {
+		slog.Warn("ws conn limit per ip", "remote", r.RemoteAddr)
+		http.Error(w, `{"error":"连接数过多，请稍后再试"}`, http.StatusServiceUnavailable)
+		return
+	}
+
 	// cookie 回授：已登录的旧客户端（localStorage 有 token、浏览器还没有 mc_auth）
 	// 在重连时即可拿到 cookie，此后 <img>/<video> 加载 /uploads 不再 401。
 	middleware.SetAuthCookie(w, r, token)
@@ -151,12 +206,14 @@ func Serve(
 	up := upgraderFor(allowedOrigins)
 	conn, err := up.Upgrade(w, r, nil)
 	if err != nil {
+		hub.releaseIPSlot(ip) // 升级失败：名额必须归还，否则配额会被慢慢耗尽
 		return
 	}
 	client := &Client{
 		UserID: u.ID,
 		tv:     cl.TV, // 缓存握手时的 token_version，供 handleChat 连接级复核
 		sid:    sid,   // 会话标识，供 KickSession 单设备踢线
+		ip:     ip,
 		Conn:   conn,
 		send:   make(chan []byte, sendBuffer),
 		kickCh: make(chan struct{}),
@@ -164,7 +221,17 @@ func Serve(
 		// 非聊天上行帧限流桶（F2）：20 帧/秒、突发 40，见 dispatch.go 阈值说明
 		ctrl: rate.NewLimiter(ctrlFrameRate, ctrlFrameBurst),
 	}
+	client.lastInbound.Store(time.Now().UnixNano())
 	hub.Register(client)
+	// 握手校验（上方）与本次注册之间没有互斥：KickSession / KickUser 可能恰好
+	// 在两段之间完成、扫不到这条尚未注册的连接。注册后立即跑一次连接级复核，
+	// 把竞态窗口收敛为「要么注册前已复核通过、要么复核时已撤销」——后者直接
+	// 拒绝该连接，不再启动读写循环与 presence 广播。
+	if !hub.checkConnState(client, 0) {
+		hub.Unregister(client)
+		_ = conn.Close()
+		return
+	}
 	slog.Info("ws connected", "uid", u.ID)
 
 	// 上线 presence（好友 + 同会话成员）
@@ -224,6 +291,15 @@ func writePump(c *Client) {
 				websocket.FormatCloseMessage(websocket.CloseNormalClosure, "kicked"))
 			return
 		case <-ticker.C:
+			// 只收不发的连接不会经过 Dispatch，连接级复核也就永远不会触发；
+			// 静默超过 maxSilentLifetime 主动断开，迫使客户端重连重新鉴权。
+			if time.Since(time.Unix(0, c.lastInbound.Load())) > maxSilentLifetime {
+				slog.Info("ws silent conn closed for reauth", "uid", c.UserID)
+				_ = c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
+				_ = c.Conn.WriteMessage(websocket.CloseMessage,
+					websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "reauth required"))
+				return
+			}
 			_ = c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
@@ -248,17 +324,45 @@ func readPump(c *Client) {
 		_ = c.Conn.Close()
 		slog.Info("ws disconnected", "uid", c.UserID)
 	}()
+	// 线路字节上限：只挡未压缩的超长帧；压缩帧的解压后体积由 readFrame 限制。
 	c.Conn.SetReadLimit(maxMsgSize)
 	_ = c.Conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.Conn.SetPongHandler(func(string) error {
 		return c.Conn.SetReadDeadline(time.Now().Add(pongWait))
 	})
 	for {
-		_, data, err := c.Conn.ReadMessage()
+		data, err := readFrame(c.Conn)
 		if err != nil {
+			if errors.Is(err, errMsgTooBig) {
+				slog.Warn("ws frame rejected: decompressed payload > limit", "uid", c.UserID)
+			}
 			return
 		}
+		c.lastInbound.Store(time.Now().UnixNano())
 		_ = c.Conn.SetReadDeadline(time.Now().Add(pongWait))
 		c.hub.Dispatch(c, data)
 	}
+}
+
+// readFrame 读取一条完整上行消息，并按「解压后」的字节数执行上限。
+//
+// 修复缺陷：gorilla 的 SetReadLimit 只累计压缩后的线路字节（conn.go 的
+// advanceFrame 把 readRemaining 累加进 readLength），permessage-deflate 下
+// 一条 64KB 线路帧可解压出数十 MB，而 ReadMessage 直接 io.ReadAll(解压流)，
+// 限流触发前内存已经分配完毕。这里改用 NextReader 拿到（可能的）解压流后
+// 只消费 maxMsgSize+1 字节，超出即判超限并断开，内存上界固定为 maxMsgSize；
+// SetReadLimit 仍保留，作为压缩前线路字节的廉价第一道闸。
+func readFrame(conn *websocket.Conn) ([]byte, error) {
+	_, r, err := conn.NextReader()
+	if err != nil {
+		return nil, err
+	}
+	data, err := io.ReadAll(&io.LimitedReader{R: r, N: maxMsgSize + 1})
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxMsgSize {
+		return nil, errMsgTooBig
+	}
+	return data, nil
 }

@@ -7,6 +7,11 @@
  */
 import type { PageDesc, PanelDesc, UIDescNode } from '@/types/proto'
 
+/** 面板 / 渲染结果的预算：侧栏与消息卡片也在宿主主线程渲染，和整站页面同属安全边界 */
+const PANEL_MAX_NODES = 200
+const DESC_MAX_BYTES = 64 * 1024
+const PANEL_TITLE_MAX = 100
+
 const ALLOWED_COMPONENTS = new Set([
   'text',
   'image',
@@ -64,18 +69,25 @@ export function validateUIDesc(node: unknown, depth = 0): UIDescNode | null {
  * 校验面板描述：{ title?, body: UIDescNode[] }。
  * 面板对象本身没有 component 字段，不能直接交给 validateUIDesc（会被判 null）；
  * 这里校验外层形状后逐节点校验，任一节点非法则整体拒绝（保持严格的安全边界）。
+ *
+ * 侧栏面板 / 自定义消息同样在宿主主线程同步渲染，因此和整站页面一样必须有
+ * 节点数与序列化体积上限：只限制 validatePage 的话，插件可以用海量扁平节点
+ * 通过 addSidePanel 把宿主卡死。
  */
 export function validatePanel(desc: unknown): PanelDesc | null {
   if (!desc || typeof desc !== 'object') return null
   const d = desc as Record<string, unknown>
-  if (d.title !== undefined && typeof d.title !== 'string') return null
+  if (d.title !== undefined && (typeof d.title !== 'string' || d.title.length > PANEL_TITLE_MAX)) return null
   if (!Array.isArray(d.body)) return null
+  // 先按原始输入估算节点数，避免对海量节点逐个跑白名单校验才拒绝
+  if (countRawNodes(d.body, PANEL_MAX_NODES) > PANEL_MAX_NODES) return null
   const body: UIDescNode[] = []
   for (const node of d.body) {
     const v = validateUIDesc(node)
     if (!v) return null
     body.push(v)
   }
+  if (!serializedWithinLimit(body)) return null
   return { kind: 'panel', title: typeof d.title === 'string' ? d.title : '', body }
 }
 
@@ -83,8 +95,11 @@ export function validatePanel(desc: unknown): PanelDesc | null {
 export function validateRenderDesc(desc: unknown): PanelDesc | null {
   if (!desc || typeof desc !== 'object') return null
   if (Array.isArray((desc as Record<string, unknown>).body)) return validatePanel(desc)
+  if (countRawNodes([desc], PANEL_MAX_NODES) > PANEL_MAX_NODES) return null
   const node = validateUIDesc(desc)
-  return node ? { kind: 'panel', title: '', body: [node] } : null
+  if (!node) return null
+  const body = [node]
+  return serializedWithinLimit(body) ? { kind: 'panel', title: '', body } : null
 }
 
 /** 递归统计描述树节点数（含自身），超过上限即提前返回，避免深树反复遍历 */
@@ -95,6 +110,32 @@ function countNodes(nodes: readonly UIDescNode[], limit: number): number {
     if (total > limit) return total
   }
   return total
+}
+
+/** 同 countNodes，但遍历的是未校验的原始输入；children 也按数组处理，不做类型判断。
+ *  深度沿用 validateUIDesc 的 8 层上限，避免超深树在计数阶段就栈溢出。 */
+function countRawNodes(nodes: readonly unknown[], limit: number, depth = 0): number {
+  if (depth > 8) return limit + 1
+  let total = 0
+  for (const node of nodes) {
+    total += 1
+    if (total > limit) return total
+    if (node && typeof node === 'object') {
+      const children = (node as Record<string, unknown>).children
+      if (Array.isArray(children)) {
+        total += countRawNodes(children, limit, depth + 1)
+        if (total > limit) return total
+      }
+    }
+  }
+  return total
+}
+
+/** 序列化体积上限：UTF-8 字节数可能大于 UTF-16 字符数，先按字符数快速拦截 */
+function serializedWithinLimit(body: readonly UIDescNode[]): boolean {
+  const json = JSON.stringify(body)
+  if (json.length > DESC_MAX_BYTES) return false
+  return new TextEncoder().encode(json).length <= DESC_MAX_BYTES
 }
 
 /**

@@ -48,8 +48,10 @@ export const useWsStore = defineStore('ws', () => {
   const channel = new WsChannel({
     url: () => {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws'
+      // 不再把 JWT 放进查询串：token 会留在代理/访问日志与浏览器历史里。
+      // 服务端（server/internal/ws/serve.go）支持 HttpOnly 的 mc_auth Cookie，
+      // 同源 WS 握手会自动携带；登录接口与带 Authorization 的请求都会补发该 Cookie。
       const q = new URLSearchParams({
-        token: auth.token,
         platform: CLIENT_IDENTITY.platform,
         clientType: CLIENT_IDENTITY.clientType,
         appVersion: CLIENT_IDENTITY.appVersion,

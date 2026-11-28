@@ -1,0 +1,299 @@
+/* ===== Modernchat 栅格系统 v1 =====
+ * 项目组四个 Web 前端（主站 web / 官网 website / Hub / sso）共用同一份文件，
+ * 规范见主仓库 docs/UI设计方案.md §3.6。
+ * 唯一真源：Modernchat-new/web/src/assets/grid.css；其余三处是逐字节副本，改完同步。
+ *
+ * 三条规则：
+ * 1. 页面级布局（几栏、多宽、留多少边）只用这里的类与令牌，不再手写 max-width / 断点；
+ * 2. 间距一律取 4pt 刻度 --mc-sp-*（1 / 2 = 半格，只给图标与文字的微调）；
+ * 3. 组件内部的专属布局（气泡、虚拟列表、可拖拽面板）不受列栅格约束，但间距仍走刻度。
+ *
+ * 令牌带兜底值是为了同一份文件能在四个前端直接用：主站 / Hub / sso 走 TDesign 的 --td-* 与 --mc-*，
+ * 官网没有 TDesign，兜底到它自己的 --ink-* / --line-* / --elev-* / --fs-* / --r-*。 */
+
+:root {
+  /* ---------- 断点（仅作文档；媒体查询不能用变量，下面的 @media 与此保持一致） ----------
+     xs <480 · sm ≥480 · md ≥768 · lg ≥1024 · xl ≥1280 · 2xl ≥1536 */
+  --mc-bp-sm: 480px;
+  --mc-bp-md: 768px;
+  --mc-bp-lg: 1024px;
+  --mc-bp-xl: 1280px;
+  --mc-bp-2xl: 1536px;
+
+  /* ---------- 间距刻度（4pt 基准） ---------- */
+  --mc-sp-1: 4px;
+  --mc-sp-2: 8px;
+  --mc-sp-3: 12px;
+  --mc-sp-4: 16px;
+  --mc-sp-5: 20px;
+  --mc-sp-6: 24px;
+  --mc-sp-8: 32px;
+  --mc-sp-10: 40px;
+  --mc-sp-12: 48px;
+  --mc-sp-16: 64px;
+
+  /* ---------- 容器：五种内容宽度，全项目组只用这五档 ---------- */
+  --mc-container-narrow: 400px; /* 登录 / 找回密码 / 单列表单 */
+  --mc-container-form: 640px; /* 两列表单、长表单页 */
+  --mc-container-compact: 840px; /* 文章、法律页、设置正文 */
+  --mc-container: 1160px; /* 标准页面（官网、后台、门户） */
+  --mc-container-wide: 1440px; /* 数据密集型后台、仪表盘 */
+
+  /* ---------- 列栅格：列数与槽宽随断点变化 ---------- */
+  --mc-cols: 4; /* <768 四列；≥768 八列；≥1024 十二列 */
+  --mc-gutter: 16px; /* 列间距，同时就是页面左右留白 */
+  --mc-gutter-y: 16px; /* 行间距 */
+
+  /* ---------- 纵向节奏：区块之间的距离 ---------- */
+  --mc-page-y: 24px; /* 页面上下留白 */
+  --mc-section-y: 24px; /* 区块间距 */
+
+  /* ---------- 行高：文字块高度对齐 4pt ---------- */
+  --mc-lh-tight: 1.2; /* 标题、数字 */
+  --mc-lh-snug: 1.4; /* 按钮、标签、导航 */
+  --mc-lh-normal: 1.6; /* 正文 */
+
+  /* ---------- 控件高度：三档，都是 4 的倍数 ---------- */
+  --mc-ctl-sm: 28px;
+  --mc-ctl: 32px;
+  --mc-ctl-lg: 40px;
+}
+
+@media (min-width: 768px) {
+  :root {
+    --mc-cols: 8;
+    --mc-gutter: 24px;
+    --mc-gutter-y: 20px;
+    --mc-page-y: 32px;
+    --mc-section-y: 32px;
+  }
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --mc-cols: 12;
+    --mc-gutter-y: 24px;
+  }
+}
+
+/* ---------- 容器：居中、限宽、左右留白 = 槽宽 ---------- */
+.mc-container {
+  width: 100%;
+  max-width: var(--mc-container);
+  margin-inline: auto;
+  padding-inline: var(--mc-gutter);
+}
+
+.mc-container--narrow {
+  max-width: var(--mc-container-narrow);
+}
+
+.mc-container--form {
+  max-width: var(--mc-container-form);
+}
+
+.mc-container--compact {
+  max-width: var(--mc-container-compact);
+}
+
+.mc-container--wide {
+  max-width: var(--mc-container-wide);
+}
+
+/* ---------- 页面骨架：容器 + 上下留白 + 子区块按节奏堆叠 ---------- */
+.mc-page {
+  width: 100%;
+  max-width: var(--mc-container);
+  margin-inline: auto;
+  padding: var(--mc-page-y) var(--mc-gutter);
+  display: flex;
+  flex-direction: column;
+  gap: var(--mc-section-y);
+}
+
+.mc-page--compact {
+  max-width: var(--mc-container-compact);
+}
+
+.mc-page--wide {
+  max-width: var(--mc-container-wide);
+}
+
+/* ---------- 列栅格 ----------
+   移动优先：没写列数的子元素默认占满一行（自动堆叠）。
+   .mc-col-N 在桌面占 N 列；平板最多占 8 列；
+   .mc-col-3 / .mc-col-4（统计卡这类小卡）在 ≥480 时两列并排。 */
+.mc-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--mc-cols), minmax(0, 1fr));
+  gap: var(--mc-gutter-y) var(--mc-gutter);
+}
+
+.mc-grid > * {
+  grid-column: span var(--mc-cols);
+  min-width: 0;
+}
+
+@media (min-width: 480px) {
+  .mc-grid > :is(.mc-col-3, .mc-col-4) {
+    grid-column: span 2;
+  }
+}
+
+@media (min-width: 768px) {
+  .mc-grid > .mc-col-1 { grid-column: span 1; }
+  .mc-grid > .mc-col-2 { grid-column: span 2; }
+  .mc-grid > .mc-col-3 { grid-column: span 3; }
+  .mc-grid > .mc-col-4 { grid-column: span 4; }
+  .mc-grid > .mc-col-5 { grid-column: span 5; }
+  .mc-grid > .mc-col-6 { grid-column: span 6; }
+  .mc-grid > .mc-col-7 { grid-column: span 7; }
+  .mc-grid > :is(.mc-col-8, .mc-col-9, .mc-col-10, .mc-col-11, .mc-col-12) { grid-column: span 8; }
+}
+
+@media (min-width: 1024px) {
+  .mc-grid > .mc-col-9 { grid-column: span 9; }
+  .mc-grid > .mc-col-10 { grid-column: span 10; }
+  .mc-grid > .mc-col-11 { grid-column: span 11; }
+  .mc-grid > .mc-col-12 { grid-column: span 12; }
+}
+
+/* ---------- 行 / 列排布：不涉及分栏时用这两个代替手写 flex ---------- */
+.mc-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mc-sp-2);
+}
+
+.mc-row--between {
+  justify-content: space-between;
+}
+
+.mc-row--top {
+  align-items: flex-start;
+}
+
+.mc-row--wide {
+  gap: var(--mc-sp-4);
+}
+
+.mc-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mc-sp-2);
+}
+
+.mc-stack--wide {
+  gap: var(--mc-sp-4);
+}
+
+/* ---------- 页头：标题 + 说明 + 操作区，四端后台/设置页共用 ---------- */
+.mc-page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--mc-sp-2) var(--mc-sp-4);
+  padding-bottom: var(--mc-sp-4);
+  border-bottom: 1px solid var(--mc-hairline, var(--line-soft));
+}
+
+.mc-page-head__title {
+  margin: 0;
+  font-size: var(--mc-fs-heading, var(--fs-700));
+  font-weight: 600;
+  line-height: var(--mc-lh-tight);
+  letter-spacing: -0.02em;
+}
+
+.mc-page-head__desc {
+  margin: var(--mc-sp-1) 0 0;
+  font-size: var(--mc-fs-sm, var(--fs-200));
+  line-height: var(--mc-lh-normal);
+  color: var(--td-text-color-secondary, var(--ink-2));
+}
+
+.mc-page-head__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mc-sp-2);
+}
+
+/* ---------- 面板：卡片 / 分组容器 ---------- */
+.mc-panel {
+  padding: var(--mc-sp-5);
+  border: 1px solid var(--mc-hairline, var(--line-soft));
+  border-radius: var(--mc-radius-lg, var(--r-lg));
+  background: var(--td-bg-color-container, var(--bg));
+  box-shadow: var(--mc-elev-1, var(--elev-1));
+}
+
+.mc-panel__title {
+  margin: 0;
+  font-size: var(--mc-fs-title, var(--fs-600));
+  font-weight: 600;
+  line-height: var(--mc-lh-tight);
+}
+
+.mc-panel__desc {
+  margin: var(--mc-sp-1) 0 0;
+  font-size: var(--mc-fs-sm, var(--fs-200));
+  line-height: var(--mc-lh-normal);
+  color: var(--td-text-color-secondary, var(--ink-2));
+}
+
+/* ---------- 统计卡：大数字 + 说明 ---------- */
+.mc-stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mc-sp-1);
+  padding: var(--mc-sp-4) var(--mc-sp-5);
+  border: 1px solid var(--mc-hairline, var(--line-soft));
+  border-radius: var(--mc-radius-lg, var(--r-lg));
+  background: var(--td-bg-color-container, var(--bg));
+  box-shadow: var(--mc-elev-1, var(--elev-1));
+}
+
+.mc-stat__value {
+  font-size: var(--mc-fs-display, var(--fs-800));
+  font-weight: 600;
+  line-height: var(--mc-lh-tight);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.mc-stat__label {
+  font-size: var(--mc-fs-sm, var(--fs-200));
+  line-height: var(--mc-lh-normal);
+  color: var(--td-text-color-secondary, var(--ink-2));
+}
+
+.mc-stat--ok .mc-stat__value {
+  color: var(--td-success-color, var(--ok));
+}
+
+.mc-stat--danger .mc-stat__value {
+  color: var(--td-error-color, var(--danger));
+}
+
+/* ---------- 栅格叠加层（开发用）：<html data-mc-grid> 即可看到 12 列 ---------- */
+html[data-mc-grid] body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  max-width: var(--mc-container);
+  margin-inline: auto;
+  padding-inline: var(--mc-gutter);
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(0, 82, 217, 0.08) 0 calc((100% - (var(--mc-cols) - 1) * var(--mc-gutter)) / var(--mc-cols)),
+    transparent calc((100% - (var(--mc-cols) - 1) * var(--mc-gutter)) / var(--mc-cols))
+      calc((100% - (var(--mc-cols) - 1) * var(--mc-gutter)) / var(--mc-cols) + var(--mc-gutter))
+  );
+  background-origin: content-box;
+  background-clip: content-box;
+}

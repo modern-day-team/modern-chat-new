@@ -19,8 +19,8 @@ import (
 // 出站上限：事件/定时任务响应读 64KB 足够记录错误，防止恶意端点用超大响应撑爆内存。
 const outboundMaxBytes = 64 * 1024
 
-// PageView 下发给登录用户的插件页面声明。admin scope 由前端按角色过滤，
-// 服务端只负责下发已启用插件的全部页面。
+// PageView 下发给登录用户的插件页面声明。admin scope 由 Pages handler
+// 按当前用户角色过滤后再下发，客户端渲染层仍做一次兜底隐藏。
 type PageView struct {
 	// PluginID 即 manifest 的 name；Plugin 为兼容别名，两者取值相同。
 	PluginID string          `json:"pluginId"`
@@ -39,6 +39,10 @@ type RouteResult struct {
 	Proxy    string         `json:"proxy,omitempty"`
 	Handler  bool           `json:"handler,omitempty"`
 	Public   bool           `json:"public,omitempty"`
+	// Scope 为 admin 时只允许站长调用（admin 页面上的动作必须声明它）。
+	Scope string `json:"scope,omitempty"`
+	// AllowedHosts 仅供代理请求的重定向逐跳校验，不属于对外契约。
+	AllowedHosts []string `json:"-"`
 }
 
 type routeKey struct {
@@ -48,8 +52,9 @@ type routeKey struct {
 }
 
 type subscription struct {
-	plugin   string
-	endpoint string
+	plugin       string
+	endpoint     string
+	allowedHosts []string
 }
 
 type wasmPlugin struct {
@@ -76,6 +81,8 @@ type scheduledJob struct {
 	body     []byte
 	every    time.Duration
 	nextAt   time.Time
+	// allowedHosts 用于 POST 跟随重定向时逐跳复检 manifest 白名单
+	allowedHosts []string
 }
 
 // AIConfig 服务端统一 AI 代理配置（OpenAI 兼容 /chat/completions）。
@@ -227,12 +234,19 @@ func (r *Runtime) Reload() error {
 			}
 			for _, rt := range m.Routes {
 				method := strings.ToUpper(rt.Method)
+				scope := rt.Scope
+				if scope == "" {
+					scope = "user"
+				}
 				snap.routes[routeKey{plugin: row.Name, method: method, path: rt.Path}] =
-					RouteResult{Response: rt.Response, Proxy: rt.Proxy, Handler: rt.Handler, Public: rt.Public}
+					RouteResult{
+						Response: rt.Response, Proxy: rt.Proxy, Handler: rt.Handler, Public: rt.Public,
+						Scope: scope, AllowedHosts: m.AllowedHosts,
+					}
 			}
 			for _, ev := range m.Events {
 				snap.events[ev.Event] = append(snap.events[ev.Event], subscription{
-					plugin: row.Name, endpoint: ev.Endpoint,
+					plugin: row.Name, endpoint: ev.Endpoint, allowedHosts: m.AllowedHosts,
 				})
 			}
 			for _, j := range m.Jobs {
@@ -244,6 +258,7 @@ func (r *Runtime) Reload() error {
 				jobs = append(jobs, scheduledJob{
 					plugin: row.Name, name: j.Name, endpoint: j.Endpoint,
 					body: body, every: every, nextAt: now.Add(every),
+					allowedHosts: m.AllowedHosts,
 				})
 			}
 		}
@@ -299,7 +314,7 @@ func (r *Runtime) Emit(event string, payload any) {
 				"X-MC-Plugin":    target.plugin,
 				"X-MC-Signature": r.sign(target.plugin, event, body),
 			}
-			status, resp, err := plugin.SafePostJSONWithHeaders(target.endpoint, body, headers, outboundMaxBytes)
+			status, resp, err := plugin.SafePostJSONWithAllowedHosts(target.endpoint, body, headers, outboundMaxBytes, target.allowedHosts)
 			if err != nil {
 				slog.Warn("server plugin event delivery failed",
 					"plugin", target.plugin, "event", event, "err", err.Error())
@@ -350,7 +365,7 @@ func (r *Runtime) fireDue(now time.Time) {
 				"X-MC-Plugin":    job.plugin,
 				"X-MC-Signature": r.sign(job.plugin, "job:"+job.name, job.body),
 			}
-			status, resp, err := plugin.SafePostJSONWithHeaders(job.endpoint, job.body, headers, outboundMaxBytes)
+			status, resp, err := plugin.SafePostJSONWithAllowedHosts(job.endpoint, job.body, headers, outboundMaxBytes, job.allowedHosts)
 			if err != nil {
 				slog.Warn("server plugin job failed",
 					"plugin", job.plugin, "job", job.name, "err", err.Error())

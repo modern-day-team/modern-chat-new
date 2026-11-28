@@ -109,21 +109,23 @@ type MemberView struct {
 	User       UserBrief  `json:"user"`
 }
 
-// PluginView 插件响应体（permissions/allowedHosts 为数组）。
+// PluginView 插件响应体（permissions/allowedHosts/dependencies 为数组）。
 type PluginView struct {
-	ID             uint      `json:"id"`
-	Name           string    `json:"name"`
-	Version        string    `json:"version"`
-	Description    string    `json:"description"`
-	Permissions    []string  `json:"permissions"`
-	AllowedHosts   []string  `json:"allowedHosts"`
-	Enabled        bool      `json:"enabled"`
-	GlobalDisabled bool      `json:"globalDisabled"`
-	InstalledBy    uint      `json:"installedBy"`
-	CreatedAt      time.Time `json:"createdAt"`
+	ID             uint              `json:"id"`
+	Name           string            `json:"name"`
+	Version        string            `json:"version"`
+	Description    string            `json:"description"`
+	Permissions    []string          `json:"permissions"`
+	AllowedHosts   []string          `json:"allowedHosts"`
+	Engines        map[string]string `json:"engines"`
+	Dependencies   []string          `json:"dependencies"`
+	Enabled        bool              `json:"enabled"`
+	GlobalDisabled bool              `json:"globalDisabled"`
+	InstalledBy    uint              `json:"installedBy"`
+	CreatedAt      time.Time         `json:"createdAt"`
 }
 
-// View 从 Plugin 组装响应体；JSON 字段解析失败时给空数组。
+// View 从 Plugin 组装响应体；JSON 字段解析失败时给空值。
 func (p *Plugin) View() PluginView {
 	v := PluginView{
 		ID: p.ID, Name: p.Name, Version: p.Version, Description: p.Description,
@@ -131,8 +133,20 @@ func (p *Plugin) View() PluginView {
 		CreatedAt:    p.CreatedAt,
 		Permissions:  []string{},
 		AllowedHosts: []string{},
+		Engines:      map[string]string{},
+		Dependencies: []string{},
 	}
 	_ = json.Unmarshal([]byte(p.Permissions), &v.Permissions)
 	_ = json.Unmarshal([]byte(p.AllowedHosts), &v.AllowedHosts)
+	if p.Engines != "" {
+		_ = json.Unmarshal([]byte(p.Engines), &v.Engines)
+	}
+	if p.Dependencies != "" {
+		_ = json.Unmarshal([]byte(p.Dependencies), &v.Dependencies)
+	}
+	// 空对象会被前端当成「有 engines」，这里统一收敛成空 map
+	if v.Engines == nil {
+		v.Engines = map[string]string{}
+	}
 	return v
 }

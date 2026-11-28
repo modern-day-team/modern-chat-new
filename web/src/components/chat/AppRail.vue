@@ -81,6 +81,7 @@ function setView(v: 'chats' | 'contacts') {
       <UiPopup
         v-model:visible="profileVisible"
         placement="right-top"
+        :label="t('profile.menu')"
       >
         <button type="button" class="app-rail__avatar" :aria-label="t('profile.menu')">
           <AvatarBadge

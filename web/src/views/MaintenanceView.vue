@@ -76,12 +76,13 @@ function goAdminLogin() {
 
 .mc-maint__card {
   width: 100%;
-  max-width: 420px;
+  /* 卡宽 = 栅格 narrow 档（400） */
+  max-width: var(--mc-container-narrow);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  padding: 40px 32px;
+  padding: var(--mc-sp-10) var(--mc-sp-8);
   border: 1px solid var(--mc-hairline);
   border-radius: var(--mc-radius-lg);
   background: var(--td-bg-color-container);

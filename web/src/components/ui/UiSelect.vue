@@ -140,7 +140,13 @@ function onTriggerKeydown(e: KeyboardEvent) {
 </script>
 
 <template>
-  <UiPopup v-model:visible="open" placement="bottom-left" :min-width="160">
+  <UiPopup
+    v-model:visible="open"
+    placement="bottom-left"
+    :min-width="160"
+    :auto-focus="false"
+    :anchor-aria="false"
+  >
     <!-- .stop 必须保留：UiPopup 的锚点 span 自己也绑了 @click="toggle"（供不传
          visible 的非受控浮层用），事件冒泡上去会再翻一次 open，面板刚开就被关掉，
          表现就是「点下拉没有任何反应」。 -->

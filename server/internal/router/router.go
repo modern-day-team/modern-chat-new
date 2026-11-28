@@ -93,6 +93,8 @@ func New(d Deps) *gin.Engine {
 	r.Use(middleware.SecurityHeaders())
 	r.Use(middleware.BodyLimit(1<<20, map[string]int64{
 		"/api/plugins/upload": d.Cfg.PluginMaxSize + 64*1024,
+		// 干跑校验同样是裸源码上传，与 upload 同上限。
+		"/api/plugins/validate": d.Cfg.PluginMaxSize + 64*1024,
 		// 管理员上传 WASM：二进制单独放宽到 8MB + 1。
 		"/api/admin/server-plugins/wasm": 8<<20 + 1,
 		// 上传走 multipart，单独放宽。这里用「配置允许的最大值」而不是当前值：
@@ -392,6 +394,9 @@ func New(d Deps) *gin.Engine {
 		authed.GET("/plugins/:id/code", pluginH.Code)
 		pluginLimit := middleware.RateLimit(d.PluginLimiter, middleware.KeyByUID)
 		authed.POST("/plugins/upload", pluginLimit, pluginH.Upload)
+		// 干跑校验：开发工具（scripts/dev-plugin.mjs）与安装走同一套 Go 规则。
+		// 与 upload 共用限流桶——它同样要跑 esbuild 转译，算力开销一样。
+		authed.POST("/plugins/validate", pluginLimit, pluginH.Validate)
 
 		// 图片 / 语音上传：按用户限流（10 次/分），避免被当图床刷
 		if uploadH != nil {

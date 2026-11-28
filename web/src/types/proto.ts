@@ -232,6 +232,10 @@ export interface Plugin {
   description: string
   permissions: string[]
   allowedHosts: string[]
+  /** 宿主能力要求（当前只有 sdk），安装时服务端已校验兼容性 */
+  engines: Record<string, string>
+  /** 依赖的同名插件及版本范围，启用时服务端检查、抽屉提前提示 */
+  dependencies: string[]
   enabled: boolean
   globalDisabled: boolean
   installedBy: number

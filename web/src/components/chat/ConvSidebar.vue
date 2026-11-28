@@ -401,6 +401,7 @@ const sortedConvs = computed(() => {
       <UiPopup
         v-model:visible="newMenuVisible"
         placement="bottom-right"
+        :label="t('chat.moreMenu')"
       >
         <UiButton
           class="mc-sidebar__new"

@@ -21,9 +21,24 @@ const (
 )
 
 type entry struct {
-	status  int
-	userID  uint
+	status int
+	userID uint
+	// sid/tv 是确认者当时的登录凭据。桌面端签发前必须复核该会话仍有效、
+	// token_version 未变，否则「退出所有设备 / 单设备下线」挡不住已经确认的扫码。
+	// bound 为 false 表示插件确认路径（当前只拿到用户，无会话上下文）。
+	bound   bool
+	sid     string
+	tv      int64
 	expires time.Time
+}
+
+// Result Take 的结果：状态、用户，以及确认时绑定的会话信息。
+type Result struct {
+	State  int
+	UserID uint
+	Bound  bool
+	SID    string
+	TV     int64
 }
 
 // Store 进程内一次性扫码会话表；单实例部署，重启后自然作废。
@@ -61,7 +76,14 @@ func (s *Store) Issue() (string, time.Time, error) {
 }
 
 // Confirm 手机端确认：待确认 → 已确认并绑定用户；其余返回 false。
+// 不绑定会话（插件等无法提供 sid 的调用方使用）；handler 应优先用 ConfirmBound。
 func (s *Store) Confirm(token string, userID uint) bool {
+	return s.ConfirmBound(token, userID, "", 0)
+}
+
+// ConfirmBound 与 Confirm 相同，同时记录确认者的 sid 与 token_version，
+// 供桌面轮询签发前复核（会话被撤销或 tv 变化后不允许继续完成登录）。
+func (s *Store) ConfirmBound(token string, userID uint, sid string, tv int64) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	e, ok := s.m[token]
@@ -70,29 +92,40 @@ func (s *Store) Confirm(token string, userID uint) bool {
 	}
 	e.status = Confirmed
 	e.userID = userID
+	if sid != "" {
+		e.bound = true
+		e.sid = sid
+		e.tv = tv
+	}
 	return true
 }
 
 // Take 桌面轮询取走登录态（一次性）：返回状态与用户 ID。
 func (s *Store) Take(token string) (state int, userID uint) {
+	r := s.TakeResult(token)
+	return r.State, r.UserID
+}
+
+// TakeResult 取走登录态并带回确认时绑定的会话信息（一次性）。
+func (s *Store) TakeResult(token string) Result {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	e, ok := s.m[token]
 	if !ok {
-		return Expired, 0
+		return Result{State: Expired}
 	}
 	if time.Now().After(e.expires) {
 		delete(s.m, token)
-		return Expired, 0
+		return Result{State: Expired}
 	}
 	if e.status == Pending {
-		return Pending, 0
+		return Result{State: Pending}
 	}
 	if e.status == Confirmed {
 		e.status = Expired
-		return Confirmed, e.userID
+		return Result{State: Confirmed, UserID: e.userID, Bound: e.bound, SID: e.sid, TV: e.tv}
 	}
-	return Expired, 0
+	return Result{State: Expired}
 }
 
 // Invalidate 立即作废票据。

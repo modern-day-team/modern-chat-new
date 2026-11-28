@@ -10,6 +10,8 @@ import { usePrefsStore } from './stores/prefs'
 // 组件一律在 SFC 内按需 import（不 app.use(TDesign)），否则整库无法 tree-shake。
 import 'tdesign-vue-next/es/style/index.css'
 import './assets/main.css'
+// 栅格系统：项目组四端共用，本文件是唯一真源（见 docs/UI设计方案.md §3.6）
+import './assets/grid.css'
 // UnoCSS 工具类最后引入：迁移期需要用原子类覆盖存量组件的默认观感
 import 'virtual:uno.css'
 

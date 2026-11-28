@@ -91,8 +91,9 @@ function goLogin() {
   flex-direction: column;
   align-items: center;
   gap: 16px;
-  max-width: 360px;
-  padding: 32px 40px;
+  /* 卡宽 = 栅格 narrow 档（400） */
+  max-width: var(--mc-container-narrow);
+  padding: var(--mc-sp-8) var(--mc-sp-10);
   border: 1px solid var(--mc-hairline);
   border-radius: var(--mc-radius-lg);
   background: var(--td-bg-color-container);

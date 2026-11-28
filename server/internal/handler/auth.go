@@ -529,12 +529,14 @@ func (h *AuthHandler) Reset(c *gin.Context) {
 		return
 	}
 	err = h.resets.Use(pr, func(tx *gorm.DB) error {
-		u.PasswordHash = string(hash)
-		u.TokenVersion++
-		if err := tx.Save(u).Error; err != nil {
-			return err
-		}
-		return nil
+		// 只写本操作真正变更的两列，且 token_version 用 SQL 自增：
+		// 整行 Save 会把外面读到的旧 banned_until / password_hash 写回去，
+		// 与并发封禁、其他改密请求互相覆盖。
+		return tx.Model(&model.User{}).Where("id = ?", pr.UserID).
+			Updates(map[string]any{
+				"password_hash": string(hash),
+				"token_version": gorm.Expr("token_version + 1"),
+			}).Error
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrResetTokenUsed) {
@@ -618,10 +620,35 @@ func (h *AuthHandler) EmailCode(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true, "cooldownSeconds": int(store.EmailCodeCooldown.Seconds())})
 }
 
-// Logout 清除登录 cookie。
-// token 由客户端 localStorage 持有（前端同时清掉）；cookie 是 HttpOnly，JS 删不掉，
-// 必须由服务端下发过期 Set-Cookie。不鉴权：token 已过期时也应能清。
+// Logout 撤销当前会话并清除登录 cookie。
+//
+// JWT 本身无状态、TTL 7 天，只清 cookie 等于没有退出：localStorage 里那份
+// token（以及任何副本）在服务端仍然有效。这里自己解析 token 拿到 sid，
+// 把对应会话行标记 revoked_at，并踢掉该设备的 WS；token 过期/无效时仍清 cookie
+// （退出接口保持免鉴权，过期状态下也能完成清理）。
 func (h *AuthHandler) Logout(c *gin.Context) {
+	token := ""
+	if hv := c.GetHeader("Authorization"); strings.HasPrefix(hv, "Bearer ") {
+		token = strings.TrimPrefix(hv, "Bearer ")
+	} else if v, err := c.Cookie(middleware.AuthCookieName); err == nil {
+		token = v
+	}
+	if token != "" && h.sessions != nil {
+		if cl, err := middleware.ParseToken(token, h.cfg.JWTSecret); err == nil && cl.SID != "" {
+			sess, sErr := h.sessions.ActiveBySID(cl.SID)
+			if sErr != nil {
+				// 撤销失败不该让退出接口 500：cookie 仍会被清，前端也会清本地 token
+				slog.Warn("logout load session failed", "err", sErr.Error())
+			} else if sess != nil && sess.UserID == cl.UID {
+				if _, rErr := h.sessions.Revoke(cl.UID, sess.ID); rErr != nil {
+					slog.Warn("logout revoke session failed", "uid", cl.UID, "err", rErr.Error())
+				}
+			}
+			// 撤销只影响后续 HTTP 鉴权；已建立的 WS 仍缓存着握手时的身份，
+			// 必须显式断开，否则该设备还能继续收发消息。
+			notifyFor(c).KickSession(cl.SID, "该设备已退出登录")
+		}
+	}
 	middleware.ClearAuthCookie(c)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -669,8 +696,9 @@ func (h *AuthHandler) storeAvatarDataURL(dataURL string, maxChars int) (string, 
 
 // UpdateMe 改昵称 / 头像 / 邮箱。
 //
-// 换绑邮箱必须带新邮箱收到的验证码并核销通过：只校验唯一性就落库的话，
-// 任何人都能把资料邮箱改成别人的地址（抢占唯一索引 + 让重置链接寄给别人）。
+// 换绑/解绑邮箱必须同时满足：带当前密码再认证 + 新邮箱收到的验证码核销通过。
+// 只校验唯一性就落库的话，任何人都能把资料邮箱改成别人的地址（抢占唯一索引 +
+// 让重置链接寄给别人）；只验会话令牌则挡不住被盗 token。
 func (h *AuthHandler) UpdateMe(c *gin.Context) {
 	var req struct {
 		Nickname *string `json:"nickname"`
@@ -681,6 +709,8 @@ func (h *AuthHandler) UpdateMe(c *gin.Context) {
 		AvatarThumb *string `json:"avatarThumb"`
 		// EmailCode 换绑邮箱时必填：发到新邮箱的 6 位验证码
 		EmailCode string `json:"emailCode"`
+		// Password 换绑/解绑邮箱时的再认证：仅凭会话令牌不足以改登录邮箱。
+		Password string `json:"password"`
 	}
 	if !bind(c, &req) {
 		return
@@ -756,17 +786,28 @@ func (h *AuthHandler) UpdateMe(c *gin.Context) {
 		}
 		u.Nickname = n
 	}
+	emailChanged := false
 	if req.Email != nil {
 		e := service.NormalizeEmail(*req.Email)
 		if msg := validateEmail(e); msg != "" {
 			fail(c, http.StatusBadRequest, msg)
 			return
 		}
+		emailChanged = e == "" || u.Email == nil || *u.Email != e
+		// 换绑/解绑登录邮箱必须再认证当前密码：会话令牌可能是偷来的
+		// （XSS / 恶意扩展 / 共用机器的残留登录），只验新邮箱归属的话，
+		// 拿到会话就能把账号邮箱改成攻击者的地址，再走忘记密码接管账号。
+		if emailChanged {
+			if req.Password == "" || bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(req.Password)) != nil {
+				fail(c, http.StatusBadRequest, "密码不正确")
+				return
+			}
+		}
 		if e == "" {
-			// 解绑：不需要验证（清掉验证状态）
+			// 解绑：不需要验证码，但要清掉验证状态
 			u.Email = nil
 			u.EmailVerified = false
-		} else if u.Email == nil || *u.Email != e {
+		} else if emailChanged {
 			// 换绑：必须验证新邮箱归属
 			if !h.mailerReady() {
 				fail(c, http.StatusBadRequest, "站点未配置邮件服务，暂不支持修改邮箱")
@@ -804,6 +845,35 @@ func (h *AuthHandler) UpdateMe(c *gin.Context) {
 		}
 		// 邮箱没变化：什么都不做（不改验证状态，避免「只改昵称」把它清掉）
 	}
+	// 落库前重新读整行：上面的头像转存（落盘 / 对象存储）可能耗时数百毫秒，
+	// 期间管理员可能已封禁或重置密码。沿用函数开头读到的旧行整行 Save 会把
+	// banned_until / token_version / password_hash 覆盖回旧值。用最新行承载
+	// 安全字段，只覆盖本次请求实际改动的资料列，把并发窗口缩到一次查询。
+	fresh, err := h.users.ByID(me.ID)
+	if err != nil {
+		internal(c, err)
+		return
+	}
+	if fresh == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户不存在"})
+		return
+	}
+	if req.Nickname != nil {
+		fresh.Nickname = u.Nickname
+	}
+	if req.Avatar != nil {
+		fresh.Avatar = u.Avatar
+		// 换主图时 AvatarThumb 可能被清空，必须一并带上
+		fresh.AvatarThumb = u.AvatarThumb
+	}
+	if req.AvatarThumb != nil {
+		fresh.AvatarThumb = u.AvatarThumb
+	}
+	if emailChanged {
+		fresh.Email = u.Email
+		fresh.EmailVerified = u.EmailVerified
+	}
+	u = fresh
 	if err := h.users.Save(u); err != nil {
 		internal(c, err)
 		return
@@ -818,6 +888,7 @@ func (h *AuthHandler) UpdateMe(c *gin.Context) {
 //
 // 与注册发码分开：注册要检查「站点是否开放注册」，换绑只需要登录态，
 // 且必须排除「新邮箱与当前邮箱相同」「新邮箱已被别人占用」。
+// 发码前校验当前密码：否则被盗会话可以把接口当成向任意邮箱发信的跳板。
 func (h *AuthHandler) EmailCodeChange(c *gin.Context) {
 	if !h.mailerReady() {
 		fail(c, http.StatusServiceUnavailable, "站点未配置邮件服务，暂不支持修改邮箱")
@@ -826,8 +897,15 @@ func (h *AuthHandler) EmailCodeChange(c *gin.Context) {
 	u := middleware.UserFrom(c)
 	var req struct {
 		Email string `json:"email"`
+		// Password 发码前再认证：避免被盗会话当成向任意邮箱发信的跳板，
+		// 也让换绑链路从第一步起就要求本人凭据。
+		Password string `json:"password"`
 	}
 	if !bind(c, &req) {
+		return
+	}
+	if req.Password == "" || bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(req.Password)) != nil {
+		fail(c, http.StatusBadRequest, "密码不正确")
 		return
 	}
 	email := service.NormalizeEmail(req.Email)

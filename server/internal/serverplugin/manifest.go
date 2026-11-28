@@ -41,9 +41,14 @@ type Manifest struct {
 	Events       []Event  `json:"events"`
 	Jobs         []Job    `json:"jobs"`
 	AllowedHosts []string `json:"allowedHosts"`
+	// Dependencies 依赖的其它服务端插件（名字 + 版本范围），与用户插件共用
+	// plugin.ParseDependencies 的语法。安装不阻断，管理员启用时才检查：
+	// 一次导入多个插件时，被依赖者可能后装。
+	Dependencies []string `json:"dependencies"`
 }
 
-// Page 注入宿主界面的页面（前端按 scope 自行过滤 user/admin）。
+// Page 注入宿主界面的页面。scope=admin 的页面由 Pages 接口按角色过滤，
+// 普通用户不会拿到它的 body（其中可能含仅管理员该看到的操作入口）。
 type Page struct {
 	ID    string          `json:"id"`
 	Title string          `json:"title"`
@@ -54,8 +59,12 @@ type Page struct {
 
 // Route 动态接口：response 为静态响应，proxy 为上游转发，二选一。
 type Route struct {
-	Method   string         `json:"method"`
-	Path     string         `json:"path"`
+	Method string `json:"method"`
+	Path   string `json:"path"`
+	// Scope 声明调用者角色：user（缺省，任何登录用户）| admin（仅站长）。
+	// admin 页面上的 action 落到这里，必须显式声明 scope=admin，否则普通用户
+	// 拿到页面 body 后仍可直接 POST /api/ext/... 触发管理动作。
+	Scope    string         `json:"scope,omitempty"`
 	Response *RouteResponse `json:"response,omitempty"`
 	Proxy    string         `json:"proxy,omitempty"`
 	Handler  bool           `json:"handler,omitempty"` // runtime=wasm：交给 WASM 处理
@@ -131,6 +140,11 @@ func (m *Manifest) Validate() error {
 			return fmt.Errorf("%w: allowedHosts 含非法域名 %q", ErrInvalid, h)
 		}
 	}
+	// 依赖语法与用户插件完全共用一套解析（自依赖 / 重复 / 版本约束在其中拒掉），
+	// 具体是否满足留到管理员启用时判断。
+	if _, err := plugin.ParseDependencies(m.Dependencies, m.Name); err != nil {
+		return err
+	}
 
 	for i, p := range m.Pages {
 		if !pageIDRe.MatchString(p.ID) {
@@ -162,6 +176,13 @@ func (m *Manifest) Validate() error {
 		}
 		if !routePathRe.MatchString(rt.Path) || strings.Contains(rt.Path, "..") || strings.Contains(rt.Path, "//") {
 			return fmt.Errorf("%w: routes[%d].path 需以 / 开头且只含安全字符", ErrInvalid, i)
+		}
+		if rt.Scope != "" && rt.Scope != "user" && rt.Scope != "admin" {
+			return fmt.Errorf("%w: routes[%d].scope 只能是 user 或 admin", ErrInvalid, i)
+		}
+		// admin-only 与免登录互斥：public 路由没有任何身份，不能承载管理动作。
+		if rt.Scope == "admin" && rt.Public {
+			return fmt.Errorf("%w: routes[%d] 不能同时声明 scope=admin 与 public", ErrInvalid, i)
 		}
 		handlers := 0
 		if rt.Response != nil {
@@ -246,4 +267,15 @@ func checkEndpoint(raw string, allowed []string) error {
 		}
 	}
 	return fmt.Errorf("域名 %s 不在 allowedHosts 中", host)
+}
+
+// CheckDependencies 按「已安装的服务端插件」检查依赖，返回未满足项（空表示满足）。
+// 服务端插件同样允许先装后启用，所以调用点在启停接口，不在安装接口。
+func (m *Manifest) CheckDependencies(lookup func(string) plugin.DepState) []string {
+	deps, err := plugin.ParseDependencies(m.Dependencies, m.Name)
+	if err != nil {
+		// 清单在 Validate 阶段已拒过非法依赖，这里只防御调用顺序变化。
+		return []string{err.Error()}
+	}
+	return plugin.UnmetDependencies(deps, lookup)
 }

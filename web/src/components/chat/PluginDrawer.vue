@@ -15,6 +15,7 @@ import { useAuthStore } from '@/stores/auth'
 import { usePluginsStore } from '@/stores/plugins'
 import type { PageDesc, Plugin } from '@/types/proto'
 import * as market from './pluginMarket'
+import { sdkRequirement, unmetDeps } from './pluginDeps'
 
 const visible = defineModel<boolean>({ default: false })
 /** 市场一键安装深链预填：URL 永久生效，名称只做提示横幅 */
@@ -161,13 +162,13 @@ async function installConfirm(action: () => Promise<{ plugin: Plugin; updated: b
     : t('plugin.noPerm')
   const hostText = plugin.allowedHosts.length ? plugin.allowedHosts.join(', ') : t('plugin.noPerm')
   // 危险升级：插件正启用，而新代码的权限 / 域名白名单与用户上次授权不同。
-  // 旧授权是针对旧代码给的，不能默认延续到新代码上——确认前新代码不得运行，
-  // 用户拒绝则立即停用（旧运行时一并卸载），重新启用时才加载新版。
+  // 新版服务端在写入时已直接停用（见 handler/plugin.go），这里的 needsReconfirm
+  // 只兼容旧服务端；取消普通安装 / 同权限升级时不得误停用已启用插件。
   const needsReconfirm = updated && permsChanged && plugin.enabled
   let confirmed = false
   let declined = false
   async function declineReconfirm() {
-    if (declined || confirmed || !plugin) return
+    if (declined || confirmed || !plugin || !needsReconfirm) return
     declined = true
     try {
       await pluginsStore.setEnabled(plugin.id, false)
@@ -177,6 +178,13 @@ async function installConfirm(action: () => Promise<{ plugin: Plugin; updated: b
       void MessagePlugin.error(te(e))
     }
   }
+  // 依赖提示：装上不等于能启用——依赖缺失/版本不符/未启用时，服务端会拒绝启用。
+  const unmet = unmetDeps(plugin, pluginsStore.plugins)
+  const depLine = plugin.dependencies?.length
+    ? t('plugin.depLine') +
+      plugin.dependencies.join(', ') +
+      (unmet.length ? `\n${t('plugin.depBlocked', { list: depListText(plugin) })}` : '')
+    : ''
   // 版本过渡提示：升级展示 old → new；市场旧包覆盖更高版本（降级）要额外警告
   const verLine =
     updated && oldVersion
@@ -184,7 +192,10 @@ async function installConfirm(action: () => Promise<{ plugin: Plugin; updated: b
         ? t('plugin.downgradeWarn', { old: oldVersion, new: plugin.version })
         : t('plugin.updateFromTo', { old: oldVersion, new: plugin.version })
       : ''
-  const baseBody = needsReconfirm
+  // 服务端遇到权限变化会直接停用新代码（不再等前端补一次停用），因此这里
+  // 不能再用 plugin.enabled 判断要不要展示「权限已变化」：停用只是执行结果，
+  // 用户仍需要看到新旧权限的差异。
+  const baseBody = updated && permsChanged
     ? t('plugin.updatePermChangedBody', {
         perms: permText,
         hosts: hostText,
@@ -199,7 +210,7 @@ async function installConfirm(action: () => Promise<{ plugin: Plugin; updated: b
     header: updated
       ? t('plugin.updateTitle', { name: plugin.name, version: plugin.version })
       : t('plugin.installTitle', { name: plugin.name, version: plugin.version }),
-    body: verLine ? `${verLine}\n\n${baseBody}` : baseBody,
+    body: [verLine, depLine, baseBody].filter(Boolean).join('\n\n'),
     confirmBtn: updated ? t('plugin.confirmUpdate') : t('plugin.confirmEnable'),
     cancelBtn: needsReconfirm ? t('plugin.declineDisable') : updated ? t('plugin.laterReload') : t('plugin.laterEnable'),
     onConfirm: async () => {
@@ -214,9 +225,14 @@ async function installConfirm(action: () => Promise<{ plugin: Plugin; updated: b
             void MessagePlugin.success(t('plugin.updatedSavedOk'))
           }
         } else {
-          await pluginsStore.setEnabled(plugin.id, true)
-          await host.reloadPlugin({ ...plugin, enabled: true })
-          void MessagePlugin.success(t('plugin.enabledOk'))
+          // 依赖未就绪时不给启用：服务端也会 403，这里直接说清原因并保持停用
+          if (unmet.length) {
+            void MessagePlugin.warning(t('plugin.depInstalledLater', { list: depListText(plugin) }))
+          } else {
+            await pluginsStore.setEnabled(plugin.id, true)
+            await host.reloadPlugin({ ...plugin, enabled: true })
+            void MessagePlugin.success(t('plugin.enabledOk'))
+          }
         }
       } catch (e) {
         void MessagePlugin.error(te(e))
@@ -237,9 +253,33 @@ function permLabel(perm: string): string {
   return label === key ? perm : label
 }
 
+// ===== 依赖与兼容性 =====
+// 服务端在启用时用同一套规则把关（403 + 原因）；这里只提前把「还差什么」摆出来，
+// 免得用户点一次开关才看到错误。
+
+/** 未就绪依赖的可读描述，例如「word-count 未启用」。 */
+function depListText(plugin: Plugin): string {
+  return unmetDeps(plugin, pluginsStore.plugins)
+    .map((i) => {
+      if (i.reason === 'missing') return t('plugin.depMissing', { name: i.name })
+      if (i.reason === 'version') return t('plugin.depVersion', { name: i.name })
+      return t('plugin.depDisabled', { name: i.name })
+    })
+    .join(t('plugin.depSep'))
+}
+
+function hasUnmetDeps(plugin: Plugin): boolean {
+  return unmetDeps(plugin, pluginsStore.plugins).length > 0
+}
+
 // ===== 启停 / 卸载 =====
 
 async function toggle(plugin: Plugin, enabled: boolean) {
+  // 依赖未就绪时直接拦下：服务端也会 403，但先给原因能少一次往返与一次报错
+  if (enabled && hasUnmetDeps(plugin)) {
+    void MessagePlugin.warning(t('plugin.depBlocked', { list: depListText(plugin) }))
+    return
+  }
   try {
     await pluginsStore.setEnabled(plugin.id, enabled)
     await host.reloadPlugin({ ...plugin, enabled })
@@ -253,6 +293,9 @@ async function uninstall(plugin: Plugin) {
     header: t('plugin.uninstallTitle'),
     body: t('plugin.uninstallBody', { name: plugin.name }),
     confirmBtn: { content: t('plugin.uninstallBtn'), theme: 'danger' },
+    // DialogPlugin 未传 cancelBtn 时不渲染取消按钮，卸载这种不可逆操作只剩
+    // 一个危险按钮；这里显式补上取消入口（默认值在 feedback.ts，属公共文件）。
+    cancelBtn: t('common.cancel'),
     onConfirm: async () => {
       try {
         await pluginsStore.remove(plugin.id)
@@ -341,7 +384,7 @@ async function uninstall(plugin: Plugin) {
           </span>
           <UiSwitch
             :value="p.enabled && !p.globalDisabled"
-            :disabled="p.globalDisabled"
+            :disabled="p.globalDisabled || (!p.enabled && hasUnmetDeps(p))"
             @change="(v: unknown) => toggle(p, v as boolean)"
           />
         </div>
@@ -351,9 +394,19 @@ async function uninstall(plugin: Plugin) {
             {{ permLabel(perm) }}
           </UiTag>
           <UiTag v-for="h in p.allowedHosts" :key="h" size="small" variant="outline">{{ h }}</UiTag>
+          <UiTag v-for="d in p.dependencies" :key="`dep-${d}`" size="small" variant="outline">
+            ⟵ {{ d }}
+          </UiTag>
+          <UiTag v-if="sdkRequirement(p)" size="small" variant="outline">
+            SDK {{ sdkRequirement(p) }}
+          </UiTag>
           <UiTag v-if="p.globalDisabled" size="small" theme="danger" variant="light">
             {{ t('plugin.globalDisabled') }}
           </UiTag>
+        </div>
+        <!-- 依赖未就绪：开关禁用并在原地说明原因，比点一下再弹错更好理解 -->
+        <div v-if="!p.enabled && hasUnmetDeps(p)" class="mc-plugins__dep-warn">
+          {{ t('plugin.depBlocked', { list: depListText(p) }) }}
         </div>
         <div class="mc-plugins__ops">
           <a class="mc-plugins__remove" @click="uninstall(p)">{{ t('plugin.uninstall') }}</a>
@@ -489,6 +542,14 @@ async function uninstall(plugin: Plugin) {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.mc-plugins__dep-warn {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  /* warning token：提示但不抢过 danger 的视觉权重 */
+  color: var(--td-warning-color, #ed9f11);
 }
 
 .mc-plugins__ops {

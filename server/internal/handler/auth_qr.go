@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/modern-day-team/modern-chat-new/server/internal/middleware"
+	"github.com/modern-day-team/modern-chat-new/server/internal/model"
 	"github.com/modern-day-team/modern-chat-new/server/internal/service/qrsession"
 )
 
@@ -34,8 +35,14 @@ func qrIssueSession() (string, time.Time, error) { return qrsession.Default().Is
 func qrConfirmSession(token string, userID uint) bool {
 	return qrsession.Default().Confirm(token, userID)
 }
+func qrConfirmBound(token string, userID uint, sid string, tv int64) bool {
+	return qrsession.Default().ConfirmBound(token, userID, sid, tv)
+}
 func qrTakeSession(token string) (int, uint) { return qrsession.Default().Take(token) }
-func qrInvalidateSession(token string)       { qrsession.Default().Invalidate(token) }
+func qrTakeResult(token string) qrsession.Result {
+	return qrsession.Default().TakeResult(token)
+}
+func qrInvalidateSession(token string) { qrsession.Default().Invalidate(token) }
 
 // QRStart 桌面端发起扫码登录。
 func (h *AuthHandler) QRStart(c *gin.Context) {
@@ -55,16 +62,25 @@ func (h *AuthHandler) QRStatus(c *gin.Context) {
 	if !bind(c, &req) {
 		return
 	}
-	state, userID := qrTakeSession(strings.TrimSpace(req.Token))
-	switch state {
-	case 1:
-		u, err := h.users.ByID(userID)
+	res := qrTakeResult(strings.TrimSpace(req.Token))
+	switch res.State {
+	case qrsession.Confirmed:
+		u, err := h.users.ByID(res.UserID)
 		if err != nil {
 			internal(c, err)
 			return
 		}
 		if u == nil || u.IsBanned() {
 			// 确认人与封禁状态之间有时间差（扫码在先、封禁在后）：作废本次登录
+			qrInvalidateSession(strings.TrimSpace(req.Token))
+			c.JSON(http.StatusOK, gin.H{"status": "expired"})
+			return
+		}
+		// 复核确认时的会话：确认后、桌面取码前，手机端可能已「退出所有设备」
+		// 或被单设备下线（sid 撤销 / tv+1）。不看这一步的话，排队中的轮询
+		// 会照样拿到一个按当前 tv 签发的新 token，撤销等于没发生。
+		// 插件确认路径没有会话上下文（bound=false），只做用户态复核。
+		if !h.qrConfirmationStillValid(u, res) {
 			qrInvalidateSession(strings.TrimSpace(req.Token))
 			c.JSON(http.StatusOK, gin.H{"status": "expired"})
 			return
@@ -76,11 +92,33 @@ func (h *AuthHandler) QRStatus(c *gin.Context) {
 		}
 		slog.Info("qr login", "uid", u.ID, "username", u.Username)
 		c.JSON(http.StatusOK, gin.H{"status": "confirmed", "token": jwtToken, "user": u})
-	case 2:
+	case qrsession.Expired:
 		c.JSON(http.StatusOK, gin.H{"status": "expired"})
 	default:
 		c.JSON(http.StatusOK, gin.H{"status": "pending"})
 	}
+}
+
+// qrConfirmationStillValid 确认者会话在确认之后是否仍然有效。
+// tv 不一致说明期间发生过「退出所有设备 / 改密重置」；sid 查不到说明
+// 该设备已被撤销。两者任一不满足都必须作废本次扫码。
+func (h *AuthHandler) qrConfirmationStillValid(u *model.User, res qrsession.Result) bool {
+	if !res.Bound {
+		return true
+	}
+	if u.TokenVersion != res.TV {
+		return false
+	}
+	if h.sessions == nil {
+		// 测试 / 未装配会话表时退化为 tv 单因子（与 Auth 中间件口径一致）
+		return true
+	}
+	sess, err := h.sessions.ActiveBySID(res.SID)
+	if err != nil {
+		slog.Warn("qr check session failed", "err", err.Error())
+		return false
+	}
+	return sess != nil
 }
 
 // QRConfirm 手机端确认授权桌面登录（需本机 JWT；维护模式随 authed 组 503）。
@@ -96,7 +134,15 @@ func (h *AuthHandler) QRConfirm(c *gin.Context) {
 		fail(c, http.StatusUnauthorized, "请先在本设备登录")
 		return
 	}
-	if !qrConfirmSession(strings.TrimSpace(req.Token), me.ID) {
+	// 确认必须落在一条仍有效的具体会话上：后续桌面端签发前会按这里的
+	// sid/tv 复核，用户之后「退出所有设备 / 单设备下线」才能生效。
+	sid, _ := c.Get("sid")
+	sidStr, _ := sid.(string)
+	if sidStr == "" {
+		fail(c, http.StatusUnauthorized, "登录态需要更新，请重新登录")
+		return
+	}
+	if !qrConfirmBound(strings.TrimSpace(req.Token), me.ID, sidStr, me.TokenVersion) {
 		fail(c, http.StatusBadRequest, "二维码无效或已过期，请在桌面端重新生成")
 		return
 	}

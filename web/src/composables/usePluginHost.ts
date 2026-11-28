@@ -34,7 +34,7 @@ import { useWsStore } from '@/stores/ws'
 // 内核子模块：声明式 UI 校验 / 权限映射 / 沙箱引导，各自单一职责（见 ./plugin/）
 import { validatePage, validatePanel, validateRenderDesc } from './plugin/uiDesc'
 import { API_PERMISSION, EVENT_PERMISSION } from './plugin/permissions'
-import { bootHtml } from './plugin/sandbox'
+import { bootHtml, isForbiddenHost } from './plugin/sandbox'
 
 // 公共校验函数保持原有导出面（外部如有引用不受拆分影响）
 export { validateUIDesc, validatePanel, validatePage } from './plugin/uiDesc'
@@ -46,6 +46,10 @@ function hostAllowed(hostname: string, patterns: string[]): boolean {
   //（/uploads 走 Cookie 鉴权），声明了本站域名的插件可借宿主代理借用户身份读文件；
   // fetch 侧已 credentials:'omit'，这里按主机名再兜一道（Cookie 不分端口，比 origin 更严）
   if (hostname.toLowerCase() === window.location.hostname.toLowerCase()) return false
+  // 本机 / 私网 / IP 字面量即使写进了清单也不放行：请求由宿主页面直接发出，
+  // 等于把用户的网络位置借给插件扫描内网。历史安装记录可能已含这类域名，
+  // 因此不能只靠安装时的 ValidHost 校验，运行时必须再挡一次。
+  if (isForbiddenHost(hostname)) return false
   return patterns.some((p) => {
     const pat = p.trim().toLowerCase()
     if (!pat) return false

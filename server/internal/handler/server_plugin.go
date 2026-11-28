@@ -148,6 +148,25 @@ func (h *ServerPluginHandler) UploadWASM(c *gin.Context) {
 }
 
 // SetEnabled PATCH /api/admin/server-plugins/:id body {enabled:bool}
+// depLookup 服务端插件之间的依赖查询（同名 → 版本 + 是否启用）。
+// 排除自身：清单已拒自依赖，这里再兜一层，避免升级时把自己当依赖。
+func (h *ServerPluginHandler) depLookup(self string) func(string) plugin.DepState {
+	rows, err := h.store.All()
+	if err != nil {
+		slog.Warn("server plugin deps lookup failed", "err", err.Error())
+		return func(string) plugin.DepState { return plugin.DepState{} }
+	}
+	byName := make(map[string]plugin.DepState, len(rows))
+	for _, row := range rows {
+		if row.Name == self {
+			continue
+		}
+		v, _ := plugin.ParseVersion(row.Version)
+		byName[row.Name] = plugin.DepState{Found: true, Enabled: row.Enabled, Version: v}
+	}
+	return func(name string) plugin.DepState { return byName[name] }
+}
+
 func (h *ServerPluginHandler) SetEnabled(c *gin.Context) {
 	row, ok := h.byID(c)
 	if !ok {
@@ -167,6 +186,12 @@ func (h *ServerPluginHandler) SetEnabled(c *gin.Context) {
 		}
 		if m.Runtime == "wasm" && len(row.WasmData) == 0 {
 			fail(c, http.StatusBadRequest, "WASM 插件尚未上传 wasm 文件")
+			return
+		}
+		// 依赖检查与用户插件同一口径：装上允许，启用才拦。被依赖者必须「在」且「已启用」，
+		// 否则本插件的页面/接口会引用到不存在的服务。
+		if unmet := m.CheckDependencies(h.depLookup(row.Name)); len(unmet) > 0 {
+			fail(c, http.StatusForbidden, "依赖未就绪："+strings.Join(unmet, "、"))
 			return
 		}
 	}
@@ -202,12 +227,24 @@ func (h *ServerPluginHandler) Delete(c *gin.Context) {
 }
 
 // Pages GET /api/server-plugins/pages —— 登录用户取启用插件的页面声明。
+// admin 页面在这里就按角色过滤：只在前端隐藏渲染，普通用户仍可从响应里
+// 拿到管理页 body（含动作入口），服务端不能把过滤责任交给客户端。
 func (h *ServerPluginHandler) Pages(c *gin.Context) {
 	if h.runtime == nil {
 		c.JSON(http.StatusOK, []serverplugin.PageView{})
 		return
 	}
-	c.JSON(http.StatusOK, h.runtime.Pages())
+	me := middleware.UserFrom(c)
+	isAdmin := me != nil && me.Role == "admin"
+	pages := h.runtime.Pages()
+	out := make([]serverplugin.PageView, 0, len(pages))
+	for _, p := range pages {
+		if p.Scope == "admin" && !isAdmin {
+			continue
+		}
+		out = append(out, p)
+	}
+	c.JSON(http.StatusOK, out)
 }
 
 // Dynamic 处理 /api/ext/:plugin/*path：静态响应、HTTPS 代理或 WASM。
@@ -237,6 +274,14 @@ func (h *ServerPluginHandler) dynamic(c *gin.Context, public bool) {
 		fail(c, http.StatusNotFound, "接口不存在")
 		return
 	}
+	// 路由的角色声明必须在这里强制生效：插件页面动作走 /api/ext，
+	// 不在服务端拦，普通用户拿到 admin 页面 body 后仍可直接调用。
+	if res.Scope == "admin" {
+		if u := middleware.UserFrom(c); u == nil || u.Role != "admin" {
+			fail(c, http.StatusForbidden, "仅管理员可访问")
+			return
+		}
+	}
 	if res.Handler {
 		h.wasm(c, name, path, public)
 		return
@@ -262,7 +307,7 @@ func (h *ServerPluginHandler) dynamic(c *gin.Context, public bool) {
 	if ct := c.GetHeader("Content-Type"); ct != "" && !strings.ContainsAny(ct, "\r\n") {
 		headers["Content-Type"] = ct
 	}
-	status, resp, err := plugin.SafeRequest(c.Request.Method, res.Proxy, body, headers, 2<<20)
+	status, resp, err := plugin.SafeRequestWithHosts(c.Request.Method, res.Proxy, body, headers, 2<<20, res.AllowedHosts)
 	if err != nil {
 		slog.Warn("server plugin proxy failed", "plugin", name, "path", path, "err", err.Error())
 		fail(c, http.StatusBadGateway, "上游服务不可用")

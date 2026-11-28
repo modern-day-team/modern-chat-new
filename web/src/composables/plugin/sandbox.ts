@@ -7,6 +7,22 @@
  */
 
 /**
+ * 拒绝本机 / 私网 / IP 字面量主机名。
+ * 浏览器端的 allowedHosts 来自服务端清单，但历史清单可能已含 localhost 或
+ * 私网地址；这里与 server/internal/plugin.ValidHost 保持同一口径，任一侧
+ * 放行都等于把插件的出站请求引到用户内网。IP 字面量整体拒绝（含公网 IP）：
+ * 无法与域名做稳定的白名单比较，也堵住不同进制写法绕过私网判断。
+ */
+export function isForbiddenHost(host: string): boolean {
+  const h = host.trim().toLowerCase().replace(/\.$/, '')
+  if (!h) return true
+  if (h === 'localhost' || h === 'local' || h.endsWith('.localhost') || h.endsWith('.local')) return true
+  // IPv4 字面量；IPv6 字面量在主机名里一定带冒号（本函数的入参是 hostname，不含端口）
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h) || h.includes(':')) return true
+  return false
+}
+
+/**
  * 构造沙箱 CSP：把插件自身网络出口收敛到 manifest 的 allowed_hosts。
  * 之前插件可以直接在自己的 iframe 里 fetch()，完全绕过宿主 request() 的白名单；
  * 有了 connect-src 后 fetch/XHR/WebSocket/beacon 只能到达这些主机，未声明则全部禁止。
@@ -17,6 +33,7 @@ function buildSandboxCsp(allowedHosts: string[]): string {
     .map((h) => h.trim().toLowerCase())
     // 只接受主机名或 *.子域形式，避免把端口/路径/引号拼进 CSP 指令
     .filter((h) => /^(\*\.)?[a-z0-9][a-z0-9.-]*$/.test(h))
+    .filter((h) => !isForbiddenHost(h.replace(/^\*\./, '')))
   const connect = hosts.length ? hosts.join(' ') : "'none'"
   // 媒体能力（通用，无音乐等业务语义）：插件可在自己的沙箱文档里用 <audio>/<video>
   // 播放其 allowedHosts 内的媒体（音频/播客等），blob: 支持先 fetch 缓冲再播。

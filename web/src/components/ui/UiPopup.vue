@@ -14,10 +14,16 @@ const props = withDefaults(
     /** 相对触发元素的位置 */
     placement?: 'right-top' | 'right-bottom' | 'bottom-right' | 'bottom-left' | 'top-right'
     minWidth?: number
+    /** 面板的无障碍名称（菜单/资料卡等浮层应传入） */
+    label?: string
+    /** 打开时是否把焦点移进面板；自行管理焦点的高级组件（如 UiSelect）可关闭 */
+    autoFocus?: boolean
+    /** 触发元素是否补 aria-haspopup/aria-expanded；内部已提供完整 combobox 语义时可关闭 */
+    anchorAria?: boolean
   }>(),
   // Boolean prop 未传时 Vue 默认会 cast 成 false；显式 default: undefined
   // 才能区分「非受控（不传 visible）」与「受控且当前关闭（visible=false）」。
-  { visible: undefined, placement: 'bottom-right', minWidth: 0 },
+  { visible: undefined, placement: 'bottom-right', minWidth: 0, label: undefined, autoFocus: true, anchorAria: true },
 )
 
 const emit = defineEmits<{ 'update:visible': [value: boolean] }>()
@@ -32,6 +38,8 @@ defineOptions({ inheritAttrs: false })
 const anchorEl = ref<HTMLElement | null>(null)
 const panelEl = ref<HTMLElement | null>(null)
 const innerOpen = ref(false)
+/** Esc 关闭时把焦点归还触发元素；其它关闭途径（点外部）不抢焦点 */
+let restoreFocusOnClose = false
 
 const open = computed(() => (props.visible === undefined ? innerOpen.value : props.visible))
 
@@ -99,6 +107,27 @@ async function place() {
   pos.value = { left, top }
 }
 
+/**
+ * 面板里的首个可聚焦元素。没有可聚焦内容时退化为面板自身
+ * （面板 tabindex=-1），至少让键盘焦点离开文档流末尾的触发位置。
+ */
+function focusPanel() {
+  const panel = panelEl.value
+  if (!panel) return
+  const first = panel.querySelector<HTMLElement>(
+    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+  )
+  ;(first ?? panel).focus()
+}
+
+/** 把焦点还给触发元素（UiButton 等实际可聚焦的节点在锚点内部） */
+function focusAnchor() {
+  const anchor = anchorEl.value
+  if (!anchor) return
+  const first = anchor.querySelector<HTMLElement>('button, [href], input, [tabindex]')
+  ;(first ?? anchor).focus()
+}
+
 watch(open, async (v) => {
   if (v) {
     // 滚动/尺寸监听只在浮层打开期间挂载：关闭时不该为每个 UiPopup
@@ -106,9 +135,15 @@ watch(open, async (v) => {
     window.addEventListener('resize', close)
     window.addEventListener('scroll', onDocScroll, { capture: true, passive: true })
     await place()
+    if (props.autoFocus) focusPanel()
   } else {
     window.removeEventListener('resize', close)
     window.removeEventListener('scroll', onDocScroll, true)
+    // 只有键盘关闭（Esc）才归还焦点；点外部关闭时用户已把焦点移走，不能抢回来
+    if (restoreFocusOnClose) {
+      restoreFocusOnClose = false
+      focusAnchor()
+    }
   }
 })
 
@@ -120,7 +155,10 @@ function onDocPointerDown(e: MouseEvent) {
 }
 
 function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape') close()
+  if (e.key === 'Escape' && open.value) {
+    restoreFocusOnClose = true
+    close()
+  }
 }
 
 onMounted(() => {
@@ -138,7 +176,15 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <span ref="anchorEl" class="ui-popup__anchor" v-bind="$attrs" @click="toggle">
+  <span
+    ref="anchorEl"
+    class="ui-popup__anchor"
+    tabindex="-1"
+    :aria-haspopup="anchorAria ? 'dialog' : undefined"
+    :aria-expanded="anchorAria ? open : undefined"
+    v-bind="$attrs"
+    @click="toggle"
+  >
     <slot />
   </span>
 
@@ -149,6 +195,8 @@ onBeforeUnmount(() => {
         ref="panelEl"
         class="ui-popup__panel"
         role="dialog"
+        tabindex="-1"
+        :aria-label="label"
         :style="{
           left: `${pos.left}px`,
           top: `${pos.top}px`,

@@ -69,6 +69,7 @@ const prefs = usePrefsStore()
   background-repeat: no-repeat;
 }
 
+/* 场景特效：以下 rgba 均为登录场景背景的装饰层压暗/光斑，非主题色，豁免令牌化 */
 .auth-scene__shade {
   position: absolute;
   inset: 0;

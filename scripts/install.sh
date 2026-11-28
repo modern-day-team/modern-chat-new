@@ -692,6 +692,8 @@ server {
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        # 若本机 nginx 上启用了 TLS，需把真实协议传给后端，否则登录 cookie 不带 Secure
+        proxy_set_header X-Forwarded-Proto \$scheme;
         client_max_body_size 2m;
     }
 
@@ -701,8 +703,19 @@ server {
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
         client_max_body_size 210m;
         proxy_request_buffering off;
+    }
+
+    # 本地存储的上传文件在 server/data/uploads，不在站点 root 下，且 /uploads 需要
+    # 登录 cookie；交给 nginx 静态服务会 404，必须回源。
+    location /uploads/ {
+        proxy_pass http://modernchat_backend;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
     }
 
     # WebSocket（/ws：握手 + 升级；关闭访问日志防令牌泄露）
@@ -714,6 +727,7 @@ server {
         proxy_set_header Connection "upgrade";
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_read_timeout 300s;
         proxy_send_timeout 300s;
     }

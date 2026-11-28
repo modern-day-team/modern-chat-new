@@ -24,6 +24,29 @@ const ShardCount = 64
 // 若 writePump 已退出（半死连接），靠该定时器保证连接一定被关闭。
 const kickGrace = 2 * time.Second
 
+// 连接准入上限：此前同一账号可无限建连，每条连接带 3 个 goroutine 与
+// 256 帧的发送积压（慢消费者判定前最多可排 15MB），资源消耗没有任何上界。
+// 单账号 8 条覆盖手机/桌面/平板加若干标签页；同 sid 的多标签页共用登录态，
+// 因此不做「同 sid 替换旧连接」（那会踢掉正常的多标签页），改用账号上限收敛。
+const (
+	maxConnsPerUser = 8
+	// maxConnsPerIP 单来源 IP 并发连接上限。回环来源被 quotaIP 视为同机反代
+	// 而不计配额（否则所有经 nginx 的用户会合并到同一个 IP）。
+	maxConnsPerIP = 50
+	// 握手频率：每来源 IP 每秒 2 次、突发 20。每次握手都要查用户、会话表并
+	// 触发一次 presence 广播，需要比连接数更细的入口限制。
+	handshakeRatePerSec = 2
+	handshakeBurst      = 20
+	// ipLimiterTTL 空闲来源的握手限流桶保留时长，避免长跑实例无限累积 map。
+	ipLimiterTTL = 10 * time.Minute
+)
+
+// connSweepInterval 只读连接的定时复核周期。readPump 只有在收到上行帧时才会
+// 走 Dispatch → checkConnState，纯收消息的连接（脚本监听广播、隐藏标签页被
+// 浏览器节流心跳）可能长期不触发；独立定时扫描保证会话撤销/封禁最迟一个
+// 周期内落到既有连接上。
+const connSweepInterval = 45 * time.Second
+
 type shard struct {
 	mu    sync.RWMutex
 	conns map[uint]map[*Client]struct{} // userID -> 该用户全部连接
@@ -77,7 +100,15 @@ type Hub struct {
 	relatedCache sync.Map // userID -> *relatedEntry
 	// calls 一对一通话的 WS 信令状态（只内存，不落库；二期再考虑跨实例共享）
 	calls *callManager
-	done  chan struct{}
+	// sessions 登录会话表。Hub 在 main 中先于 router 构造，SessionStore 由
+	// router 创建后经 Serve 传入，因此只能在握手时回填（见 setSessions）；
+	// 连接级复核与定时巡检据此判断 sid 是否已被撤销。
+	sessions atomic.Pointer[store.SessionStore]
+	// quotaMu 保护按来源 IP 的并发连接计数与握手限流桶。
+	quotaMu    sync.Mutex
+	ipConns    map[string]int
+	ipLimiters map[string]*ipLimiterEntry
+	done       chan struct{}
 	// clusterCancel 取消跨实例事件订阅（Close 时调用，与 done 分开：done 是 Hub 生命周期）。
 	clusterCancel context.CancelFunc
 	closed        bool
@@ -90,7 +121,9 @@ type Client struct {
 	// tv JWT 中的 token_version（握手时已校验）；handleChat 用它做连接级复核。
 	tv int64
 	// sid JWT 中的会话 ID；KickSession 按它单独断开某台设备，不影响其他连接。
-	sid  string
+	sid string
+	// ip 握手来源地址（quotaIP 归一化后的配额键）；Unregister 时释放 IP 名额。
+	ip   string
 	Conn *websocket.Conn
 	send chan []byte
 	hub  *Hub
@@ -114,17 +147,31 @@ type Client struct {
 	// 复用结果，避免高频帧每帧一次 Users.ByID 查库（F2）。封禁 / 重置密码均由
 	// KickUser 立即断连兜底，此处只是把防御性复核降频。
 	connStateAt atomic.Int64
+	// lastInbound 最近一次收到上行帧的 UnixNano（握手时初始化）。writePump
+	// 据此判断「只收不发」的连接，超过 maxSilentLifetime 主动断开强制重连鉴权。
+	lastInbound atomic.Int64
 }
 
 func newShard() *shard { return &shard{conns: make(map[uint]map[*Client]struct{})} }
 
 // NewHub 创建 Hub（deps 可为 nil：仅注册表功能，供测试）。
 func NewHub(deps *Deps) *Hub {
-	h := &Hub{deps: deps, done: make(chan struct{}), calls: newCallManager()}
+	h := &Hub{
+		deps: deps, done: make(chan struct{}), calls: newCallManager(),
+		ipConns: make(map[string]int), ipLimiters: make(map[string]*ipLimiterEntry),
+	}
 	for i := range h.shards {
 		h.shards[i] = newShard()
 	}
 	return h
+}
+
+// setSessions 回填会话表（Serve 每次握手调用，后写覆盖；nil 忽略）。
+// Hub 与 SessionStore 的构造顺序决定了这里只能后注入，而不是走 Deps。
+func (h *Hub) setSessions(s *store.SessionStore) {
+	if s != nil {
+		h.sessions.Store(s)
+	}
 }
 
 // Run 阻塞至 Close，并定期清扫过期的成员列表缓存。
@@ -134,6 +181,11 @@ func NewHub(deps *Deps) *Hub {
 func (h *Hub) Run() {
 	cleanup := time.NewTicker(5 * time.Minute)
 	defer cleanup.Stop()
+	// connSweep 独立于上行帧的定时复核：踢线事件只广播一次，pub/sub 未送达
+	// （多实例未配 Redis / 总线故障）或与握手竞态漏踢时，靠它最迟一个周期
+	// 发现会话已撤销并关闭连接。
+	connSweep := time.NewTicker(connSweepInterval)
+	defer connSweep.Stop()
 	// 跨实例踢线订阅：单实例（未注入）时不启动。首次建连失败只告警、不取消 ctx，
 	// 由总线内部指数退避自动重连；本实例始终保留 5s 连接级复核兜底。
 	if h.deps != nil && h.deps.ClusterEvents != nil {
@@ -159,6 +211,9 @@ func (h *Hub) Run() {
 			return
 		case <-cleanup.C:
 			h.evictExpiredMembers()
+			h.evictIdleIPs()
+		case <-connSweep.C:
+			h.sweepConns()
 		}
 	}
 }
@@ -180,12 +235,123 @@ func (h *Hub) evictExpiredMembers() {
 	})
 }
 
+// evictIdleIPs 清理长时间未握手的来源 IP 限流桶（并发连接计数为 0 时整条删除，
+// 非 0 的保留计数以免配额被绕过）。
+func (h *Hub) evictIdleIPs() {
+	cutoff := time.Now().Add(-ipLimiterTTL)
+	h.quotaMu.Lock()
+	defer h.quotaMu.Unlock()
+	for ip, e := range h.ipLimiters {
+		if e.at.Before(cutoff) {
+			delete(h.ipLimiters, ip)
+		}
+	}
+	for ip, n := range h.ipConns {
+		if n <= 0 {
+			delete(h.ipConns, ip)
+		}
+	}
+}
+
+// sweepConns 定时复核全部既有连接（见 connSweepInterval）。
+// 只收集指针、在分片锁外判定：loadConnState 会查库，不能持锁；失效连接只用
+// requestKick 关闭，不投递 error 帧 —— Unregister 会并发关闭 c.send，
+// 锁外 trySend 有 send on closed channel 的风险，而 requestKick 只关信号 channel。
+func (h *Hub) sweepConns() {
+	var conns []*Client
+	for i := range h.shards {
+		s := h.shards[i]
+		s.mu.RLock()
+		for _, set := range s.conns {
+			for c := range set {
+				conns = append(conns, c)
+			}
+		}
+		s.mu.RUnlock()
+	}
+	for _, c := range conns {
+		if time.Since(time.Unix(0, c.connStateAt.Load())) < connStateTTL {
+			continue // 刚由上行帧复核过
+		}
+		reason, err := h.loadConnState(c)
+		if err != nil {
+			slog.Warn("ws conn sweep lookup failed, skip", "uid", c.UserID, "err", err.Error())
+			continue
+		}
+		if reason == "" {
+			c.connStateAt.Store(time.Now().UnixNano())
+			continue
+		}
+		slog.Warn("ws conn swept: state changed", "uid", c.UserID, "sid", c.sid, "reason", reason)
+		c.requestKick(true)
+	}
+}
+
 // IsOnline 该用户当前是否有任意在线连接。
 func (h *Hub) IsOnline(uid uint) bool {
 	s := h.shards[uid%ShardCount]
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.conns[uid]) > 0
+}
+
+// ConnCount 用户当前连接数（握手准入判断用）。
+func (h *Hub) ConnCount(userID uint) int {
+	s := h.shards[userID%ShardCount]
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.conns[userID])
+}
+
+// ipLimiterEntry 每来源 IP 的握手令牌桶 + 最近使用时刻（供空闲清理）。
+type ipLimiterEntry struct {
+	lim *rate.Limiter
+	at  time.Time
+}
+
+// allowHandshake 握手频率限制。每次握手都会查用户、Touch 会话表并广播 presence，
+// 连接数上限拦不住「连上即断」的循环。ip 为空（未知来源 / 回环反代）时放行。
+func (h *Hub) allowHandshake(ip string) bool {
+	if ip == "" {
+		return true
+	}
+	h.quotaMu.Lock()
+	defer h.quotaMu.Unlock()
+	e := h.ipLimiters[ip]
+	if e == nil {
+		e = &ipLimiterEntry{lim: rate.NewLimiter(rate.Limit(handshakeRatePerSec), handshakeBurst)}
+		h.ipLimiters[ip] = e
+	}
+	e.at = time.Now()
+	return e.lim.Allow()
+}
+
+// acquireIPSlot 占用一个来源 IP 的并发连接名额（握手前调用，失败返回 false）。
+func (h *Hub) acquireIPSlot(ip string) bool {
+	if ip == "" {
+		return true
+	}
+	h.quotaMu.Lock()
+	defer h.quotaMu.Unlock()
+	if h.ipConns[ip] >= maxConnsPerIP {
+		return false
+	}
+	h.ipConns[ip]++
+	return true
+}
+
+// releaseIPSlot 释放来源 IP 名额（握手失败或连接下线时调用，与 acquire 严格配对）。
+func (h *Hub) releaseIPSlot(ip string) {
+	if ip == "" {
+		return
+	}
+	h.quotaMu.Lock()
+	defer h.quotaMu.Unlock()
+	if n := h.ipConns[ip]; n <= 1 {
+		delete(h.ipConns, ip)
+	} else {
+		h.ipConns[ip] = n - 1
+	}
 }
 
 // Register 连接上线。
@@ -217,7 +383,11 @@ func (h *Hub) Unregister(c *Client) {
 	}
 	// 持写锁期间关闭：ToUsers 只在读锁内投递，二者互斥；且连接已从
 	// 注册表摘除，不会再有新的投递落到这个已关闭的 channel 上。
-	c.sendOnce.Do(func() { close(c.send) })
+	// IP 名额释放也放进 sendOnce：Unregister 幂等，重复调用不会把计数减两次。
+	c.sendOnce.Do(func() {
+		close(c.send)
+		h.releaseIPSlot(c.ip)
+	})
 	s.mu.Unlock()
 	// 断线（含被踢）结束该设备参与的通话并通知对端。必须在分片锁外调用：
 	// endCallForDevice 内部会取其它分片锁做广播，锁内调用会死锁。

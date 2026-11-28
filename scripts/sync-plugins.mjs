@@ -54,6 +54,16 @@ function extractManifest(src, file) {
   if (typeof json.description !== 'string' || json.description.length > 255) {
     throw new Error(`${file}: description 缺失或超过 255 字符`)
   }
+  // 分发契约：engines / dependencies 会随 index.json 一起发布，市场页据此展示
+  // 「需要 SDK x」「依赖谁」。形状不对就直接拒绝，别把坏数据带进市场。
+  if (json.engines != null && (typeof json.engines !== 'object' || Array.isArray(json.engines))) {
+    throw new Error(`${file}: engines 须为对象`)
+  }
+  const deps = json.dependencies ?? []
+  if (!Array.isArray(deps) || !deps.every((d) => typeof d === 'string')) {
+    throw new Error(`${file}: dependencies 须为字符串数组`)
+  }
+  if (deps.length > 10) throw new Error(`${file}: dependencies 最多 10 项`)
   return json
 }
 
@@ -71,6 +81,9 @@ const entries = files.map((file) => {
     description: m.description,
     permissions: m.permissions,
     allowedHosts: m.allowedHosts ?? [],
+    // 缺省也写出来：市场前端不用判 undefined，索引形状固定
+    engines: m.engines ?? {},
+    dependencies: m.dependencies ?? [],
     lang: file.endsWith('.ts') ? 'ts' : 'js',
   }
 })

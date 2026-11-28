@@ -35,15 +35,29 @@ func SafePostJSONWithHeaders(rawURL string, body []byte, headers map[string]stri
 	return SafeRequest(http.MethodPost, rawURL, body, headers, maxBytes)
 }
 
+// SafePostJSONWithAllowedHosts 同 SafePostJSONWithHeaders，并逐跳校验重定向目标：
+// 服务端插件的 events / jobs 端点同样只允许 manifest 的 allowedHosts。
+func SafePostJSONWithAllowedHosts(rawURL string, body []byte, headers map[string]string, maxBytes int64, allowedHosts []string) (int, []byte, error) {
+	return SafeRequestWithHosts(http.MethodPost, rawURL, body, headers, maxBytes, allowedHosts)
+}
+
 // SafeRequest 是 SafePostJSON 的通用版本，动态路由代理用它透传方法 / 请求体。
 func SafeRequest(method, rawURL string, body []byte, headers map[string]string, maxBytes int64) (int, []byte, error) {
-	return safeRequest(method, rawURL, body, headers, maxBytes, false, false, outboundTimeout)
+	return safeRequest(method, rawURL, body, headers, maxBytes, false, false, outboundTimeout, nil)
+}
+
+// SafeRequestWithHosts 同 SafeRequest，额外把 manifest 的 allowedHosts 带进重定向检查。
+//
+// 初始 URL 只由调用方按白名单校验一次；若这里不逐跳复检，一个白名单域名
+// 用 302 就能把请求带到任意公网主机，allowedHosts 形同虚设。
+func SafeRequestWithHosts(method, rawURL string, body []byte, headers map[string]string, maxBytes int64, allowedHosts []string) (int, []byte, error) {
+	return safeRequest(method, rawURL, body, headers, maxBytes, false, false, outboundTimeout, allowedHosts)
 }
 
 // SafeRequestWithAuth 仅供管理员配置的 AI 代理使用：允许显式 Authorization 头，
 // 但仍然拒绝 Cookie / Host 等身份或连接级头，并保留完整 SSRF 防护。
 func SafeRequestWithAuth(method, rawURL string, body []byte, headers map[string]string, maxBytes int64) (int, []byte, error) {
-	return safeRequest(method, rawURL, body, headers, maxBytes, true, false, outboundTimeout)
+	return safeRequest(method, rawURL, body, headers, maxBytes, true, false, outboundTimeout, nil)
 }
 
 // SafeRequestWithAuthTimeout 同 SafeRequestWithAuth，但允许 AI 长响应使用更长超时。
@@ -51,10 +65,10 @@ func SafeRequestWithAuthTimeout(method, rawURL string, body []byte, headers map[
 	if timeout <= 0 {
 		timeout = outboundTimeout
 	}
-	return safeRequest(method, rawURL, body, headers, maxBytes, true, allowPrivate, timeout)
+	return safeRequest(method, rawURL, body, headers, maxBytes, true, allowPrivate, timeout, nil)
 }
 
-func safeRequest(method, rawURL string, body []byte, headers map[string]string, maxBytes int64, allowAuth, allowPrivate bool, timeout time.Duration) (int, []byte, error) {
+func safeRequest(method, rawURL string, body []byte, headers map[string]string, maxBytes int64, allowAuth, allowPrivate bool, timeout time.Duration, allowedHosts []string) (int, []byte, error) {
 	u, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
 		return 0, nil, fmt.Errorf("%w: 仅支持 http/https 链接且不能携带用户名密码", ErrInvalid)
@@ -98,6 +112,10 @@ func safeRequest(method, rawURL string, body []byte, headers map[string]string, 
 			if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
 				return errors.New("重定向到非 http(s)")
 			}
+			// 白名单必须逐跳校验：初始 URL 的 manifest 校验拦不住 302 到任意主机。
+			if len(allowedHosts) > 0 && !hostMatchesAllowed(req.URL.Hostname(), allowedHosts) {
+				return fmt.Errorf("重定向目标 %s 不在 allowedHosts 中", req.URL.Hostname())
+			}
 			// 目标地址的私网校验由 DialContext 在真正连接时完成
 			return nil
 		},
@@ -135,6 +153,24 @@ func safeRequest(method, rawURL string, body []byte, headers map[string]string, 
 		return resp.StatusCode, nil, fmt.Errorf("%w: 响应超过大小上限", ErrInvalid)
 	}
 	return resp.StatusCode, data, nil
+}
+
+// hostMatchesAllowed 与 serverplugin.checkEndpoint / 前端 hostAllowed 同一口径：
+// 精确匹配，或 "*.example.com" 匹配 base 本身及其子域。
+func hostMatchesAllowed(host string, allowed []string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	for _, h := range allowed {
+		h = strings.ToLower(strings.TrimSpace(h))
+		if strings.HasPrefix(h, "*.") {
+			base := h[2:]
+			if host == base || strings.HasSuffix(host, "."+base) {
+				return true
+			}
+		} else if h != "" && host == h {
+			return true
+		}
+	}
+	return false
 }
 
 // safeOutboundHeader 过滤禁止透传的请求头：身份凭据与连接级头一律丢弃，
